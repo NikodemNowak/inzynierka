@@ -1,0 +1,372 @@
+% !TEX program = lualatex
+% Kompilacja: lualatex main.tex   (zalecane — fontawesome5 lubi luatex)
+%        lub: pdflatex main.tex
+%
+% Cel: prezentacja na proseminarium 2026-05-13, ~20 min.
+% Styl: uczelniany, czytelny, zrozumiały. Mało tekstu na slajdzie.
+% Grafiki w prezentacja/img/ — generowane zewnętrznie (zob. image-prompts.md).
+
+\documentclass[aspectratio=169,11pt]{beamer}
+
+% ---------- język i fonty ----------
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[polish]{babel}
+\usepackage{lmodern}
+\usepackage{microtype}
+\usepackage{fontawesome5}
+
+% ---------- motyw ----------
+\usetheme{metropolis}
+\metroset{
+  progressbar=frametitle,
+  numbering=counter,
+  block=fill,
+  sectionpage=progressbar,
+  subsectionpage=none
+}
+
+% ---------- kolory (stonowane, akademickie) ----------
+\definecolor{mPrimary}{HTML}{1F4E79}
+\definecolor{mAccent}{HTML}{B45309}
+\definecolor{mGood}{HTML}{2E7D32}
+\definecolor{mBad}{HTML}{B91C1C}
+\definecolor{mMuted}{HTML}{4B5563}
+\setbeamercolor{progress bar}{fg=mAccent}
+\setbeamercolor{title separator}{fg=mAccent}
+\setbeamercolor{frametitle}{bg=mPrimary}
+\setbeamercolor{alerted text}{fg=mAccent}
+
+% ---------- pakiety pomocnicze ----------
+\usepackage{tikz}
+\usetikzlibrary{positioning, shapes, arrows.meta, fit, backgrounds, calc}
+\usepackage{tabularx}
+\usepackage{booktabs}
+\usepackage{hyperref}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=mPrimary,
+  urlcolor=mAccent
+}
+
+\graphicspath{{img/}{./img/}}
+
+% ---------- helper: obraz albo placeholder ----------
+% Jeśli plik nie istnieje, rysuje szary box z nazwą pliku.
+\newcommand{\imgorbox}[2][0.85\linewidth]{%
+  \IfFileExists{img/#2}{%
+    \includegraphics[width=#1]{img/#2}%
+  }{%
+    \fbox{\parbox{#1}{\centering\vspace{1.2cm}\ttfamily\small
+      placeholder: img/#2\\[2pt]
+      \scriptsize wygeneruj wg \texttt{prezentacja/image-prompts.md}\\[1cm]}}%
+  }%
+}
+
+% ---------- helper styles ----------
+\tikzset{
+  device/.style={draw=mPrimary, thick, rounded corners=8pt, inner sep=14pt},
+  mstep/.style={draw=mPrimary, fill=mPrimary!12, rounded corners, thick,
+               minimum width=2.6cm, minimum height=1.2cm, align=center, font=\small},
+  arr/.style={-{Stealth[length=3mm]}, thick, mPrimary},
+  phase/.style={draw=mPrimary, fill=mAccent!50, thick, rounded corners,
+               minimum height=0.7cm, font=\small, anchor=west}
+}
+
+% ---------- metadane ----------
+\title{Mobilna aplikacja do notatek zorientowana na prywatność, z dyktowaniem głosowym i podsumowywaniem tekstu przez lokalny model językowy}
+\author{Nikodem Nowak \\ \footnotesize nr albumu 251598}
+\institute{Promotor: dr inż. Marcin Kacprowicz \\ \footnotesize Politechnika Łódzka}
+\date{Proseminarium \textbullet{} 13 maja 2026}
+
+% ==============================================================
+\begin{document}
+
+% ---------- 1. tytuł (nie liczony) ----------
+\begin{frame}[plain]
+  \titlepage
+\end{frame}
+\addtocounter{framenumber}{-1}
+
+% ==============================================================
+% ---------- 2. plan prezentacji ----------
+\begin{frame}{Plan prezentacji}
+  \begin{enumerate}
+    \item Problem prywatności w popularnych narzędziach AI
+    \item Istniejące rozwiązania i ich ograniczenia
+    \item Czym są modele językowe (LLM)
+    \item Trend local-first
+    \item Pomysł: cały pipeline na telefonie
+    \item Stack i kluczowe decyzje techniczne
+    \item Architektura i zasada „nic nie wychodzi z urządzenia"
+    \item Zakres pracy, plan, ryzyka
+  \end{enumerate}
+\end{frame}
+
+% ==============================================================
+% ---------- 3. hook ----------
+\begin{frame}{Jak działa typowy AI-notatnik}
+  \centering
+  \vfill
+  \imgorbox[0.7\linewidth]{hook.png}
+  \vfill
+  \small \textcolor{mMuted}{Otter, Notion AI, Apple Notes z fallbackiem do chmury, Google Recorder — głos albo transkrypt leci na serwer.}
+\end{frame}
+
+% ==============================================================
+% ---------- 4. wrażliwe konteksty ----------
+\begin{frame}{Dla kogo to nie wystarcza}
+  \centering
+  \vfill
+  \imgorbox[0.8\linewidth]{sensitive.png}
+  \vfill
+  \small \textcolor{mMuted}{Tajemnica zawodowa \textbullet{} RODO \textbullet{} AI Act}
+\end{frame}
+
+% ==============================================================
+% ---------- 5. istniejące rozwiązania ----------
+\begin{frame}{Istniejące rozwiązania — gdzie są dziury}
+  \small
+  \renewcommand{\arraystretch}{1.35}
+  \begin{tabularx}{\textwidth}{@{}p{3.4cm} p{3.0cm} X@{}}
+    \toprule
+    \textbf{Narzędzie} & \textbf{Gdzie liczy} & \textbf{Słaba strona dla prywatności} \\
+    \midrule
+    Otter, Notion AI               & chmura                  & audio i transkrypt na serwerze, regulamin pozwala na wykorzystanie do trenowania \\
+    \addlinespace
+    Granola                        & STT lokalnie, AI w chmurze & streszczenia trafiają do dostawcy LLM \\
+    \addlinespace
+    Apple Voice Memos (iOS 18+)    & on-device               & tylko transkrypcja, brak streszczeń przez LLM \\
+    \addlinespace
+    Whisper Notes / VoiceScriber   & on-device               & tylko transkrypcja, brak organizacji i podsumowań \\
+    \addlinespace
+    Apple Intelligence             & device + Private Cloud  & fallback do chmury Apple — sprzeczne z założeniem „nic nie wychodzi" \\
+    \bottomrule
+  \end{tabularx}
+  \vfill
+  \footnotesize \textcolor{mMuted}{Luka: pełen pipeline (nagranie + transkrypcja + streszczenie + organizacja) on-device.}
+\end{frame}
+
+% ==============================================================
+% ---------- 6. problem użytkownika (one-liner) ----------
+\begin{frame}[plain]
+  \centering
+  \vfill
+  \Huge \textcolor{mPrimary}{,,Chcę nagrywać, streszczać}\\[6pt]
+  \Huge \textcolor{mPrimary}{i porządkować notatki ---}\\[6pt]
+  \Huge \textcolor{mPrimary}{bez wysyłania ich nikomu.''}
+  \vfill
+  \normalsize \textcolor{mMuted}{— problem, który rozwiązuje praca}
+\end{frame}
+
+% ==============================================================
+% ---------- 7. czym jest LLM ----------
+\begin{frame}{Czym są modele językowe (LLM)}
+  \centering
+  \vfill
+  \imgorbox[0.72\linewidth]{llm.png}
+  \vfill
+  \small \textcolor{mMuted}{większość ,,AI'' = LLM \quad\textcolor{mAccent}{$\cdot$}\quad multimodalne LLM-y przyjmują też obraz i dźwięk}
+\end{frame}
+
+% ==============================================================
+% ---------- 8. trend local-first ----------
+\begin{frame}{Trend: local-first AI}
+  \centering
+  \vfill
+  \begin{tabularx}{0.85\textwidth}{*{4}{>{\centering\arraybackslash}X}}
+    \large\textbf{Apple} & \large\textbf{Gemini} & \large\textbf{Llama} & \large\textbf{Qwen} \\[2pt]
+    \footnotesize Intelligence & \footnotesize Nano & \footnotesize 3.2 \scriptsize(1B/3B) & \footnotesize 3 \scriptsize(4B/30B) \\
+  \end{tabularx}
+  \vfill
+  \Large modele zmalały \quad\textcolor{mAccent}{$\cdot$}\quad telefony urosły
+  \vfill
+\end{frame}
+
+% ==============================================================
+% ---------- 9. pipeline ----------
+\begin{frame}{Pomysł — cały pipeline na telefonie}
+  \centering
+  \vfill
+  \imgorbox[0.78\linewidth]{pipeline.png}
+  \vfill
+  \small \textcolor{mMuted}{nagranie \,$\to$\, transkrypcja (Apple) \,$\to$\, LLM (Qwen3-4B) \,$\to$\, notatka (SQLite)}
+\end{frame}
+
+% ==============================================================
+% ---------- 9. stack ----------
+\begin{frame}{Stack technologiczny}
+  \centering
+  \vfill
+  \renewcommand{\arraystretch}{1.4}
+  \begin{tabularx}{0.94\textwidth}{*{3}{>{\centering\arraybackslash}X}}
+    \large\textbf{Aplikacja}    & \large\textbf{STT}              & \large\textbf{LLM} \\[6pt]
+    React Native + Expo         & Apple SFSpeechRecognizer        & Qwen3-4B Instruct \\
+    TypeScript (strict)         & \texttt{expo-speech-recognition}& \texttt{llama.rn} (Metal) \\
+    expo-sqlite                 & on-device                       & GGUF Q4\_K\_M \\
+  \end{tabularx}
+  \vfill
+  \footnotesize \textcolor{mMuted}{Cel: iOS 17+, urządzenie referencyjne iPhone 17 Pro.}
+\end{frame}
+
+% ==============================================================
+% ---------- 11. wybór modelu ----------
+\begin{frame}{Dlaczego Qwen3-4B (a nie 30B-A3B)}
+  \centering
+  \vfill
+  \begin{tikzpicture}[node distance=1.2cm]
+    \node[draw=mGood, fill=mGood!8, rounded corners, very thick,
+          minimum width=5cm, minimum height=3.6cm, align=left, font=\small,
+          label={[font=\bfseries, mGood]above:\faCheckCircle\ \ \textbf{Qwen3-4B (dense)}}] (good)
+      {\textbf{4 mld parametrów}, wszystkie aktywne\\[4pt]
+       Q4\_K\_M $\to$ \textbf{$\sim$3 GB w RAM}\\[4pt]
+       \textcolor{mGood}{\faCheck\ mieści się w 12 GB iPhone'a}};
+
+    \node[draw=mBad, fill=mBad!8, rounded corners, very thick,
+          minimum width=5cm, minimum height=3.6cm, align=left, font=\small, right=1.2cm of good,
+          label={[font=\bfseries, mBad]above:\faTimesCircle\ \ \textbf{Qwen3-30B-A3B (MoE)}}] (bad)
+      {3 mld aktywnych per-token\ldots\\[4pt]
+       \ldots ale \textbf{wszystkie 30 mld w RAM}\\[4pt]
+       Q4\_K\_M $\to$ \textbf{$\sim$17 GB w RAM}\\[4pt]
+       \textcolor{mBad}{\faTimes\ nie zmieści się na telefonie}};
+  \end{tikzpicture}
+  \vfill
+  \footnotesize \textcolor{mMuted}{MoE: routing wybiera ekspertów per-token, ale wszyscy muszą być załadowani.}
+\end{frame}
+
+% ==============================================================
+% ---------- 12. architektura ----------
+\begin{frame}{Architektura — pięć warstw}
+  \centering
+  \vfill
+  \begin{tikzpicture}[
+      layer/.style={draw=mPrimary, fill=mPrimary!12, thick, rounded corners,
+                    minimum width=8cm, minimum height=0.85cm, font=\small\bfseries, align=center},
+      ailayer/.style={draw=mPrimary, fill=mAccent!18, thick, rounded corners,
+                    minimum width=4cm, minimum height=0.85cm, font=\small\bfseries, align=center}
+    ]
+    \node[layer] (ui)      {UI \quad\textcolor{mMuted}{\scriptsize React, ekrany, komponenty}};
+    \node[layer, below=0.25cm of ui]      (state)  {State \quad\textcolor{mMuted}{\scriptsize Zustand / Redux Toolkit}};
+    \node[layer, below=0.25cm of state]   (domain) {Domain \quad\textcolor{mMuted}{\scriptsize encje, logika biznesowa}};
+    \node[layer, below=0.25cm of domain]  (data)   {Data \quad\textcolor{mMuted}{\scriptsize SQLite, filesystem, audio}};
+    \node[ailayer, right=0.6cm of domain] (ai)     {AI Runtime\\\textcolor{mMuted}{\scriptsize expo-speech-recognition + llama.rn}};
+
+    \draw[arr] (ui) -- (state);
+    \draw[arr] (state) -- (domain);
+    \draw[arr] (domain) -- (data);
+    \draw[arr] (domain) -- (ai);
+  \end{tikzpicture}
+\end{frame}
+
+% ==============================================================
+% ---------- 13. privacy by design ----------
+\begin{frame}{Privacy by design}
+  \centering
+  \vfill
+  \imgorbox[0.62\linewidth]{privacy.png}
+  \vfill
+  \small Po jednorazowym pobraniu modelu LLM — telefon w trybie samolotowym działa w pełni.\\
+  \footnotesize \textcolor{mMuted}{SFSpeechRecognizer jest częścią iOS — nie wymaga pobrania.}
+\end{frame}
+
+% ==============================================================
+% ---------- 14. zakres ----------
+\begin{frame}{Zakres pracy}
+  \begin{columns}[T,onlytextwidth]
+    \column{0.48\textwidth}
+    \textcolor{mGood}{\faCheckCircle}\ \textbf{W zakresie}
+    \begin{itemize}
+      \item iOS 17+ (iPhone 17 Pro)
+      \item LLM: Qwen3-4B przez \texttt{llama.rn}
+      \item STT: Apple SFSpeechRecognizer
+      \item polski + angielski
+      \item testy funkcjonalne
+    \end{itemize}
+
+    \column{0.48\textwidth}
+    \textcolor{mBad}{\faTimesCircle}\ \textbf{Poza zakresem}
+    \begin{itemize}
+      \item trening / fine-tuning
+      \item multimodalność
+      \item Android (stretch goal po MVP)
+    \end{itemize}
+  \end{columns}
+\end{frame}
+
+% ==============================================================
+% ---------- 15. plan na najbliższe miesiące ----------
+\begin{frame}{Plan na najbliższe miesiące}
+  \begin{enumerate}
+    \item \textbf{Research + POC} \quad \textcolor{mMuted}{\small \texttt{llama.rn} z Qwen3-4B na Metalu, weryfikacja STT na PL}
+    \item \textbf{MVP — szkielet} \quad \textcolor{mMuted}{\small integracja warstw, podstawowe scenariusze}
+    \item \textbf{Implementacja docelowa} \quad \textcolor{mMuted}{\small pełna funkcjonalność, dopracowanie}
+    \item \textbf{Testy funkcjonalne} \quad \textcolor{mMuted}{\small end-to-end pipeline, ocena jakości streszczeń}
+  \end{enumerate}
+\end{frame}
+
+% ==============================================================
+% ---------- 16. ryzyka ----------
+\begin{frame}{Ryzyka}
+  \small
+  \renewcommand{\arraystretch}{1.4}
+  \begin{tabularx}{\textwidth}{@{}p{3.4cm} X X@{}}
+    \toprule
+    \textbf{Ryzyko} & \textbf{Co może pójść nie tak} & \textbf{Co z tym robię} \\
+    \midrule
+    Pamięć iOS              & system ubija aplikacje $>$~3~GB RAM           & limit do modeli 4B, Q4, testy OOM od POC \\
+    \addlinespace
+    Jakość polskiego (LLM)  & model trenowany głównie na EN                 & wybór Qwena (wielojęzyczny), plan B: Bielik \\
+    \addlinespace
+    Jakość polskiego (STT)  & SFSpeechRecognizer PL nieprzetestowany        & POC na realnych nagraniach, plan B: \texttt{whisper.rn} \\
+    \addlinespace
+    Niedojrzałe biblioteki  & breaking changes w \texttt{llama.rn} / \texttt{expo-speech-recognition} & pin wersji, fork na stabilnej \\
+    \bottomrule
+  \end{tabularx}
+\end{frame}
+
+% ==============================================================
+% ---------- 17. status ----------
+\begin{frame}{Gdzie jestem, co dalej}
+  \begin{itemize}
+    \item[\textcolor{mGood}{\faCheck}] kierunek wstępnie zaakceptowany przez promotora
+    \item[\textcolor{mGood}{\faCheck}] wybór modelu, runtime LLM i runtime STT
+    \item[\textcolor{mAccent}{$\to$}] formalne zatwierdzenie tematu
+    \item[\textcolor{mAccent}{$\to$}] POC: Qwen3-4B na iPhonie + minimalny prompt-response
+    \item[\textcolor{mAccent}{$\to$}] integracja SFSpeechRecognizer $\to$ pełen pipeline szkieletowy
+  \end{itemize}
+\end{frame}
+
+% ==============================================================
+% ---------- 18. dziękuję (nie liczony) ----------
+\begin{frame}[standout]
+  Dziękuję za uwagę.
+\end{frame}
+\addtocounter{framenumber}{-1}
+
+% ==============================================================
+\appendix
+
+\begin{frame}[allowframebreaks]{Materiały dodatkowe — wybór}
+  \footnotesize
+  \begin{thebibliography}{9}
+    \bibitem{aiact}
+      Parlament Europejski, \emph{Regulation (EU) 2024/1689 (AI~Act)}, 2024.
+    \bibitem{sfspeech}
+      Apple Inc., \emph{SFSpeechRecognizer — Speech framework, on-device recognition}, developer.apple.com.
+    \bibitem{exposr}
+      \emph{expo-speech-recognition — React Native binding (Apple Speech / Android SpeechRecognizer)}.
+    \bibitem{qwen}
+      Qwen Team, Alibaba, \emph{Qwen3 Technical Report}, 2025.
+    \bibitem{llamacpp}
+      G.~Gerganov, \emph{llama.cpp — Inference of LLaMA models in pure C/C++}.
+    \bibitem{llamarn}
+      mybigday, \emph{llama.rn — React Native bindings for llama.cpp}.
+    \bibitem{whisper}
+      A.~Radford et~al., \emph{Robust Speech Recognition via Large-Scale Weak Supervision (Whisper)}, OpenAI, 2022.
+    \bibitem{whisperrn}
+      \emph{whisper.rn — React Native bindings for whisper.cpp}.
+  \end{thebibliography}
+\end{frame}
+
+\end{document}

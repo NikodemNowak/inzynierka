@@ -1,0 +1,55 @@
+# ─── LaTeX (Beamer) build artifacts ───
+# PDF prezentacji trzymamy w repo świadomie — patrz prezentacja/main.pdf
+*.aux
+*.log
+*.nav
+*.out
+*.snm
+*.toc
+*.vrb
+*.fls
+*.fdb_latexmk
+*.synctex.gz
+*.bbl
+*.blg
+
+# ─── React Native / Expo (kod apki dojdzie później) ───
+node_modules/
+.expo/
+.expo-shared/
+dist/
+web-build/
+*.tsbuildinfo
+npm-debug.*
+yarn-error.*
+
+# Natywne buildy
+ios/Pods/
+ios/build/
+android/.gradle/
+android/build/
+android/app/build/
+*.keystore
+!debug.keystore
+
+# EAS / Expo secrets
+.env
+.env.*
+!.env.example
+google-services.json
+GoogleService-Info.plist
+
+# ─── Modele LLM / STT — NIGDY do repo (za duże) ───
+*.gguf
+*.bin
+*.onnx
+*.task
+*.tflite
+models/
+
+# ─── System / IDE ───
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp

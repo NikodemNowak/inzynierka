@@ -1,0 +1,357 @@
+% !TEX program = lualatex
+% Kompilacja: lualatex main.tex  (zalecane)
+%         lub: pdflatex main.tex (wymaga pakietu metropolis i fontów)
+% Jeśli nie masz metropolis: zainstaluj texlive-latex-extra / mactex
+% Szybki fallback: zamień 'metropolis' na 'Madrid' w \usetheme
+
+\documentclass[aspectratio=169,11pt]{beamer}
+
+% ---------- język i fonty ----------
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[polish]{babel}
+\usepackage{lmodern}
+\usepackage{microtype}
+
+% ---------- motyw ----------
+\usetheme{metropolis}
+\metroset{
+  progressbar=frametitle,
+  numbering=fraction,
+  block=fill,
+  sectionpage=progressbar,
+  subsectionpage=progressbar
+}
+
+% ---------- kolory (akcent) ----------
+\definecolor{mPrimary}{HTML}{1F4E79}   % granat akademicki
+\definecolor{mAccent}{HTML}{E07A1F}    % pomarańcz – akcent
+\setbeamercolor{progress bar}{fg=mAccent}
+\setbeamercolor{title separator}{fg=mAccent}
+\setbeamercolor{frametitle}{bg=mPrimary}
+\setbeamercolor{alerted text}{fg=mAccent}
+
+% ---------- pakiety pomocnicze ----------
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{tabularx}
+\usepackage{graphicx}
+\usepackage{tikz}
+\usepackage{pgfgantt}
+\usepackage{hyperref}
+\usepackage{appendixnumberbeamer}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=mPrimary,
+  urlcolor=mAccent,
+  citecolor=mPrimary
+}
+
+% ---------- metadane ----------
+\title{Prywatność na pierwszym miejscu}
+\subtitle{Aplikacja mobilna z lokalnymi modelami językowymi i rozpoznawaniem mowy w~React~Native}
+\author{Nikodem Nowak}
+\institute{Wydział ... \\ Kierunek ...}
+\date{Proseminarium \textbullet{} kwiecień 2026}
+
+% ==============================================================
+\begin{document}
+
+% ---------- tytuł ----------
+\begin{frame}[plain]
+  \titlepage
+\end{frame}
+
+% ---------- agenda ----------
+\begin{frame}{Plan prezentacji}
+  \tableofcontents
+\end{frame}
+
+% ==============================================================
+\section{Motywacja}
+
+\begin{frame}{Dlaczego ten temat?}
+  \begin{itemize}
+    \item LLM-y weszły do codziennego użycia -- ChatGPT, Gemini, Copilot.
+    \item Każde zapytanie = dane użytkownika opuszczają urządzenie.
+    \item Wrażliwe konteksty: medycyna, prawo, finanse, dziennikarstwo.
+    \item Regulacje: \alert{RODO}, \alert{AI~Act} (obowiązuje od 2024/2025).
+    \item Trend ,,local-first AI'': Apple Intelligence, Gemini Nano, Llama~3.2, Phi-3.
+  \end{itemize}
+  \vfill
+  \begin{alertblock}{Obserwacja}
+    Modele stały się na tyle małe, a telefony na tyle mocne, że pełna prywatność \emph{bez~kompromisu na funkcjonalności} jest dziś realna.
+  \end{alertblock}
+\end{frame}
+
+\begin{frame}{Problem badawczy}
+  \begin{center}
+    \Large
+    Czy współczesne urządzenia mobilne są gotowe,\\
+    by w~pełni \alert{lokalnie} obsłużyć asystenta głosowego z~LLM-em?\\[1em]
+    \normalsize
+    I~które rozwiązanie runtime'owe sprawdza się najlepiej?
+  \end{center}
+\end{frame}
+
+% ==============================================================
+\section{Teza i cele}
+
+\begin{frame}{Hipotezy}
+  \begin{block}{H1 -- produktowa}
+    Możliwe jest zbudowanie użytecznej aplikacji mobilnej z~lokalnym STT i~LLM, działającej w~pełni offline, na~urządzeniach konsumenckich z~ostatnich 2--3 lat.
+  \end{block}
+  \vspace{0.5em}
+  \begin{block}{H2 -- badawcza}
+    Wybór runtime'u (\textit{ExecuTorch} vs \textit{MLC~LLM} vs \textit{llama.cpp}) istotnie wpływa na~latencję, zużycie pamięci i~energii przy~porównywalnej jakości wyjścia.
+  \end{block}
+\end{frame}
+
+\begin{frame}{Cele pracy}
+  \begin{enumerate}
+    \item \textbf{Zaprojektować} architekturę aplikacji RN działającej w~pełni on-device.
+    \item \textbf{Zaimplementować} działający produkt: głos~$\to$~transkrypcja~$\to$~LLM~$\to$~odpowiedź.
+    \item \textbf{Zintegrować} co najmniej 2--3 runtime'y LLM z~jednolitym API.
+    \item \textbf{Zmierzyć i~porównać} wydajność, zużycie zasobów i~jakość wyjścia.
+    \item \textbf{Udokumentować} wnioski w~formie rekomendacji dla developerów RN.
+  \end{enumerate}
+\end{frame}
+
+\begin{frame}{Zakres pracy}
+  \begin{columns}[T,onlytextwidth]
+    \column{0.48\textwidth}
+    \textbf{W~zakresie}
+    \begin{itemize}
+      \item Android oraz iOS
+      \item Modele LLM do~$\sim$4B parametrów
+      \item Kwantyzacja 4-bit / 8-bit
+      \item Whisper (\textit{base}, \textit{small})
+      \item Ewaluacja ilościowa i~jakościowa
+    \end{itemize}
+
+    \column{0.48\textwidth}
+    \textbf{Poza zakresem}
+    \begin{itemize}
+      \item Trening i~fine-tuning modeli
+      \item Multimodalność (obraz, wideo)
+      \item Rozwiązania chmurowe
+      \item Wsparcie urządzeń starszych niż 2023
+    \end{itemize}
+  \end{columns}
+\end{frame}
+
+% ==============================================================
+\section{Kontekst teoretyczny}
+
+\begin{frame}{Jak LLM działa na telefonie?}
+  \begin{itemize}
+    \item \textbf{Kwantyzacja} -- zmniejszenie precyzji wag (FP16~$\to$~INT4/INT8).
+          Model 3B z~6~GB spada do~$\sim$1.5~GB.
+    \item \textbf{Formaty wag}: GGUF (llama.cpp), ExecuTorch \texttt{.pte}, MLC \texttt{.mlc}.
+    \item \textbf{Akceleracja}: CPU z~SIMD, GPU (Metal/Vulkan), NPU (Core~ML, QNN, NNAPI).
+    \item \textbf{Pamięć}: \texttt{mmap} wag -- system ładuje tylko potrzebne fragmenty.
+    \item \textbf{STT}: Whisper skwantyzowany działa real-time na~CPU telefonu z~2023+.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Krajobraz rozwiązań -- RN / Expo}
+  \small
+  \begin{tabularx}{\textwidth}{@{}l l X@{}}
+    \toprule
+    \textbf{Biblioteka} & \textbf{Silnik} & \textbf{Charakterystyka} \\
+    \midrule
+    \texttt{react-native-executorch} & ExecuTorch (Meta) & Deklaratywne API, wsparcie LLM + Whisper + CV. \\
+    \texttt{react-native-ai}          & MLC LLM (CMU)     & Kompatybilne z~Vercel AI SDK, wielorun\-time'owe. \\
+    \texttt{llama.rn}                 & llama.cpp         & Niskopoziomowe, maksymalna kontrola, GGUF. \\
+    \texttt{react-native-rag}         & ExecuTorch        & Lokalny RAG -- retrieval po własnych danych. \\
+    \bottomrule
+  \end{tabularx}
+  \vspace{1em}
+  \begin{itemize}
+    \item Wszystkie trzy runtime'y są aktywnie rozwijane (2025--2026).
+    \item Brak istniejących publikacji porównujących je na~jednym zestawie urządzeń $\Rightarrow$ \alert{luka badawcza}.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Architektura: chmura vs on-device}
+  \centering
+  \begin{tikzpicture}[
+      node distance=1.2cm,
+      box/.style={draw, rounded corners, minimum width=2.2cm, minimum height=0.9cm, align=center, font=\small},
+      cloud/.style={draw, cloud, cloud puffs=12, minimum width=2cm, minimum height=1cm, font=\small},
+      arr/.style={-latex, thick}
+    ]
+    % ---- chmura ----
+    \node[box] (u1) {Użytkownik};
+    \node[box, right=of u1] (app1) {Aplikacja};
+    \node[cloud, right=of app1, fill=red!10] (cloud) {Chmura};
+    \draw[arr, red!70!black] (u1) -- node[above,font=\scriptsize]{głos / tekst} (app1);
+    \draw[arr, red!70!black] (app1) -- node[above,font=\scriptsize]{\textbf{dane}} (cloud);
+    \node[above=0.1cm of cloud, font=\scriptsize\bfseries, red!70!black] {dane opuszczają urządzenie};
+
+    % ---- on-device ----
+    \node[box, below=1.8cm of u1] (u2) {Użytkownik};
+    \node[box, right=of u2] (app2) {Aplikacja};
+    \node[box, right=of app2, fill=green!10] (llm) {LLM\\ on-device};
+    \draw[arr, green!50!black] (u2) -- (app2);
+    \draw[arr, green!50!black] (app2) -- (llm);
+    \draw[arr, green!50!black] (llm.south) .. controls +(0,-0.6) and +(0,-0.6) .. (app2.south);
+    \node[below=0.1cm of llm, font=\scriptsize\bfseries, green!50!black] {zamknięta pętla};
+  \end{tikzpicture}
+\end{frame}
+
+% ==============================================================
+\section{Metodologia}
+
+\begin{frame}{Stos technologiczny}
+  \begin{columns}[T,onlytextwidth]
+    \column{0.48\textwidth}
+    \textbf{Frontend / aplikacja}
+    \begin{itemize}
+      \item React Native + Expo
+      \item TypeScript (strict)
+      \item Expo SDK (audio, FS, haptics)
+    \end{itemize}
+
+    \column{0.48\textwidth}
+    \textbf{AI / modele}
+    \begin{itemize}
+      \item Whisper (\textit{base}, \textit{small})
+      \item Llama~3.2 1B/3B, Qwen~3, Phi-3-mini
+      \item \texttt{react-native-executorch}
+      \item \texttt{react-native-ai} (MLC)
+      \item \texttt{llama.rn}
+    \end{itemize}
+  \end{columns}
+\end{frame}
+
+\begin{frame}{Metodologia ewaluacji}
+  \textbf{Metryki wydajności}
+  \begin{itemize}
+    \item TTFT -- \emph{time to first token}
+    \item Przepustowość generacji [tok/s]
+    \item RAM peak, rozmiar modelu na dysku
+    \item Zużycie energii [\%~baterii / min], temperatura obudowy
+  \end{itemize}
+  \textbf{Metryki jakości}
+  \begin{itemize}
+    \item STT: WER (Word Error Rate) na~zbiorze Common Voice PL/EN
+    \item LLM: subset MMLU-lite, MT-Bench-lite, własne prompty domenowe
+  \end{itemize}
+  \textbf{Urządzenia testowe (planowane)}
+  \begin{itemize}
+    \item Android: Pixel 8, średniopółkowiec (np.~Samsung~A55)
+    \item iOS: iPhone 15~Pro, iPhone 13
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Scenariusz użycia -- MVP}
+  \centering
+  \begin{tikzpicture}[
+      node distance=0.9cm and 1.2cm,
+      step/.style={draw, rounded corners, minimum width=2.4cm, minimum height=0.9cm, align=center, font=\small, fill=mPrimary!10},
+      arr/.style={-latex, thick, mPrimary}
+    ]
+    \node[step] (s1) {Nagranie\\ głosu};
+    \node[step, right=of s1] (s2) {Whisper\\ (STT)};
+    \node[step, right=of s2] (s3) {LLM\\ lokalnie};
+    \node[step, right=of s3] (s4) {Odpowiedź\\ + zapis};
+    \draw[arr] (s1) -- (s2);
+    \draw[arr] (s2) -- (s3);
+    \draw[arr] (s3) -- (s4);
+  \end{tikzpicture}
+  \vspace{1.5em}
+  \begin{itemize}
+    \item Przykładowe zastosowanie: prywatny notatnik głosowy z~automatycznym podsumowywaniem i~wyciąganiem zadań.
+    \item Opcjonalnie: RAG po notatkach użytkownika (\texttt{react-native-rag}).
+  \end{itemize}
+\end{frame}
+
+% ==============================================================
+\section{Harmonogram i ryzyka}
+
+\begin{frame}{Harmonogram}
+  \centering
+  \begin{ganttchart}[
+      hgrid, vgrid,
+      x unit=0.95cm,
+      y unit title=0.6cm,
+      y unit chart=0.55cm,
+      title/.style={fill=mPrimary!20, draw=mPrimary},
+      title label font=\scriptsize\bfseries,
+      bar/.style={fill=mAccent!70, draw=mAccent!90!black},
+      bar label font=\scriptsize,
+      milestone/.style={fill=mPrimary, draw=mPrimary},
+      milestone label font=\scriptsize
+    ]{1}{8}
+    \gantttitlelist{"V","VI","VII","VIII","IX","X","XI","XII"}{1} \\
+    \ganttbar{Research i~POC}{1}{2} \\
+    \ganttbar{Implementacja MVP}{2}{4} \\
+    \ganttbar{Integracja 3 runtime'ów}{4}{5} \\
+    \ganttbar{Pomiary, ewaluacja}{5}{6} \\
+    \ganttbar{Analiza wyników}{6}{7} \\
+    \ganttbar{Redakcja pracy}{6}{8} \\
+    \ganttmilestone{Obrona}{8}
+  \end{ganttchart}
+  \vspace{0.5em}
+  \scriptsize{Miesiące odpowiadają 2026; obrona planowana na~grudzień.}
+\end{frame}
+
+\begin{frame}{Ryzyka i~plan łagodzenia}
+  \begin{tabularx}{\textwidth}{@{}l X X@{}}
+    \toprule
+    \textbf{Ryzyko} & \textbf{Opis} & \textbf{Mitygacja} \\
+    \midrule
+    Breaking changes & Biblioteki młode, API się zmienia. & Pin wersji, fork na~stabilnej wersji. \\
+    Limity pamięci iOS & iOS ubija aplikacje >~3~GB RAM. & Ograniczenie do~modeli $\leq$3B, testy OOM. \\
+    Hałas pomiaru baterii & Różnice temperatury, stanu urządzenia. & Protokół: n~powtórzeń, stała temperatura startowa. \\
+    Dostępność urządzeń & Dostęp do~konkretnych telefonów. & Plan B: emulatory + 2 realne urządzenia. \\
+    \bottomrule
+  \end{tabularx}
+\end{frame}
+
+% ==============================================================
+\section{Podsumowanie}
+
+\begin{frame}{Co mam zrobione / co dalej}
+  \begin{itemize}
+    \item[\textbullet] Research ekosystemu RN on-device AI -- \alert{zrobione}.
+    \item[\textbullet] Wybór kierunku: apka (privacy-first asystent) + benchmark runtime'ów.
+    \item[$\to$] \textbf{Następny krok:} proof-of-concept z~\texttt{react-native-executorch} + Whisper na~Pixelu 8.
+    \item[$\to$] Kolejne proseminarium: demo pierwszej wersji aplikacji.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}[standout]
+  Dziękuję.\\[0.5em]
+  \large Pytania?
+\end{frame}
+
+% ==============================================================
+\appendix
+
+\begin{frame}[allowframebreaks]{Bibliografia -- wybór}
+  \footnotesize
+  \begin{thebibliography}{9}
+    \bibitem{executorch}
+      Meta AI, \emph{ExecuTorch: On-device AI inference framework}, 2024.
+      \url{https://pytorch.org/executorch/}
+    \bibitem{rnexecutorch}
+      Software Mansion, \emph{react-native-executorch}, 2024--2026.
+      \url{https://github.com/software-mansion/react-native-executorch}
+    \bibitem{rnai}
+      Callstack, \emph{react-native-ai}, 2025--2026.
+      \url{https://github.com/callstackincubator/ai}
+    \bibitem{mlcllm}
+      MLC Team, \emph{MLC LLM: Universal LLM deployment engine}, CMU, 2023--2026.
+    \bibitem{whisper}
+      A.~Radford et~al., \emph{Robust Speech Recognition via Large-Scale Weak Supervision} (Whisper), OpenAI, 2022.
+    \bibitem{llama3}
+      Meta AI, \emph{The Llama~3 Herd of Models}, 2024.
+    \bibitem{aiact}
+      Parlament Europejski, \emph{Regulation (EU) 2024/1689 (AI~Act)}, 2024.
+  \end{thebibliography}
+\end{frame}
+
+\end{document}
