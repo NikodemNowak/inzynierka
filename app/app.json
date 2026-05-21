@@ -21,7 +21,6 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
       "package": "com.nowak.app"
     },
@@ -29,7 +28,8 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      "llama.rn"
+      "llama.rn",
+      "expo-status-bar"
     ]
   }
 }
