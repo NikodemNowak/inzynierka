@@ -6,6 +6,7 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
+    "scheme": "notatki",
     "newArchEnabled": true,
     "splash": {
       "image": "./assets/splash-icon.png",
@@ -29,7 +30,9 @@
     },
     "plugins": [
       "llama.rn",
-      "expo-status-bar"
+      "expo-status-bar",
+      "expo-router",
+      "expo-sqlite"
     ]
   }
 }
