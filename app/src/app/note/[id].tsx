@@ -3,13 +3,7 @@ import { Stack, useLocalSearchParams, useRouter } from 'expo-router'
 import { ActivityIndicator, Alert, Button, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
 import { useNotesStore } from '../../state/notesStore'
 import { summarizeNoteContent, type SummarizationProgress } from '../../ai/summarization'
-
-const formatDuration = (durationMs: number): string => {
-  const totalSeconds = Math.floor(durationMs / 1000)
-  const minutes = Math.floor(totalSeconds / 60)
-  const seconds = totalSeconds % 60
-  return `${minutes}:${seconds.toString().padStart(2, '0')}`
-}
+import { AudioNotePlayer } from '../../audio/AudioNotePlayer'
 
 export default function EditNoteScreen() {
   const { id } = useLocalSearchParams<{ id: string }>()
@@ -116,11 +110,7 @@ export default function EditNoteScreen() {
     <ScrollView contentContainerStyle={styles.container}>
       <Stack.Screen options={{ title: 'Edycja notatki' }} />
       {error && <Text style={styles.error}>{error}</Text>}
-      {note.audioUri && (
-        <Text style={styles.audioInfo}>
-          Nagranie: {note.durationMs !== null ? formatDuration(note.durationMs) : 'zapisane'}
-        </Text>
-      )}
+      {note.audioUri && <AudioNotePlayer uri={note.audioUri} durationMs={note.durationMs} />}
       <TextInput
         value={title}
         onChangeText={setTitle}
@@ -163,7 +153,6 @@ export default function EditNoteScreen() {
 
 const styles = StyleSheet.create({
   container: { padding: 16, gap: 12 },
-  audioInfo: { color: '#1F4E79', fontSize: 14, fontWeight: '500' },
   title: { borderWidth: 1, borderColor: '#ccc', borderRadius: 8, padding: 10, fontSize: 16 },
   content: {
     borderWidth: 1,
