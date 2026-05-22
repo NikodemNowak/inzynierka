@@ -65,6 +65,9 @@ export default function NotesListScreen() {
       <Link href="/dev/poc" style={styles.devLink}>
         Ekran dev: POC LLM
       </Link>
+      <Link href="/dev/stt-probe" style={styles.devLink}>
+        Ekran dev: STT probe
+      </Link>
     </View>
   )
 }

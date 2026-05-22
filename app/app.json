@@ -43,7 +43,15 @@
       ],
       "expo-status-bar",
       "expo-router",
-      "expo-sqlite"
+      "expo-sqlite",
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "Pozwól aplikacji Notatki na nagrywanie dźwięku.",
+          "speechRecognitionPermission": "Pozwól aplikacji Notatki na rozpoznawanie mowy.",
+          "androidSpeechServicePackages": ["com.google.android.googlequicksearchbox"]
+        }
+      ]
     ]
   }
 }
