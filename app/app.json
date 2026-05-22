@@ -30,6 +30,14 @@
     },
     "plugins": [
       "llama.rn",
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "Pozwól aplikacji Notatki na nagrywanie dźwięku.",
+          "enableBackgroundPlayback": false,
+          "enableBackgroundRecording": false
+        }
+      ],
       "expo-status-bar",
       "expo-router",
       "expo-sqlite"

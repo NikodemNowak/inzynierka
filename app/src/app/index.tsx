@@ -38,9 +38,14 @@ export default function NotesListScreen() {
         options={{
           title: 'Notatki',
           headerRight: () => (
-            <Pressable onPress={() => router.push('/note/new')} hitSlop={8}>
-              <Text style={styles.headerAdd}>+ Nowa</Text>
-            </Pressable>
+            <View style={styles.headerActions}>
+              <Pressable onPress={() => router.push('/record')} hitSlop={8}>
+                <Text style={styles.headerAdd}>Nagraj</Text>
+              </Pressable>
+              <Pressable onPress={() => router.push('/note/new')} hitSlop={8}>
+                <Text style={styles.headerAdd}>+ Nowa</Text>
+              </Pressable>
+            </View>
           ),
         }}
       />
@@ -73,6 +78,7 @@ const styles = StyleSheet.create({
   rowPreview: { fontSize: 14, color: '#444' },
   rowDate: { fontSize: 12, color: '#999' },
   separator: { height: 1, backgroundColor: '#eee', marginLeft: 16 },
+  headerActions: { flexDirection: 'row', gap: 12 },
   headerAdd: { fontSize: 16, color: '#1F4E79', fontWeight: '600', paddingHorizontal: 4 },
   devLink: { padding: 16, fontSize: 13, color: '#999', textAlign: 'center' },
 })
