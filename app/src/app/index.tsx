@@ -20,7 +20,7 @@ function NoteRow({ note, onPress }: { note: Note; onPress: () => void }) {
       </Text>
       {note.content.trim().length > 0 && (
         <Text style={styles.rowPreview} numberOfLines={2}>
-          {note.content}
+          {note.summary?.trim() || note.content}
         </Text>
       )}
       <Text style={styles.rowDate}>{formatDate(note.updatedAt)}</Text>

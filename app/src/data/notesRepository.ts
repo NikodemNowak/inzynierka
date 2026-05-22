@@ -21,12 +21,13 @@ export const createNote = async (input: NoteInput): Promise<Note> => {
     id: generateId(),
     title: input.title,
     content: input.content,
+    summary: input.summary ?? null,
     createdAt: now,
     updatedAt: now,
   }
   await db.runAsync(
-    'INSERT INTO notes (id, title, content, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?)',
-    [note.id, note.title, note.content, note.createdAt, note.updatedAt],
+    'INSERT INTO notes (id, title, content, summary, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?)',
+    [note.id, note.title, note.content, note.summary, note.createdAt, note.updatedAt],
   )
   return note
 }
@@ -34,9 +35,10 @@ export const createNote = async (input: NoteInput): Promise<Note> => {
 export const updateNote = async (id: string, input: NoteInput): Promise<Note> => {
   const db = await getDatabase()
   const now = Date.now()
-  await db.runAsync('UPDATE notes SET title = ?, content = ?, updatedAt = ? WHERE id = ?', [
+  await db.runAsync('UPDATE notes SET title = ?, content = ?, summary = ?, updatedAt = ? WHERE id = ?', [
     input.title,
     input.content,
+    input.summary ?? null,
     now,
     id,
   ])

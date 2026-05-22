@@ -12,6 +12,7 @@ export default function EditNoteScreen() {
 
   const [title, setTitle] = useState(note?.title ?? '')
   const [content, setContent] = useState(note?.content ?? '')
+  const [summary, setSummary] = useState(note?.summary ?? '')
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
 
@@ -32,7 +33,11 @@ export default function EditNoteScreen() {
     setError(null)
     setSaving(true)
     try {
-      await update(note.id, { title: title.trim(), content: content.trim() })
+      await update(note.id, {
+        title: title.trim(),
+        content: content.trim(),
+        summary: summary.trim().length > 0 ? summary.trim() : null,
+      })
       router.back()
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
@@ -71,6 +76,13 @@ export default function EditNoteScreen() {
         multiline
         style={styles.content}
       />
+      <TextInput
+        value={summary}
+        onChangeText={setSummary}
+        placeholder="Streszczenie (opcjonalne)"
+        multiline
+        style={styles.summary}
+      />
       <Button title={saving ? 'Zapisywanie…' : 'Zapisz'} onPress={save} disabled={saving} />
       <View style={styles.deleteWrap}>
         <Button title="Usuń" color="#B91C1C" onPress={confirmDelete} />
@@ -89,6 +101,15 @@ const styles = StyleSheet.create({
     padding: 10,
     fontSize: 16,
     minHeight: 160,
+    textAlignVertical: 'top',
+  },
+  summary: {
+    borderWidth: 1,
+    borderColor: '#ccc',
+    borderRadius: 8,
+    padding: 10,
+    fontSize: 16,
+    minHeight: 96,
     textAlignVertical: 'top',
   },
   deleteWrap: { marginTop: 8 },

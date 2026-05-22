@@ -8,6 +8,7 @@ export default function NewNoteScreen() {
   const router = useRouter()
   const [title, setTitle] = useState('')
   const [content, setContent] = useState('')
+  const [summary, setSummary] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
 
@@ -19,7 +20,11 @@ export default function NewNoteScreen() {
     setError(null)
     setSaving(true)
     try {
-      await add({ title: title.trim(), content: content.trim() })
+      await add({
+        title: title.trim(),
+        content: content.trim(),
+        summary: summary.trim().length > 0 ? summary.trim() : null,
+      })
       router.back()
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
@@ -44,6 +49,13 @@ export default function NewNoteScreen() {
         multiline
         style={styles.content}
       />
+      <TextInput
+        value={summary}
+        onChangeText={setSummary}
+        placeholder="Streszczenie (opcjonalne)"
+        multiline
+        style={styles.summary}
+      />
       <Button title={saving ? 'Zapisywanie…' : 'Zapisz'} onPress={save} disabled={saving} />
     </ScrollView>
   )
@@ -59,6 +71,15 @@ const styles = StyleSheet.create({
     padding: 10,
     fontSize: 16,
     minHeight: 160,
+    textAlignVertical: 'top',
+  },
+  summary: {
+    borderWidth: 1,
+    borderColor: '#ccc',
+    borderRadius: 8,
+    padding: 10,
+    fontSize: 16,
+    minHeight: 96,
     textAlignVertical: 'top',
   },
   error: { color: '#B91C1C', fontSize: 14 },

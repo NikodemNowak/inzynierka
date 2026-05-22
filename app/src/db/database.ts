@@ -15,9 +15,22 @@ const initDatabase = async (): Promise<SQLite.SQLiteDatabase> => {
       id TEXT PRIMARY KEY NOT NULL,
       title TEXT NOT NULL,
       content TEXT NOT NULL,
+      summary TEXT,
       createdAt INTEGER NOT NULL,
       updatedAt INTEGER NOT NULL
     );
   `)
+  await addColumnIfMissing(db, 'notes', 'summary', 'TEXT')
   return db
+}
+
+const addColumnIfMissing = async (
+  db: SQLite.SQLiteDatabase,
+  table: string,
+  column: string,
+  definition: string,
+): Promise<void> => {
+  const columns = await db.getAllAsync<{ name: string }>(`PRAGMA table_info(${table})`)
+  if (columns.some((c) => c.name === column)) return
+  await db.execAsync(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition};`)
 }
