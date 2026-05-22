@@ -22,12 +22,23 @@ export const createNote = async (input: NoteInput): Promise<Note> => {
     title: input.title,
     content: input.content,
     summary: input.summary ?? null,
+    audioUri: input.audioUri,
+    durationMs: input.durationMs,
     createdAt: now,
     updatedAt: now,
   }
   await db.runAsync(
-    'INSERT INTO notes (id, title, content, summary, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?)',
-    [note.id, note.title, note.content, note.summary, note.createdAt, note.updatedAt],
+    'INSERT INTO notes (id, title, content, summary, audioUri, durationMs, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+    [
+      note.id,
+      note.title,
+      note.content,
+      note.summary,
+      note.audioUri,
+      note.durationMs,
+      note.createdAt,
+      note.updatedAt,
+    ],
   )
   return note
 }
@@ -35,13 +46,10 @@ export const createNote = async (input: NoteInput): Promise<Note> => {
 export const updateNote = async (id: string, input: NoteInput): Promise<Note> => {
   const db = await getDatabase()
   const now = Date.now()
-  await db.runAsync('UPDATE notes SET title = ?, content = ?, summary = ?, updatedAt = ? WHERE id = ?', [
-    input.title,
-    input.content,
-    input.summary ?? null,
-    now,
-    id,
-  ])
+  await db.runAsync(
+    'UPDATE notes SET title = ?, content = ?, summary = ?, audioUri = ?, durationMs = ?, updatedAt = ? WHERE id = ?',
+    [input.title, input.content, input.summary, input.audioUri, input.durationMs, now, id],
+  )
   const updated = await getNote(id)
   if (!updated) throw new Error('Notatka nie istnieje')
   return updated

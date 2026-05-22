@@ -16,11 +16,15 @@ const initDatabase = async (): Promise<SQLite.SQLiteDatabase> => {
       title TEXT NOT NULL,
       content TEXT NOT NULL,
       summary TEXT,
+      audioUri TEXT,
+      durationMs INTEGER,
       createdAt INTEGER NOT NULL,
       updatedAt INTEGER NOT NULL
     );
   `)
   await addColumnIfMissing(db, 'notes', 'summary', 'TEXT')
+  await addColumnIfMissing(db, 'notes', 'audioUri', 'TEXT')
+  await addColumnIfMissing(db, 'notes', 'durationMs', 'INTEGER')
   return db
 }
 

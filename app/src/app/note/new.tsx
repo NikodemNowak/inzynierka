@@ -24,6 +24,8 @@ export default function NewNoteScreen() {
         title: title.trim(),
         content: content.trim(),
         summary: summary.trim().length > 0 ? summary.trim() : null,
+        audioUri: null,
+        durationMs: null,
       })
       router.back()
     } catch (e) {

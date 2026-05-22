@@ -40,6 +40,8 @@ export default function EditNoteScreen() {
         title: title.trim(),
         content: content.trim(),
         summary: summary.trim().length > 0 ? summary.trim() : null,
+        audioUri: note.audioUri,
+        durationMs: note.durationMs,
       })
       router.back()
     } catch (e) {
@@ -77,6 +79,8 @@ export default function EditNoteScreen() {
         title: title.trim(),
         content: trimmedContent,
         summary: generatedSummary,
+        audioUri: note.audioUri,
+        durationMs: note.durationMs,
       })
       setSummaryStatus('Streszczenie zapisane')
     } catch (e) {
