@@ -1,6 +1,11 @@
 import * as FileSystem from 'expo-file-system/legacy'
 
-const RECORDINGS_DIR = `${FileSystem.documentDirectory}recordings/`
+export const RECORDINGS_DIR = `${FileSystem.documentDirectory}recordings/`
+
+export const ensureRecordingsDir = async (): Promise<string> => {
+  await FileSystem.makeDirectoryAsync(RECORDINGS_DIR, { intermediates: true })
+  return RECORDINGS_DIR
+}
 
 const extensionFromUri = (uri: string): string => {
   const match = uri.match(/\.[a-z0-9]+(?:\?|$)/i)
@@ -8,7 +13,7 @@ const extensionFromUri = (uri: string): string => {
 }
 
 export const saveRecordingFile = async (temporaryUri: string): Promise<string> => {
-  await FileSystem.makeDirectoryAsync(RECORDINGS_DIR, { intermediates: true })
+  await ensureRecordingsDir()
   const destination = `${RECORDINGS_DIR}${Date.now().toString(36)}${extensionFromUri(temporaryUri)}`
   await FileSystem.copyAsync({ from: temporaryUri, to: destination })
   return destination

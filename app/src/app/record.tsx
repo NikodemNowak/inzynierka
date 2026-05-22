@@ -1,15 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useState } from 'react'
 import { Stack, useRouter } from 'expo-router'
-import { Button, ScrollView, StyleSheet, Text, View } from 'react-native'
-import {
-  AudioModule,
-  RecordingPresets,
-  setAudioModeAsync,
-  useAudioRecorder,
-  useAudioRecorderState,
-} from 'expo-audio'
+import { ActivityIndicator, Button, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { useNotesStore } from '../state/notesStore'
-import { saveRecordingFile } from '../audio/audioFiles'
+import { useSpeechRecorder, type RecordingResult } from '../stt/useSpeechRecorder'
 
 const formatDuration = (durationMs: number): string => {
   const totalSeconds = Math.floor(durationMs / 1000)
@@ -27,81 +20,98 @@ const defaultTitle = (): string =>
     minute: '2-digit',
   })}`
 
+const statusLabel = (status: string): string => {
+  if (status === 'starting') return 'Uruchamianie…'
+  if (status === 'recording') return 'Nagrywanie i transkrypcja…'
+  if (status === 'stopping') return 'Kończenie…'
+  return 'Gotowe do nagrywania'
+}
+
 export default function RecordNoteScreen() {
   const router = useRouter()
   const add = useNotesStore((state) => state.add)
-  const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY)
-  const recorderState = useAudioRecorderState(audioRecorder, 250)
-  const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
 
-  useEffect(() => {
-    void setAudioModeAsync({
-      playsInSilentMode: true,
-      allowsRecording: true,
-    })
-  }, [])
+  const handleComplete = useCallback(
+    async (result: RecordingResult) => {
+      if (result.transcript.trim().length === 0 && !result.audioUri) {
+        setSaveError('Nie rozpoznano mowy ani nie zapisano nagrania')
+        return
+      }
+      setSaving(true)
+      try {
+        const note = await add({
+          title: defaultTitle(),
+          content: result.transcript.trim(),
+          summary: null,
+          audioUri: result.audioUri,
+          durationMs: result.durationMs,
+        })
+        router.replace(`/note/${note.id}`)
+      } catch (e) {
+        setSaveError(e instanceof Error ? e.message : String(e))
+        setSaving(false)
+      }
+    },
+    [add, router],
+  )
 
-  const startRecording = async () => {
-    setError(null)
-    const permission = await AudioModule.requestRecordingPermissionsAsync()
-    if (!permission.granted) {
-      setError('Brak zgody na użycie mikrofonu')
-      return
-    }
-    await audioRecorder.prepareToRecordAsync()
-    audioRecorder.record()
+  const recorder = useSpeechRecorder(handleComplete)
+
+  const onStart = () => {
+    setSaveError(null)
+    void recorder.start()
   }
 
-  const stopRecording = async () => {
-    setError(null)
-    setSaving(true)
-    const durationMs = recorderState.durationMillis
-    try {
-      await audioRecorder.stop()
-      const temporaryUri = audioRecorder.uri ?? recorderState.url
-      if (!temporaryUri) throw new Error('Nie udało się odczytać pliku nagrania')
-      const audioUri = await saveRecordingFile(temporaryUri)
-      const note = await add({
-        title: defaultTitle(),
-        content: '',
-        summary: null,
-        audioUri,
-        durationMs,
-      })
-      router.replace(`/note/${note.id}`)
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
-      setSaving(false)
-    }
-  }
-
-  const recording = recorderState.isRecording
+  const active = recorder.status === 'recording' || recorder.status === 'starting'
+  const busy = recorder.status === 'stopping' || saving
+  const error = saveError ?? recorder.error
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
       <Stack.Screen options={{ title: 'Nagrywanie' }} />
-      <Text style={styles.duration}>{formatDuration(recorderState.durationMillis)}</Text>
-      <Text style={styles.status}>
-        {recording ? 'Nagrywanie trwa' : 'Gotowe do nagrywania'}
-      </Text>
+      <Text style={styles.duration}>{formatDuration(recorder.durationMs)}</Text>
+      <Text style={styles.status}>{statusLabel(recorder.status)}</Text>
       {error && <Text style={styles.error}>{error}</Text>}
+
+      <View style={styles.transcriptBox}>
+        {recorder.transcript.length > 0 ? (
+          <Text style={styles.transcript}>{recorder.transcript}</Text>
+        ) : (
+          <Text style={styles.placeholder}>
+            Transkrypcja pojawi się tutaj na żywo.
+          </Text>
+        )}
+      </View>
+
       <View style={styles.actions}>
         <Button
-          title={recording ? 'Zatrzymaj i zapisz' : 'Rozpocznij nagrywanie'}
-          onPress={recording ? stopRecording : startRecording}
-          disabled={saving}
+          title={active ? 'Zatrzymaj i zapisz' : 'Rozpocznij nagrywanie'}
+          onPress={active ? recorder.stop : onStart}
+          disabled={busy}
         />
       </View>
-      {saving && <Text style={styles.status}>Zapisywanie nagrania…</Text>}
+      {busy && <ActivityIndicator />}
+      {saving && <Text style={styles.status}>Zapisywanie notatki…</Text>}
     </ScrollView>
   )
 }
 
 const styles = StyleSheet.create({
   container: { padding: 16, gap: 12 },
-  duration: { fontSize: 48, fontWeight: '700', textAlign: 'center', marginVertical: 24 },
+  duration: { fontSize: 48, fontWeight: '700', textAlign: 'center', marginVertical: 16 },
   status: { color: '#1F4E79', fontSize: 16, textAlign: 'center' },
-  actions: { marginTop: 12 },
-  error: { color: '#B91C1C', fontSize: 14 },
+  transcriptBox: {
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    borderRadius: 8,
+    padding: 12,
+    minHeight: 160,
+    backgroundColor: '#F9FAFB',
+  },
+  transcript: { fontSize: 17, lineHeight: 24, color: '#111827' },
+  placeholder: { fontSize: 15, color: '#9CA3AF', fontStyle: 'italic' },
+  actions: { marginTop: 8 },
+  error: { color: '#B91C1C', fontSize: 14, textAlign: 'center' },
 })
