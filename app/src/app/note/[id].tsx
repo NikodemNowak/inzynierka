@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router'
 import { ActivityIndicator, Alert, Button, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
 import { useNotesStore } from '../../state/notesStore'
-import { summarizeNoteContent, type SummarizationProgress } from '../../ai/summarization'
+import { processNoteWithLlm, type ProcessingProgress } from '../../ai/noteProcessing'
 import { AudioNotePlayer } from '../../audio/AudioNotePlayer'
 
 export default function EditNoteScreen() {
@@ -17,8 +17,8 @@ export default function EditNoteScreen() {
   const [summary, setSummary] = useState(note?.summary ?? '')
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
-  const [summarizing, setSummarizing] = useState(false)
-  const [summaryStatus, setSummaryStatus] = useState<string | null>(null)
+  const [processing, setProcessing] = useState(false)
+  const [processStatus, setProcessStatus] = useState<string | null>(null)
 
   if (!note) {
     return (
@@ -51,17 +51,18 @@ export default function EditNoteScreen() {
     }
   }
 
-  const formatSummaryStatus = (progress: SummarizationProgress): string => {
+  const formatProcessingStatus = (progress: ProcessingProgress): string => {
     if (progress.phase === 'downloading') {
       return `Pobieranie modelu: ${(progress.percent ?? 0).toFixed(0)}%`
     }
     if (progress.phase === 'loading') {
       return `Ładowanie modelu: ${(progress.percent ?? 0).toFixed(0)}%`
     }
+    if (progress.phase === 'title') return 'Generowanie tytułu…'
     return 'Generowanie streszczenia…'
   }
 
-  const summarize = async () => {
+  const processWithLlm = async () => {
     const trimmedContent = content.trim()
     if (trimmedContent.length === 0) {
       setError('Treść nie może być pusta')
@@ -69,26 +70,28 @@ export default function EditNoteScreen() {
     }
 
     setError(null)
-    setSummarizing(true)
-    setSummaryStatus('Przygotowanie modelu…')
+    setProcessing(true)
+    setProcessStatus('Przygotowanie modelu…')
     try {
-      const generatedSummary = await summarizeNoteContent(trimmedContent, (progress) => {
-        setSummaryStatus(formatSummaryStatus(progress))
+      const result = await processNoteWithLlm(trimmedContent, (progress) => {
+        setProcessStatus(formatProcessingStatus(progress))
       })
-      setSummary(generatedSummary)
+      const nextTitle = result.title.length > 0 ? result.title : title.trim()
+      setTitle(nextTitle)
+      setSummary(result.summary)
       await update(note.id, {
-        title: title.trim(),
+        title: nextTitle,
         content: trimmedContent,
-        summary: generatedSummary,
+        summary: result.summary,
         audioUri: note.audioUri,
         durationMs: note.durationMs,
       })
-      setSummaryStatus('Streszczenie zapisane')
+      setProcessStatus('Tytuł i streszczenie zapisane')
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
-      setSummaryStatus(null)
+      setProcessStatus(null)
     } finally {
-      setSummarizing(false)
+      setProcessing(false)
     }
   }
 
@@ -130,19 +133,19 @@ export default function EditNoteScreen() {
         placeholder="Streszczenie (opcjonalne)"
         multiline
         style={styles.summary}
-        editable={!summarizing}
+        editable={!processing}
       />
       <Button
-        title={summarizing ? 'Streszczanie…' : 'Wygeneruj streszczenie'}
-        onPress={summarize}
-        disabled={saving || summarizing}
+        title={processing ? 'Przetwarzanie…' : 'Przetwórz przez LLM'}
+        onPress={processWithLlm}
+        disabled={saving || processing}
       />
-      {summaryStatus && <Text style={styles.status}>{summaryStatus}</Text>}
-      {summarizing && <ActivityIndicator />}
+      {processStatus && <Text style={styles.status}>{processStatus}</Text>}
+      {processing && <ActivityIndicator />}
       <Button
         title={saving ? 'Zapisywanie…' : 'Zapisz'}
         onPress={save}
-        disabled={saving || summarizing}
+        disabled={saving || processing}
       />
       <View style={styles.deleteWrap}>
         <Button title="Usuń" color="#B91C1C" onPress={confirmDelete} />

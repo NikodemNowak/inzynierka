@@ -28,9 +28,22 @@ export interface GenerationResult {
 
 const STOP = ['<|im_end|>', '<|endoftext|>', '</s>']
 
+export interface GenerationOptions {
+  temperature?: number
+  nPredict?: number
+  topP?: number
+  topK?: number
+  minP?: number
+  presencePenalty?: number
+  system?: string
+}
+
+const DEFAULT_SYSTEM = 'Jesteś zwięzłym asystentem. Odpowiadaj po polsku.'
+
 export const generate = async (
   prompt: string,
   onToken: (token: string) => void,
+  options: GenerationOptions = {},
 ): Promise<GenerationResult> => {
   if (!context) throw new Error('Model not loaded')
   const startedAt = Date.now()
@@ -38,11 +51,17 @@ export const generate = async (
   const result = await context.completion(
     {
       messages: [
-        { role: 'system', content: 'Jesteś zwięzłym asystentem. Odpowiadaj po polsku.' },
+        { role: 'system', content: options.system ?? DEFAULT_SYSTEM },
         { role: 'user', content: prompt },
       ],
-      n_predict: 256,
-      temperature: 0.7,
+      // Qwen3 non-thinking recommended sampling (temp 0.7 / top_p 0.8 / top_k 20).
+      // Low temperature is discouraged: it makes the model copy input and loop.
+      n_predict: options.nPredict ?? 256,
+      temperature: options.temperature ?? 0.7,
+      top_p: options.topP ?? 0.8,
+      top_k: options.topK ?? 20,
+      min_p: options.minP ?? 0,
+      penalty_present: options.presencePenalty ?? 0,
       stop: STOP,
     },
     (data: TokenData) => {

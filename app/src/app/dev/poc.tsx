@@ -58,7 +58,7 @@ export default function PocScreen() {
   return (
     <ScrollView contentContainerStyle={styles.container}>
       <Stack.Screen options={{ title: 'POC LLM' }} />
-      <Text style={styles.subtitle}>Qwen3-0.6B Q4_K_M · CPU</Text>
+      <Text style={styles.subtitle}>Qwen3-1.7B Q4_K_M · CPU</Text>
 
       {error && <Text style={styles.error}>{error}</Text>}
 

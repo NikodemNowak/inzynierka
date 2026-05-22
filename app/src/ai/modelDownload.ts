@@ -1,8 +1,8 @@
 import * as FileSystem from 'expo-file-system/legacy'
 
 const MODEL_URL =
-  'https://huggingface.co/unsloth/Qwen3-0.6B-GGUF/resolve/main/Qwen3-0.6B-Q4_K_M.gguf'
-const MODEL_FILENAME = 'Qwen3-0.6B-Q4_K_M.gguf'
+  'https://huggingface.co/unsloth/Qwen3-1.7B-GGUF/resolve/main/Qwen3-1.7B-Q4_K_M.gguf'
+const MODEL_FILENAME = 'Qwen3-1.7B-Q4_K_M.gguf'
 
 export const getModelPath = (): string =>
   `${FileSystem.documentDirectory}${MODEL_FILENAME}`
@@ -17,9 +17,16 @@ export const downloadModel = async (
 ): Promise<string> => {
   const path = getModelPath()
   if (await isModelDownloaded()) return path
+
+  // Download to a temporary file and only promote it to the final path once the
+  // download fully completes. This prevents a partial/interrupted download from
+  // being mistaken for a complete model (which then fails to load).
+  const tempPath = `${path}.part`
+  await FileSystem.deleteAsync(tempPath, { idempotent: true })
+
   const download = FileSystem.createDownloadResumable(
     MODEL_URL,
-    path,
+    tempPath,
     {},
     ({ totalBytesWritten, totalBytesExpectedToWrite }) => {
       const percent =
@@ -31,5 +38,8 @@ export const downloadModel = async (
   )
   const result = await download.downloadAsync()
   if (!result) throw new Error('Pobieranie modelu nie powiodło się')
-  return result.uri
+
+  await FileSystem.deleteAsync(path, { idempotent: true })
+  await FileSystem.moveAsync({ from: tempPath, to: path })
+  return path
 }
