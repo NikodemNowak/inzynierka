@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router'
-import { Alert, Button, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
+import { ActivityIndicator, Alert, Button, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
 import { useNotesStore } from '../../state/notesStore'
+import { summarizeNoteContent, type SummarizationProgress } from '../../ai/summarization'
 
 export default function EditNoteScreen() {
   const { id } = useLocalSearchParams<{ id: string }>()
@@ -15,6 +16,8 @@ export default function EditNoteScreen() {
   const [summary, setSummary] = useState(note?.summary ?? '')
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  const [summarizing, setSummarizing] = useState(false)
+  const [summaryStatus, setSummaryStatus] = useState<string | null>(null)
 
   if (!note) {
     return (
@@ -42,6 +45,45 @@ export default function EditNoteScreen() {
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
       setSaving(false)
+    }
+  }
+
+  const formatSummaryStatus = (progress: SummarizationProgress): string => {
+    if (progress.phase === 'downloading') {
+      return `Pobieranie modelu: ${(progress.percent ?? 0).toFixed(0)}%`
+    }
+    if (progress.phase === 'loading') {
+      return `Ładowanie modelu: ${(progress.percent ?? 0).toFixed(0)}%`
+    }
+    return 'Generowanie streszczenia…'
+  }
+
+  const summarize = async () => {
+    const trimmedContent = content.trim()
+    if (trimmedContent.length === 0) {
+      setError('Treść nie może być pusta')
+      return
+    }
+
+    setError(null)
+    setSummarizing(true)
+    setSummaryStatus('Przygotowanie modelu…')
+    try {
+      const generatedSummary = await summarizeNoteContent(trimmedContent, (progress) => {
+        setSummaryStatus(formatSummaryStatus(progress))
+      })
+      setSummary(generatedSummary)
+      await update(note.id, {
+        title: title.trim(),
+        content: trimmedContent,
+        summary: generatedSummary,
+      })
+      setSummaryStatus('Streszczenie zapisane')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+      setSummaryStatus(null)
+    } finally {
+      setSummarizing(false)
     }
   }
 
@@ -82,8 +124,20 @@ export default function EditNoteScreen() {
         placeholder="Streszczenie (opcjonalne)"
         multiline
         style={styles.summary}
+        editable={!summarizing}
       />
-      <Button title={saving ? 'Zapisywanie…' : 'Zapisz'} onPress={save} disabled={saving} />
+      <Button
+        title={summarizing ? 'Streszczanie…' : 'Wygeneruj streszczenie'}
+        onPress={summarize}
+        disabled={saving || summarizing}
+      />
+      {summaryStatus && <Text style={styles.status}>{summaryStatus}</Text>}
+      {summarizing && <ActivityIndicator />}
+      <Button
+        title={saving ? 'Zapisywanie…' : 'Zapisz'}
+        onPress={save}
+        disabled={saving || summarizing}
+      />
       <View style={styles.deleteWrap}>
         <Button title="Usuń" color="#B91C1C" onPress={confirmDelete} />
       </View>
@@ -113,5 +167,6 @@ const styles = StyleSheet.create({
     textAlignVertical: 'top',
   },
   deleteWrap: { marginTop: 8 },
+  status: { color: '#1F4E79', fontSize: 14 },
   error: { color: '#B91C1C', fontSize: 14 },
 })
