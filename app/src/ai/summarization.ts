@@ -9,17 +9,22 @@ export interface SummarizationProgress {
 }
 
 const buildPrompt = (content: string): string => `
-Streść poniższą notatkę po polsku w 2-4 zdaniach.
-Zwróć wyłącznie gotowe streszczenie, bez nagłówków, list i komentarzy.
+/no_think
+Napisz bardzo krótkie streszczenie notatki po polsku.
+Odpowiedz jednym zdaniem, 8-14 słów.
+Bez prefiksów typu "Notatka:" albo "Streszczenie:".
+Nie dodawaj informacji spoza tekstu.
 
-Notatka:
+Tekst notatki:
+"""
 ${content}
+"""
 `.trim()
 
 const cleanSummary = (text: string): string =>
   text
     .replace(/<think>[\s\S]*?(<\/think>|$)/gi, '')
-    .replace(/^streszczenie:\s*/i, '')
+    .replace(/^(streszczenie|notatka|podgląd):\s*/i, '')
     .trim()
 
 export const summarizeNoteContent = async (
