@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { Platform } from 'react-native'
 import {
   ExpoSpeechRecognitionModule,
   useSpeechRecognitionEvent,
@@ -6,6 +7,8 @@ import {
 import { ensureRecordingsDir } from '../audio/audioFiles'
 
 const LOCALE = 'pl-PL'
+// On-device recognizer package that exposes installed offline language models.
+const ANDROID_ONDEVICE_PACKAGE = 'com.google.android.as'
 
 export type RecorderStatus = 'idle' | 'starting' | 'recording' | 'stopping'
 
@@ -20,6 +23,7 @@ export interface SpeechRecorder {
   transcript: string
   durationMs: number
   error: string | null
+  info: string | null
   start: () => Promise<void>
   stop: () => void
 }
@@ -31,6 +35,7 @@ export const useSpeechRecorder = (
   const [transcript, setTranscript] = useState('')
   const [durationMs, setDurationMs] = useState(0)
   const [error, setError] = useState<string | null>(null)
+  const [info, setInfo] = useState<string | null>(null)
 
   const statusRef = useRef<RecorderStatus>('idle')
   const segmentsRef = useRef<string[]>([])
@@ -111,6 +116,42 @@ export const useSpeechRecorder = (
     })
   })
 
+  // The on-device locale model is a separate ~40 MB download managed by the OS.
+  // Ensure it is installed before starting, otherwise start() emits
+  // "language supported, but not yet downloaded". iOS (SFSpeechRecognizer)
+  // provisions its model itself, so this only applies to Android.
+  const ensureOfflineModel = async (): Promise<boolean> => {
+    if (Platform.OS !== 'android') return true
+
+    let installed: string[] = []
+    try {
+      const locales = await ExpoSpeechRecognitionModule.getSupportedLocales({
+        androidRecognitionServicePackage: ANDROID_ONDEVICE_PACKAGE,
+      })
+      installed = locales.installedLocales
+    } catch {
+      // Service package not queryable on this device — fall through and try to download.
+    }
+    if (installed.includes(LOCALE)) return true
+
+    setInfo('Pobieranie modelu języka offline (≈40 MB)…')
+    try {
+      const result = await ExpoSpeechRecognitionModule.androidTriggerOfflineModelDownload({
+        locale: LOCALE,
+      })
+      if (result.status === 'download_canceled') {
+        setError('Pobieranie modelu języka zostało anulowane')
+        return false
+      }
+      return true
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+      return false
+    } finally {
+      setInfo(null)
+    }
+  }
+
   const start = async (): Promise<void> => {
     setError(null)
     errorRef.current = false
@@ -127,12 +168,17 @@ export const useSpeechRecorder = (
       return
     }
 
+    setBoth('starting')
+    if (!(await ensureOfflineModel())) {
+      setBoth('idle')
+      return
+    }
+
     segmentsRef.current = []
     interimRef.current = ''
     audioUriRef.current = null
     setTranscript('')
     setDurationMs(0)
-    setBoth('starting')
 
     try {
       const directory = await ensureRecordingsDir()
@@ -161,5 +207,5 @@ export const useSpeechRecorder = (
     ExpoSpeechRecognitionModule.stop()
   }
 
-  return { status, transcript, durationMs, error, start, stop }
+  return { status, transcript, durationMs, error, info, start, stop }
 }
