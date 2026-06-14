@@ -42,6 +42,9 @@ export default function NotesListScreen() {
               <Pressable onPress={() => router.push('/record')} hitSlop={8}>
                 <Text style={styles.headerAdd}>Nagraj</Text>
               </Pressable>
+              <Pressable onPress={() => router.push('/import')} hitSlop={8}>
+                <Text style={styles.headerAdd}>Wczytaj</Text>
+              </Pressable>
               <Pressable onPress={() => router.push('/note/new')} hitSlop={8}>
                 <Text style={styles.headerAdd}>+ Nowa</Text>
               </Pressable>

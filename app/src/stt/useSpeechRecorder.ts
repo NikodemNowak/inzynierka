@@ -12,6 +12,12 @@ const ANDROID_ONDEVICE_PACKAGE = 'com.google.android.as'
 
 export type RecorderStatus = 'idle' | 'starting' | 'recording' | 'stopping'
 
+// When provided to start(), the recognizer transcribes this audio file instead
+// of the microphone. The note then keeps this file as its audio.
+export interface AudioFileSource {
+  uri: string
+}
+
 export interface RecordingResult {
   transcript: string
   audioUri: string | null
@@ -24,7 +30,7 @@ export interface SpeechRecorder {
   durationMs: number
   error: string | null
   info: string | null
-  start: () => Promise<void>
+  start: (source?: AudioFileSource) => Promise<void>
   stop: () => void
 }
 
@@ -92,7 +98,9 @@ export const useSpeechRecorder = (
   })
 
   useSpeechRecognitionEvent('audioend', (event) => {
-    audioUriRef.current = event.uri ?? null
+    // Keep the imported file's uri (set in start) when transcribing a file;
+    // only a live mic recording supplies a persisted uri here.
+    if (event.uri) audioUriRef.current = event.uri
   })
 
   useSpeechRecognitionEvent('error', (event) => {
@@ -152,7 +160,7 @@ export const useSpeechRecorder = (
     }
   }
 
-  const start = async (): Promise<void> => {
+  const start = async (source?: AudioFileSource): Promise<void> => {
     setError(null)
     errorRef.current = false
     finalizedRef.current = false
@@ -176,7 +184,9 @@ export const useSpeechRecorder = (
 
     segmentsRef.current = []
     interimRef.current = ''
-    audioUriRef.current = null
+    // An imported file is the note's audio from the start; a live recording
+    // gets its persisted uri later via the audioend event.
+    audioUriRef.current = source?.uri ?? null
     setTranscript('')
     setDurationMs(0)
 
@@ -188,12 +198,16 @@ export const useSpeechRecorder = (
         continuous: true,
         requiresOnDeviceRecognition: true,
         addsPunctuation: true,
-        recordingOptions: {
-          persist: true,
-          outputDirectory: directory,
-          outputSampleRate: 16000,
-          outputEncoding: 'pcmFormatInt16',
-        },
+        ...(source
+          ? { audioSource: { uri: source.uri } }
+          : {
+              recordingOptions: {
+                persist: true,
+                outputDirectory: directory,
+                outputSampleRate: 16000,
+                outputEncoding: 'pcmFormatInt16',
+              },
+            }),
       })
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
