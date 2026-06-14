@@ -1,5 +1,6 @@
+import { useState } from 'react'
 import { Link, Stack, useRouter } from 'expo-router'
-import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native'
+import { FlatList, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { useNotesStore } from '../state/notesStore'
 import type { Note } from '../domain/note'
 
@@ -23,6 +24,15 @@ function NoteRow({ note, onPress }: { note: Note; onPress: () => void }) {
           {note.summary?.trim() || note.content}
         </Text>
       )}
+      {note.tags.length > 0 && (
+        <View style={styles.rowTags}>
+          {note.tags.map((tag) => (
+            <Text key={tag} style={styles.rowTag}>
+              {tag}
+            </Text>
+          ))}
+        </View>
+      )}
       <Text style={styles.rowDate}>{formatDate(note.updatedAt)}</Text>
     </Pressable>
   )
@@ -31,6 +41,10 @@ function NoteRow({ note, onPress }: { note: Note; onPress: () => void }) {
 export default function NotesListScreen() {
   const notes = useNotesStore((state) => state.notes)
   const router = useRouter()
+  const [selectedTag, setSelectedTag] = useState<string | null>(null)
+
+  const allTags = Array.from(new Set(notes.flatMap((n) => n.tags))).sort()
+  const visibleNotes = selectedTag ? notes.filter((n) => n.tags.includes(selectedTag)) : notes
 
   return (
     <View style={styles.container}>
@@ -57,11 +71,30 @@ export default function NotesListScreen() {
           ),
         }}
       />
+      {allTags.length > 0 && (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.filterScroll}
+          contentContainerStyle={styles.filterBar}
+        >
+          <Pressable onPress={() => setSelectedTag(null)}>
+            <Text style={[styles.filterChip, !selectedTag && styles.filterChipActive]}>Wszystkie</Text>
+          </Pressable>
+          {allTags.map((tag) => (
+            <Pressable key={tag} onPress={() => setSelectedTag(tag)}>
+              <Text style={[styles.filterChip, selectedTag === tag && styles.filterChipActive]}>
+                {tag}
+              </Text>
+            </Pressable>
+          ))}
+        </ScrollView>
+      )}
       {notes.length === 0 ? (
         <Text style={styles.empty}>Brak notatek. Dodaj pierwszą przyciskiem „+ Nowa".</Text>
       ) : (
         <FlatList
-          data={notes}
+          data={visibleNotes}
           keyExtractor={(item) => item.id}
           renderItem={({ item }) => (
             <NoteRow note={item} onPress={() => router.push(`/note/${item.id}`)} />
@@ -92,4 +125,26 @@ const styles = StyleSheet.create({
   headerActions: { flexDirection: 'row', gap: 12 },
   headerAdd: { fontSize: 16, color: '#1F4E79', fontWeight: '600', paddingHorizontal: 4 },
   devLink: { padding: 16, fontSize: 13, color: '#999', textAlign: 'center' },
+  rowTags: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 2 },
+  rowTag: {
+    fontSize: 12,
+    color: '#1F4E79',
+    backgroundColor: '#E0F2FE',
+    borderRadius: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    overflow: 'hidden',
+  },
+  filterScroll: { flexGrow: 0 },
+  filterBar: { gap: 8, paddingHorizontal: 16, paddingVertical: 8, alignItems: 'center' },
+  filterChip: {
+    fontSize: 13,
+    color: '#374151',
+    backgroundColor: '#F3F4F6',
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    overflow: 'hidden',
+  },
+  filterChipActive: { backgroundColor: '#1F4E79', color: '#FFFFFF' },
 })

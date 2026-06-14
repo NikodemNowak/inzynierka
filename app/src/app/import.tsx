@@ -46,6 +46,7 @@ export default function ImportAudioScreen() {
           title: defaultTitle(),
           content: transcript,
           summary: null,
+          tags: [],
           audioUri: result.audioUri,
           durationMs: null,
         })

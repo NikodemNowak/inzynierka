@@ -47,6 +47,7 @@ export default function RecordNoteScreen() {
           title: defaultTitle(),
           content: transcript,
           summary: null,
+          tags: [],
           audioUri: result.audioUri,
           durationMs: result.durationMs,
         })

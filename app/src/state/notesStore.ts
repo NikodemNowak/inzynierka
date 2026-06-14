@@ -23,6 +23,7 @@ const toInput = (note: Note): NoteInput => ({
   title: note.title,
   content: note.content,
   summary: note.summary,
+  tags: note.tags,
   audioUri: note.audioUri,
   durationMs: note.durationMs,
 })
@@ -76,7 +77,12 @@ export const useNotesStore = create<NotesState>((set, get) => ({
     const job = async () => {
       try {
         const result = await processNoteWithLlm(note.content.trim(), setProgress)
-        await get().update(id, { ...toInput(note), title: result.title, summary: result.summary })
+        await get().update(id, {
+          ...toInput(note),
+          title: result.title,
+          summary: result.summary,
+          tags: result.tags,
+        })
       } catch (e) {
         set((state) => ({
           processingError: {

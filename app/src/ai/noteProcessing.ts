@@ -1,7 +1,7 @@
 import { generate, isModelLoaded, loadModel } from './llm'
 import { downloadModel, getModelPath, isModelDownloaded } from './modelDownload'
 
-export type ProcessingPhase = 'downloading' | 'loading' | 'title' | 'summary'
+export type ProcessingPhase = 'downloading' | 'loading' | 'title' | 'summary' | 'tags'
 
 export interface ProcessingProgress {
   phase: ProcessingPhase
@@ -11,6 +11,7 @@ export interface ProcessingProgress {
 export interface NoteProcessingResult {
   title: string
   summary: string
+  tags: string[]
 }
 
 const TITLE_SYSTEM =
@@ -18,6 +19,9 @@ const TITLE_SYSTEM =
 
 const SUMMARY_SYSTEM =
   'Streszczasz polskie notatki głosowe zwięźle i rzeczowo. Odpowiadasz wyłącznie po polsku.'
+
+const TAGS_SYSTEM =
+  'Nadajesz krótkie tagi tematyczne polskim notatkom. Odpowiadasz wyłącznie po polsku.'
 
 const titlePrompt = (content: string): string =>
   `/no_think
@@ -43,6 +47,20 @@ Zasady:
 - Zachowaj konkretne zadania, terminy, osoby i liczby dokładnie jak w notatce.
 - Pomiń wstęp i dygresje (np. "taka notatka na szybko", "żeby nie zapomnieć").
 - Nie zaczynaj od "Notatka"/"Dla notatki"/"Ta notatka". Własnymi słowami; nie kopiuj zdań z notatki i nie powtarzaj tych instrukcji.
+
+Notatka:
+"""
+${content}
+"""`
+
+const tagsPrompt = (content: string): string =>
+  `/no_think
+Podaj 3-5 krótkich tagów (słów kluczowych) opisujących temat poniższej notatki.
+Zasady:
+- Pojedyncze słowa lub krótkie frazy, oddzielone przecinkami.
+- Małe litery, bez # i bez numeracji.
+- Konkretne tematy lub kategorie, nie ogólniki jak "notatka".
+- Zwróć wyłącznie tagi w jednej linii.
 
 Notatka:
 """
@@ -127,6 +145,21 @@ const cleanSummary = (raw: string): string => {
   const stripped = stripModelArtifacts(raw)
   if (looksLikeInstructionEcho(stripped)) return ''
   return stripBannedOpener(stripped)
+}
+
+// Tags come back comma- or line-separated; normalise to lowercase, strip
+// decoration and generic non-tags, dedupe and cap.
+const parseTags = (raw: string): string[] => {
+  const cleaned = raw.replace(/<think>[\s\S]*?(<\/think>|$)/gi, '')
+  const tags = cleaned
+    .replace(/\n/g, ',')
+    .split(',')
+    .map((tag) => tag.trim().toLowerCase().replace(/^#/, '').replace(/["'`.]/g, '').trim())
+    .filter(
+      (tag) =>
+        tag.length >= 2 && tag.length <= 24 && !/^(tag|tagi|notatka|notatki|temat)$/.test(tag),
+    )
+  return Array.from(new Set(tags)).slice(0, 5)
 }
 
 const normalize = (text: string): string =>
@@ -240,5 +273,12 @@ export const processNoteWithLlm = async (
   const title =
     generatedTitle.length > 0 ? generatedTitle : fallbackTitle(summary.length > 0 ? summary : content)
 
-  return { title, summary }
+  onProgress({ phase: 'tags' })
+  const tagsResult = await generate(tagsPrompt(content), () => undefined, {
+    system: TAGS_SYSTEM,
+    nPredict: 40,
+  })
+  const tags = parseTags(tagsResult.text)
+
+  return { title, summary, tags }
 }

@@ -5,6 +5,7 @@ import { useNotesStore } from '../../state/notesStore'
 import type { ProcessingProgress } from '../../ai/noteProcessing'
 import { AudioNotePlayer } from '../../audio/AudioNotePlayer'
 import { NoteTasks } from '../../tasks/NoteTasks'
+import { NoteTags } from '../../tags/NoteTags'
 
 const formatProcessingStatus = (progress: ProcessingProgress): string => {
   if (progress.phase === 'downloading') {
@@ -14,6 +15,7 @@ const formatProcessingStatus = (progress: ProcessingProgress): string => {
     return `Ładowanie modelu: ${(progress.percent ?? 0).toFixed(0)}%`
   }
   if (progress.phase === 'title') return 'Generowanie tytułu…'
+  if (progress.phase === 'tags') return 'Generowanie tagów…'
   return 'Generowanie streszczenia…'
 }
 
@@ -39,6 +41,7 @@ export default function EditNoteScreen() {
   const [title, setTitle] = useState(note?.title ?? '')
   const [content, setContent] = useState(note?.content ?? '')
   const [summary, setSummary] = useState(note?.summary ?? '')
+  const [tags, setTags] = useState<string[]>(note?.tags ?? [])
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
 
@@ -52,6 +55,7 @@ export default function EditNoteScreen() {
     if (wasProcessing.current && !processing && note) {
       setTitle(note.title)
       setSummary(note.summary ?? '')
+      setTags(note.tags)
     }
     wasProcessing.current = processing
   }, [processing, note])
@@ -78,6 +82,7 @@ export default function EditNoteScreen() {
         title: title.trim(),
         content: content.trim(),
         summary: summary.trim().length > 0 ? summary.trim() : null,
+        tags,
         audioUri: note.audioUri,
         durationMs: note.durationMs,
       })
@@ -100,6 +105,7 @@ export default function EditNoteScreen() {
       title: title.trim(),
       content: trimmedContent,
       summary: summary.trim().length > 0 ? summary.trim() : null,
+      tags,
       audioUri: note.audioUri,
       durationMs: note.durationMs,
     })
@@ -149,6 +155,7 @@ export default function EditNoteScreen() {
         style={styles.summary}
         editable={!processing}
       />
+      <NoteTags tags={tags} onChange={setTags} editable={!processing} />
       <Button
         title={processing ? 'Przetwarzanie…' : 'Przetwórz przez LLM'}
         onPress={processNote}

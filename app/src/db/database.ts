@@ -32,6 +32,7 @@ const initDatabase = async (): Promise<SQLite.SQLiteDatabase> => {
   await addColumnIfMissing(db, 'notes', 'summary', 'TEXT')
   await addColumnIfMissing(db, 'notes', 'audioUri', 'TEXT')
   await addColumnIfMissing(db, 'notes', 'durationMs', 'INTEGER')
+  await addColumnIfMissing(db, 'notes', 'tags', 'TEXT')
   return db
 }
 

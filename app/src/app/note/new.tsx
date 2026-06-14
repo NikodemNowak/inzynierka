@@ -24,6 +24,7 @@ export default function NewNoteScreen() {
         title: title.trim(),
         content: content.trim(),
         summary: summary.trim().length > 0 ? summary.trim() : null,
+        tags: [],
         audioUri: null,
         durationMs: null,
       })
