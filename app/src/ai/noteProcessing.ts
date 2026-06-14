@@ -13,47 +13,41 @@ export interface NoteProcessingResult {
   summary: string
 }
 
-const TITLE_SYSTEM = `Zadanie: nadajesz krótki tytuł notatce głosowej.
-Cel: czytelnik po samym tytule wie, czego dotyczy CAŁA notatka.
-Zasady:
-- Dokładnie 3-5 słów. Fraza rzeczownikowa, nie zdanie i nie pytanie.
-- Opisz GŁÓWNY temat notatki (zwykle z pierwszego zdania), nie poboczny wątek.
-- Po polsku, własnymi słowami. Bez kropki, bez cudzysłowów, bez słów "Notatka"/"Nagranie".
-- Zwróć wyłącznie tytuł, nic więcej.`
+const TITLE_SYSTEM =
+  'Tworzysz krótkie, trafne tytuły polskich notatek. Odpowiadasz wyłącznie po polsku.'
 
-const SUMMARY_SYSTEM = `Zadanie: tworzysz KRÓTKIE streszczenie notatki głosowej dla zapracowanego profesjonalisty.
-Cel: czytelnik ma zrozumieć sedno bez czytania całej notatki, więc streszczenie musi oszczędzać czas.
-Zasady:
-- Maksymalnie 3 krótkie zdania i nie więcej niż ~45 słów. Streszczenie ma być WYRAŹNIE krótsze niż notatka.
-- Zawrzyj tylko NAJWAŻNIEJSZE ustalenia i wnioski. Pomiń szczegóły drugorzędne.
-- Pisz własnymi słowami, w 3. osobie. Nie przepisuj zdań z notatki.
-- Zachowaj kluczowe konkrety (osoby, daty, kwoty) tylko jeśli są istotne. Nie dodawaj nic spoza notatki.
-- Nie zaczynaj od "Notatka"/"Streszczenie"/"Nagranie". Zwróć samo streszczenie po polsku.`
+const SUMMARY_SYSTEM =
+  'Streszczasz polskie notatki głosowe zwięźle i rzeczowo. Odpowiadasz wyłącznie po polsku.'
 
 const titlePrompt = (content: string): string =>
   `/no_think
-Tekst: Jutro o dziesiątej spotkanie z klientem w sprawie umowy najmu biura, trzeba przygotować aneks i sprawdzić termin płatności.
-Tytuł: Spotkanie w sprawie najmu biura
+Podaj tytuł dla poniższej notatki.
+Wymagania:
+- 3-5 słów, fraza rzeczownikowa (nie zdanie, nie pytanie).
+- Oddaj główny temat CAŁEJ notatki, nie pierwszy szczegół.
+- Jeśli notatka obejmuje kilka różnych spraw, podaj ich wspólny motyw (np. "Zadania na tydzień"), nie jedną z nich.
+- Bez kropki, bez cudzysłowów, bez słów "notatka", "nagranie", "tekst".
+- Nie powtarzaj wstępu notatki ani tych instrukcji. Zwróć wyłącznie sam tytuł.
 
-Tekst: Dzisiaj zebranie zespołu o wdrożeniu systemu CRM; ustalono migrację w czerwcu, podział zadań, obawy o integrację i wzrost budżetu.
-Tytuł: Wdrożenie systemu CRM
-
-Tekst: Pacjent zgłasza bóle głowy od tygodnia, nasilenie wieczorem, zalecam morfologię i kontrolę ciśnienia.
-Tytuł: Konsultacja: bóle głowy
-
-Tekst: ${content}
-Tytuł:`
+Notatka:
+"""
+${content}
+"""`
 
 const summaryPrompt = (content: string): string =>
   `/no_think
-Notatka: Dzisiaj na zebraniu omówiliśmy budżet na przyszły rok, ustaliliśmy że dział marketingu dostanie większe środki, Kowalski przygotuje prezentację na piątek, trzeba też odnowić umowę z dostawcą internetu i zamówić nowe laptopy dla zespołu.
-Streszczenie: Na zebraniu budżetowym zwiększono środki dla marketingu i rozdzielono zadania: prezentacja Kowalskiego na piątek, odnowienie umowy z dostawcą internetu oraz zakup laptopów.
+Streść poniższą notatkę w 2-4 zdaniach. Streszczenie ma być wyraźnie krótsze niż notatka.
+Zasady:
+- Oddaj najważniejszą treść notatki, niezależnie od tego, czego dotyczy.
+- Pełne, płynne zdania. Bez wypunktowań, bez list, bez nagłówka z dwukropkiem na początku.
+- Zachowaj konkretne zadania, terminy, osoby i liczby dokładnie jak w notatce.
+- Pomiń wstęp i dygresje (np. "taka notatka na szybko", "żeby nie zapomnieć").
+- Nie zaczynaj od "Notatka"/"Dla notatki"/"Ta notatka". Własnymi słowami; nie kopiuj zdań z notatki i nie powtarzaj tych instrukcji.
 
-Notatka: Pacjent zgłasza bóle głowy od tygodnia, nasilenie wieczorem, zalecam morfologię i kontrolę ciśnienia.
-Streszczenie: Tygodniowe, wieczorne bóle głowy u pacjenta; zlecono morfologię i kontrolę ciśnienia.
-
-Notatka: ${content}
-Streszczenie:`
+Notatka:
+"""
+${content}
+"""`
 
 const BANNED_PREFIXES = [
   'notatka',
@@ -66,11 +60,36 @@ const BANNED_PREFIXES = [
   'autor',
 ]
 
+// Conversational fillers a chatty note opens with; the model tends to parrot
+// them ("Dobrze, to taka notatka na szybko...") instead of getting to the point.
+const FILLER_OPENER =
+  /^(dobrze|dobra|no|ok|okej|okay|tak|więc|wiec|cóż|coz|otóż|otoz|hej|a więc|a wiec)\b[\s,.:;–—-]*/i
+
+// The model sometimes regurgitates its own instructions/system prompt instead
+// of answering. Such output is never a valid title/summary.
+const INSTRUCTION_MARKERS = [
+  'wymagania:',
+  'zwróć wyłącznie',
+  'zwroc wylacznie',
+  'podaj tytuł',
+  'podaj tytul',
+  'streść poniższą',
+  'stresc ponizsza',
+  'fraza rzeczownikowa',
+  'nie powtarzaj',
+]
+
+const looksLikeInstructionEcho = (text: string): boolean => {
+  const lower = text.toLowerCase()
+  return INSTRUCTION_MARKERS.some((marker) => lower.includes(marker))
+}
+
 const stripModelArtifacts = (text: string): string =>
   text
     .replace(/<think>[\s\S]*?(<\/think>|$)/gi, '')
     .replace(/^(tytuł|streszczenie)\s*[:\-]\s*/i, '')
     .replace(/^["'\s]+|["'\s]+$/g, '')
+    .replace(FILLER_OPENER, '')
     .trim()
 
 const stripBannedOpener = (text: string): string => {
@@ -86,19 +105,29 @@ const firstWords = (text: string, count: number): string =>
   text.split(/\s+/).filter(Boolean).slice(0, count).join(' ')
 
 const cleanTitle = (raw: string): string => {
-  const firstLine = stripModelArtifacts(raw).split('\n')[0] ?? ''
-  const withoutBanned = stripBannedOpener(firstLine).replace(/[.!?]+$/g, '').trim()
+  const stripped = stripModelArtifacts(raw)
+  if (looksLikeInstructionEcho(stripped)) return ''
+  const firstLine = stripped.split('\n').map((l) => l.trim()).find((l) => l.length > 0) ?? ''
+  const withoutBanned = stripBannedOpener(firstLine)
+    .replace(/^["'„”»«\s]+|["'„”»«\s]+$/g, '')
+    .replace(/[.,;:!?\s]+$/g, '')
+    .trim()
   return firstWords(withoutBanned, 8)
 }
 
-// Fallback when the model hallucinates a title unrelated to the note
-// (e.g. a tiny model copying a few-shot example): take the opening of the note.
-const fallbackTitle = (content: string): string => {
-  const firstSentence = content.split(/[.!?]/)[0] ?? content
+// Fallback only when the model returns nothing usable. Prefer the summary (clean,
+// topic-first) and strip any conversational opener so we never fall back to the
+// note's chatty intro (e.g. "Dobra, to taka notatka na szybko").
+const fallbackTitle = (source: string): string => {
+  const firstSentence = stripModelArtifacts(source).split(/[.!?\n]/)[0] ?? source
   return firstWords(firstSentence.trim(), 6)
 }
 
-const cleanSummary = (raw: string): string => stripBannedOpener(stripModelArtifacts(raw))
+const cleanSummary = (raw: string): string => {
+  const stripped = stripModelArtifacts(raw)
+  if (looksLikeInstructionEcho(stripped)) return ''
+  return stripBannedOpener(stripped)
+}
 
 const normalize = (text: string): string =>
   text.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, '').replace(/\s+/g, ' ').trim()
@@ -133,8 +162,11 @@ const isCopy = (summary: string, content: string): boolean => {
   const c = normalize(content)
   if (o.length === 0) return true
   if (c.includes(o)) return true
+  // Already-dense notes (e.g. a terse meeting recap) can't be compressed much, so
+  // a faithful summary stays similar in length and vocabulary. Only flag output
+  // that is BOTH almost as long AND almost the same words — a genuine non-summary.
   const lengthRatio = wordCountOf(summary) / Math.max(1, wordCountOf(content))
-  return lengthRatio >= 0.7 && jaccard(summary, content) >= 0.6
+  return lengthRatio >= 0.85 && jaccard(summary, content) >= 0.8
 }
 
 // Catches hallucinations: a summary that shares almost no vocabulary with the
@@ -175,7 +207,7 @@ export const processNoteWithLlm = async (
     onProgress({ phase: 'summary' })
     const summaryResult = await generate(summaryPrompt(content), () => undefined, {
       system: SUMMARY_SYSTEM,
-      nPredict: 160,
+      nPredict: 256,
     })
     summary = cleanSummary(summaryResult.text)
 
@@ -192,19 +224,21 @@ export const processNoteWithLlm = async (
     }
   }
 
-  // Generate the title from the summary when available: the summary front-loads
-  // the main topic, so the title reliably captures it instead of a side detail.
-  const titleSource = summary.length > 0 ? summary : content
+  // Title from the full note, not the summary: the note's opening usually states
+  // the main topic, whereas the summary reorders/drops it and the title then
+  // latches onto a side detail.
+  const titleSource = content
   onProgress({ phase: 'title' })
   const titleResult = await generate(titlePrompt(titleSource), () => undefined, {
     system: TITLE_SYSTEM,
     nPredict: 24,
   })
   const generatedTitle = cleanTitle(titleResult.text)
+  // No grounding check on the title: a good title generalises (e.g. "Zadania na
+  // tydzień") with words that need not appear verbatim in the note. cleanTitle
+  // already drops instruction echoes, so a non-empty result is usable.
   const title =
-    generatedTitle.length > 0 && !isUngrounded(generatedTitle, content)
-      ? generatedTitle
-      : fallbackTitle(titleSource)
+    generatedTitle.length > 0 ? generatedTitle : fallbackTitle(summary.length > 0 ? summary : content)
 
   return { title, summary }
 }
