@@ -30,6 +30,7 @@ const statusLabel = (status: string): string => {
 export default function RecordNoteScreen() {
   const router = useRouter()
   const add = useNotesStore((state) => state.add)
+  const processWithLlm = useNotesStore((state) => state.processWithLlm)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
 
@@ -41,20 +42,24 @@ export default function RecordNoteScreen() {
       }
       setSaving(true)
       try {
+        const transcript = result.transcript.trim()
         const note = await add({
           title: defaultTitle(),
-          content: result.transcript.trim(),
+          content: transcript,
           summary: null,
           audioUri: result.audioUri,
           durationMs: result.durationMs,
         })
+        // Generate title + summary in the background; the store keeps running it
+        // after we navigate away, and the note/list update when it lands.
+        if (transcript.length > 0) void processWithLlm(note.id)
         router.replace(`/note/${note.id}`)
       } catch (e) {
         setSaveError(e instanceof Error ? e.message : String(e))
         setSaving(false)
       }
     },
-    [add, router],
+    [add, processWithLlm, router],
   )
 
   const recorder = useSpeechRecorder(handleComplete)
@@ -73,6 +78,7 @@ export default function RecordNoteScreen() {
       <Stack.Screen options={{ title: 'Nagrywanie' }} />
       <Text style={styles.duration}>{formatDuration(recorder.durationMs)}</Text>
       <Text style={styles.status}>{statusLabel(recorder.status)}</Text>
+      {recorder.info && <Text style={styles.status}>{recorder.info}</Text>}
       {error && <Text style={styles.error}>{error}</Text>}
 
       <View style={styles.transcriptBox}>
