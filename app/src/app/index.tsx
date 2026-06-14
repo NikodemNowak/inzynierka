@@ -37,6 +37,11 @@ export default function NotesListScreen() {
       <Stack.Screen
         options={{
           title: 'Notatki',
+          headerLeft: () => (
+            <Pressable onPress={() => router.push('/tasks')} hitSlop={8}>
+              <Text style={styles.headerAdd}>Zadania</Text>
+            </Pressable>
+          ),
           headerRight: () => (
             <View style={styles.headerActions}>
               <Pressable onPress={() => router.push('/record')} hitSlop={8}>

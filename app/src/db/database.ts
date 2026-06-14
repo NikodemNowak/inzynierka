@@ -21,6 +21,13 @@ const initDatabase = async (): Promise<SQLite.SQLiteDatabase> => {
       createdAt INTEGER NOT NULL,
       updatedAt INTEGER NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS tasks (
+      id TEXT PRIMARY KEY NOT NULL,
+      noteId TEXT NOT NULL,
+      text TEXT NOT NULL,
+      done INTEGER NOT NULL DEFAULT 0,
+      createdAt INTEGER NOT NULL
+    );
   `)
   await addColumnIfMissing(db, 'notes', 'summary', 'TEXT')
   await addColumnIfMissing(db, 'notes', 'audioUri', 'TEXT')

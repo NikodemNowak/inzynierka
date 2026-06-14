@@ -179,7 +179,7 @@ const isUngrounded = (summary: string, content: string): boolean => {
   return shared / summaryStems.length < 0.3
 }
 
-const ensureModelReady = async (
+export const ensureModelReady = async (
   onProgress: (progress: ProcessingProgress) => void,
 ): Promise<void> => {
   if (!(await isModelDownloaded())) {

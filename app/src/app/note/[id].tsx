@@ -4,6 +4,7 @@ import { ActivityIndicator, Alert, Button, ScrollView, StyleSheet, Text, TextInp
 import { useNotesStore } from '../../state/notesStore'
 import type { ProcessingProgress } from '../../ai/noteProcessing'
 import { AudioNotePlayer } from '../../audio/AudioNotePlayer'
+import { NoteTasks } from '../../tasks/NoteTasks'
 
 const formatProcessingStatus = (progress: ProcessingProgress): string => {
   if (progress.phase === 'downloading') {
@@ -160,6 +161,7 @@ export default function EditNoteScreen() {
         onPress={save}
         disabled={saving || processing}
       />
+      <NoteTasks noteId={note.id} content={content} />
       <View style={styles.deleteWrap}>
         <Button title="Usuń" color="#B91C1C" onPress={confirmDelete} disabled={processing} />
       </View>

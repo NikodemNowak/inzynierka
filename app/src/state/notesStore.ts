@@ -2,6 +2,8 @@ import { create } from 'zustand'
 import type { Note, NoteInput } from '../domain/note'
 import * as repository from '../data/notesRepository'
 import { processNoteWithLlm, type ProcessingProgress } from '../ai/noteProcessing'
+import { enqueueLlm } from '../ai/llmQueue'
+import { useTasksStore } from './tasksStore'
 
 interface NotesState {
   notes: Note[]
@@ -25,10 +27,6 @@ const toInput = (note: Note): NoteInput => ({
   durationMs: note.durationMs,
 })
 
-// llama.rn shares a single context, so two generations must never overlap.
-// All LLM jobs run one after another on this chain.
-let llmChain: Promise<void> = Promise.resolve()
-
 export const useNotesStore = create<NotesState>((set, get) => ({
   notes: [],
   loaded: false,
@@ -49,6 +47,7 @@ export const useNotesStore = create<NotesState>((set, get) => ({
   },
   remove: async (id) => {
     await repository.deleteNote(id)
+    await useTasksStore.getState().removeForNote(id)
     set((state) => {
       const { [id]: _p, ...processing } = state.processing
       const { [id]: _e, ...processingError } = state.processingError
@@ -90,8 +89,6 @@ export const useNotesStore = create<NotesState>((set, get) => ({
       }
     }
 
-    const run = llmChain.then(job)
-    llmChain = run.catch(() => undefined)
-    await run
+    await enqueueLlm(job)
   },
 }))
