@@ -1,5 +1,6 @@
 import { generate, isModelLoaded, loadModel } from './llm'
 import { downloadModel, getModelPath, isModelDownloaded } from './modelDownload'
+import { NOTE_CATEGORIES } from '../domain/categories'
 
 export type ProcessingPhase = 'downloading' | 'loading' | 'title' | 'summary' | 'tags'
 
@@ -55,12 +56,12 @@ ${content}
 
 const tagsPrompt = (content: string): string =>
   `/no_think
-Podaj 3-5 krótkich tagów (słów kluczowych) opisujących temat poniższej notatki.
+Przypisz poniższą notatkę do pasujących kategorii z listy.
+Lista kategorii: ${NOTE_CATEGORIES.join(', ')}.
 Zasady:
-- Pojedyncze słowa lub krótkie frazy, oddzielone przecinkami.
-- Małe litery, bez # i bez numeracji.
-- Konkretne tematy lub kategorie, nie ogólniki jak "notatka".
-- Zwróć wyłącznie tagi w jednej linii.
+- Wybierz 1-2 kategorie, które najlepiej pasują. Jeśli żadna nie pasuje, napisz "brak".
+- Użyj WYŁĄCZNIE nazw z listy, oddzielonych przecinkiem.
+- Zwróć tylko nazwy kategorii, nic więcej.
 
 Notatka:
 """
@@ -147,19 +148,21 @@ const cleanSummary = (raw: string): string => {
   return stripBannedOpener(stripped)
 }
 
-// Tags come back comma- or line-separated; normalise to lowercase, strip
-// decoration and generic non-tags, dedupe and cap.
+// Classification, not generation: keep only outputs that exactly match a known
+// category (case-insensitive), mapped back to canonical casing. Anything else
+// (including "brak") is dropped, so the result is always a subset of the set.
+const CATEGORY_BY_LOWER = new Map<string, string>(
+  NOTE_CATEGORIES.map((c) => [c.toLowerCase(), c]),
+)
+
 const parseTags = (raw: string): string[] => {
   const cleaned = raw.replace(/<think>[\s\S]*?(<\/think>|$)/gi, '')
-  const tags = cleaned
+  const found = cleaned
     .replace(/\n/g, ',')
     .split(',')
-    .map((tag) => tag.trim().toLowerCase().replace(/^#/, '').replace(/["'`.]/g, '').trim())
-    .filter(
-      (tag) =>
-        tag.length >= 2 && tag.length <= 24 && !/^(tag|tagi|notatka|notatki|temat)$/.test(tag),
-    )
-  return Array.from(new Set(tags)).slice(0, 5)
+    .map((part) => CATEGORY_BY_LOWER.get(part.trim().toLowerCase().replace(/["'`.#]/g, '').trim()))
+    .filter((category): category is string => category !== undefined)
+  return Array.from(new Set(found)).slice(0, 2)
 }
 
 const normalize = (text: string): string =>

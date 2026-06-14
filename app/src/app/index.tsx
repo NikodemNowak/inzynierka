@@ -3,6 +3,7 @@ import { Link, Stack, useRouter } from 'expo-router'
 import { FlatList, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { useNotesStore } from '../state/notesStore'
 import type { Note } from '../domain/note'
+import { NOTE_CATEGORIES, isCategory } from '../domain/categories'
 
 const formatDate = (ms: number): string =>
   new Date(ms).toLocaleDateString('pl-PL', {
@@ -14,6 +15,7 @@ const formatDate = (ms: number): string =>
   })
 
 function NoteRow({ note, onPress }: { note: Note; onPress: () => void }) {
+  const categories = note.tags.filter(isCategory)
   return (
     <Pressable style={styles.row} onPress={onPress}>
       <Text style={styles.rowTitle} numberOfLines={1}>
@@ -24,9 +26,9 @@ function NoteRow({ note, onPress }: { note: Note; onPress: () => void }) {
           {note.summary?.trim() || note.content}
         </Text>
       )}
-      {note.tags.length > 0 && (
+      {categories.length > 0 && (
         <View style={styles.rowTags}>
-          {note.tags.map((tag) => (
+          {categories.map((tag) => (
             <Text key={tag} style={styles.rowTag}>
               {tag}
             </Text>
@@ -43,7 +45,7 @@ export default function NotesListScreen() {
   const router = useRouter()
   const [selectedTag, setSelectedTag] = useState<string | null>(null)
 
-  const allTags = Array.from(new Set(notes.flatMap((n) => n.tags))).sort()
+  const allTags = NOTE_CATEGORIES.filter((category) => notes.some((n) => n.tags.includes(category)))
   const visibleNotes = selectedTag ? notes.filter((n) => n.tags.includes(selectedTag)) : notes
 
   return (

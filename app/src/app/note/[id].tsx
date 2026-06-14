@@ -6,6 +6,7 @@ import type { ProcessingProgress } from '../../ai/noteProcessing'
 import { AudioNotePlayer } from '../../audio/AudioNotePlayer'
 import { NoteTasks } from '../../tasks/NoteTasks'
 import { NoteTags } from '../../tags/NoteTags'
+import { isCategory } from '../../domain/categories'
 
 const formatProcessingStatus = (progress: ProcessingProgress): string => {
   if (progress.phase === 'downloading') {
@@ -15,7 +16,7 @@ const formatProcessingStatus = (progress: ProcessingProgress): string => {
     return `Ładowanie modelu: ${(progress.percent ?? 0).toFixed(0)}%`
   }
   if (progress.phase === 'title') return 'Generowanie tytułu…'
-  if (progress.phase === 'tags') return 'Generowanie tagów…'
+  if (progress.phase === 'tags') return 'Dobieranie kategorii…'
   return 'Generowanie streszczenia…'
 }
 
@@ -41,7 +42,7 @@ export default function EditNoteScreen() {
   const [title, setTitle] = useState(note?.title ?? '')
   const [content, setContent] = useState(note?.content ?? '')
   const [summary, setSummary] = useState(note?.summary ?? '')
-  const [tags, setTags] = useState<string[]>(note?.tags ?? [])
+  const [tags, setTags] = useState<string[]>((note?.tags ?? []).filter(isCategory))
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
 
@@ -55,7 +56,7 @@ export default function EditNoteScreen() {
     if (wasProcessing.current && !processing && note) {
       setTitle(note.title)
       setSummary(note.summary ?? '')
-      setTags(note.tags)
+      setTags(note.tags.filter(isCategory))
     }
     wasProcessing.current = processing
   }, [processing, note])

@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { Button, Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
+import { Pressable, StyleSheet, Text, View } from 'react-native'
+import { NOTE_CATEGORIES } from '../domain/categories'
 
 export function NoteTags({
   tags,
@@ -10,45 +10,27 @@ export function NoteTags({
   onChange: (tags: string[]) => void
   editable: boolean
 }) {
-  const [input, setInput] = useState('')
-
-  const add = () => {
-    const tag = input.trim().toLowerCase()
-    if (tag.length > 0 && !tags.includes(tag)) onChange([...tags, tag])
-    setInput('')
-  }
-  const remove = (tag: string) => onChange(tags.filter((t) => t !== tag))
+  const toggle = (category: string) =>
+    onChange(tags.includes(category) ? tags.filter((t) => t !== category) : [...tags, category])
 
   return (
     <View style={styles.container}>
-      <Text style={styles.heading}>Tagi</Text>
+      <Text style={styles.heading}>Kategorie</Text>
       <View style={styles.chips}>
-        {tags.map((tag) => (
-          <View key={tag} style={styles.chip}>
-            <Text style={styles.chipText}>{tag}</Text>
-            {editable && (
-              <Pressable onPress={() => remove(tag)} hitSlop={6}>
-                <Text style={styles.chipX}>×</Text>
-              </Pressable>
-            )}
-          </View>
-        ))}
-        {tags.length === 0 && <Text style={styles.empty}>Brak tagów</Text>}
+        {NOTE_CATEGORIES.map((category) => {
+          const active = tags.includes(category)
+          return (
+            <Pressable
+              key={category}
+              disabled={!editable}
+              onPress={() => toggle(category)}
+              style={[styles.chip, active ? styles.chipActive : styles.chipInactive]}
+            >
+              <Text style={active ? styles.textActive : styles.textInactive}>{category}</Text>
+            </Pressable>
+          )
+        })}
       </View>
-      {editable && (
-        <View style={styles.addRow}>
-          <TextInput
-            value={input}
-            onChangeText={setInput}
-            placeholder="Dodaj tag"
-            autoCapitalize="none"
-            style={styles.input}
-            onSubmitEditing={add}
-            returnKeyType="done"
-          />
-          <Button title="Dodaj" onPress={add} />
-        </View>
-      )}
     </View>
   )
 }
@@ -56,19 +38,10 @@ export function NoteTags({
 const styles = StyleSheet.create({
   container: { gap: 8, marginTop: 4 },
   heading: { fontSize: 16, fontWeight: '700', color: '#111827' },
-  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, alignItems: 'center' },
-  chip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: '#E0F2FE',
-    borderRadius: 14,
-    paddingVertical: 5,
-    paddingHorizontal: 12,
-  },
-  chipText: { fontSize: 14, color: '#1F4E79' },
-  chipX: { fontSize: 16, color: '#1F4E79', fontWeight: '700' },
-  empty: { fontSize: 14, color: '#9CA3AF', fontStyle: 'italic' },
-  addRow: { flexDirection: 'row', gap: 8, alignItems: 'center' },
-  input: { flex: 1, borderWidth: 1, borderColor: '#ccc', borderRadius: 8, padding: 8, fontSize: 15 },
+  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  chip: { borderRadius: 16, paddingVertical: 6, paddingHorizontal: 14, borderWidth: 1 },
+  chipActive: { backgroundColor: '#1F4E79', borderColor: '#1F4E79' },
+  chipInactive: { backgroundColor: '#FFFFFF', borderColor: '#CBD5E1' },
+  textActive: { color: '#FFFFFF', fontSize: 14 },
+  textInactive: { color: '#374151', fontSize: 14 },
 })
