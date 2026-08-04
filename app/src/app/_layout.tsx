@@ -5,6 +5,7 @@ import { useNotesStore } from '../state/notesStore'
 import { useTasksStore } from '../state/tasksStore'
 import { useSettingsStore } from '../state/settingsStore'
 import { useModelStore } from '../state/modelStore'
+import { useDraftStore } from '../state/draftStore'
 import { startModelMemoryGuard } from '../ai/modelMemory'
 
 export default function RootLayout() {
@@ -12,13 +13,15 @@ export default function RootLayout() {
   const loadTasks = useTasksStore((state) => state.load)
   const loadSettings = useSettingsStore((state) => state.load)
   const refreshModel = useModelStore((state) => state.refresh)
+  const loadDraft = useDraftStore((state) => state.load)
 
   useEffect(() => {
     load()
     loadTasks()
     loadSettings()
     refreshModel()
-  }, [load, loadTasks, loadSettings, refreshModel])
+    loadDraft()
+  }, [load, loadTasks, loadSettings, refreshModel, loadDraft])
 
   useEffect(startModelMemoryGuard, [])
 

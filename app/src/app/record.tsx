@@ -1,7 +1,8 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Stack, useRouter } from 'expo-router'
 import { ActivityIndicator, Button, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { useNotesStore } from '../state/notesStore'
+import { useDraftStore } from '../state/draftStore'
 import { useSpeechRecorder, type RecordingResult } from '../stt/useSpeechRecorder'
 
 const formatDuration = (durationMs: number): string => {
@@ -31,12 +32,16 @@ export default function RecordNoteScreen() {
   const router = useRouter()
   const add = useNotesStore((state) => state.add)
   const processWithLlm = useNotesStore((state) => state.processWithLlm)
+  const saveDraft = useDraftStore((state) => state.save)
+  const clearDraft = useDraftStore((state) => state.clear)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
+  const startedAtRef = useRef(0)
 
   const handleComplete = useCallback(
     async (result: RecordingResult) => {
       if (result.transcript.trim().length === 0 && !result.audioUri) {
+        await clearDraft()
         setSaveError('Nie rozpoznano mowy ani nie zapisano nagrania')
         return
       }
@@ -51,6 +56,8 @@ export default function RecordNoteScreen() {
           audioUri: result.audioUri,
           durationMs: result.durationMs,
         })
+        // The recording made it into a note, so the recovery draft is obsolete.
+        await clearDraft()
         // Generate title + summary in the background; the store keeps running it
         // after we navigate away, and the note/list update when it lands.
         if (transcript.length > 0) void processWithLlm(note.id)
@@ -60,13 +67,23 @@ export default function RecordNoteScreen() {
         setSaving(false)
       }
     },
-    [add, processWithLlm, router],
+    [add, clearDraft, processWithLlm, router],
   )
 
   const recorder = useSpeechRecorder(handleComplete)
 
+  // Persist each recognized utterance. finalTranscript changes once per
+  // utterance rather than on every interim word, so this is one small write per
+  // sentence instead of one per keystroke-sized update.
+  const { finalTranscript, status } = recorder
+  useEffect(() => {
+    if (status !== 'recording' || finalTranscript.length === 0) return
+    void saveDraft(finalTranscript, startedAtRef.current)
+  }, [finalTranscript, status, saveDraft])
+
   const onStart = () => {
     setSaveError(null)
+    startedAtRef.current = Date.now()
     void recorder.start()
   }
 

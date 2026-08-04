@@ -6,6 +6,7 @@ import { useSettingsStore } from '../state/settingsStore'
 import { NOTE_CATEGORIES } from '../domain/categories'
 import { NoteRow } from '../notes/NoteRow'
 import { NotesToolbar } from '../notes/NotesToolbar'
+import { DraftBanner } from '../notes/DraftBanner'
 import { selectVisibleNotes } from '../notes/noteListView'
 
 export default function NotesListScreen() {
@@ -65,6 +66,8 @@ export default function NotesListScreen() {
           ),
         }}
       />
+
+      <DraftBanner />
 
       {notes.length === 0 ? (
         <Text style={styles.empty}>Brak notatek. Dodaj pierwszą przyciskiem „+ Nowa".</Text>
