@@ -40,11 +40,7 @@ export const extractTasks = async (
   onStatus: (status: string) => void,
 ): Promise<string[]> => {
   await ensureModelReady((progress) =>
-    onStatus(
-      progress.phase === 'downloading'
-        ? `Pobieranie modelu: ${(progress.percent ?? 0).toFixed(0)}%`
-        : `Ładowanie modelu: ${(progress.percent ?? 0).toFixed(0)}%`,
-    ),
+    onStatus(`Ładowanie modelu: ${(progress.percent ?? 0).toFixed(0)}%`),
   )
   onStatus('Szukanie zadań…')
   const result = await generate(tasksPrompt(content), () => undefined, {

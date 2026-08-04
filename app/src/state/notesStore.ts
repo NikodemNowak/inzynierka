@@ -5,6 +5,7 @@ import { processNoteWithLlm, type ProcessingProgress } from '../ai/noteProcessin
 import { enqueueLlm } from '../ai/llmQueue'
 import { deleteRecordingFile } from '../audio/audioFiles'
 import { useTasksStore } from './tasksStore'
+import { useModelStore } from './modelStore'
 
 interface NotesState {
   notes: Note[]
@@ -63,6 +64,9 @@ export const useNotesStore = create<NotesState>((set, get) => ({
     if (!note) return
     if (note.content.trim().length === 0) return
     if (get().processing[id]) return
+    // Without the model the note simply stays as recorded. Automatic processing
+    // after a recording must not turn into a demand to download gigabytes.
+    if (useModelStore.getState().status !== 'ready') return
 
     const setProgress = (progress: ProcessingProgress) =>
       set((state) => ({ processing: { ...state.processing, [id]: progress } }))

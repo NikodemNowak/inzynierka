@@ -1,14 +1,17 @@
 import { useState } from 'react'
 import { ActivityIndicator, Button, Pressable, StyleSheet, Text, View } from 'react-native'
 import { useTasksStore } from '../state/tasksStore'
+import { useModelStore } from '../state/modelStore'
 import { enqueueLlm } from '../ai/llmQueue'
 import { extractTasks } from '../ai/taskExtraction'
+import { MODEL_MISSING_MESSAGE } from '../ai/noteProcessing'
 
 export function NoteTasks({ noteId, content }: { noteId: string; content: string }) {
   const allTasks = useTasksStore((s) => s.tasks)
   const addForNote = useTasksStore((s) => s.addForNote)
   const toggle = useTasksStore((s) => s.toggle)
   const remove = useTasksStore((s) => s.remove)
+  const modelReady = useModelStore((s) => s.status === 'ready')
   const tasks = allTasks.filter((t) => t.noteId === noteId)
 
   const [proposals, setProposals] = useState<string[]>([])
@@ -59,7 +62,11 @@ export function NoteTasks({ noteId, content }: { noteId: string; content: string
         </View>
       ))}
       {tasks.length === 0 && proposals.length === 0 && !busy && (
-        <Text style={styles.empty}>Brak zadań — zaproponuj je na podstawie treści.</Text>
+        <Text style={styles.empty}>
+          {modelReady
+            ? 'Brak zadań — zaproponuj je na podstawie treści.'
+            : `Brak zadań. ${MODEL_MISSING_MESSAGE}`}
+        </Text>
       )}
 
       {proposals.length > 0 && (
@@ -78,7 +85,7 @@ export function NoteTasks({ noteId, content }: { noteId: string; content: string
       {status && <Text style={styles.status}>{status}</Text>}
       {busy && <ActivityIndicator />}
 
-      <Button title="Zaproponuj zadania" onPress={propose} disabled={busy} />
+      <Button title="Zaproponuj zadania" onPress={propose} disabled={busy || !modelReady} />
     </View>
   )
 }

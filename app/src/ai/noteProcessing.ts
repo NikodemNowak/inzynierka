@@ -1,8 +1,13 @@
 import { generate, isModelLoaded, loadModel } from './llm'
-import { downloadModel, getModelPath, isModelDownloaded } from './modelDownload'
+import { getModelPath, isModelDownloaded } from './modelDownload'
 import { NOTE_CATEGORIES } from '../domain/categories'
 
-export type ProcessingPhase = 'downloading' | 'loading' | 'title' | 'summary' | 'tags'
+export type ProcessingPhase = 'loading' | 'title' | 'summary' | 'tags'
+
+// Thrown instead of silently fetching 1 GB or more: the model only ever arrives
+// through an explicit request from the user, on the welcome or settings screen.
+export const MODEL_MISSING_MESSAGE =
+  'Model językowy nie jest pobrany. Włącz go w Ustawieniach, aby korzystać z funkcji AI.'
 
 export interface ProcessingProgress {
   phase: ProcessingPhase
@@ -218,10 +223,7 @@ const isUngrounded = (summary: string, content: string): boolean => {
 export const ensureModelReady = async (
   onProgress: (progress: ProcessingProgress) => void,
 ): Promise<void> => {
-  if (!(await isModelDownloaded())) {
-    onProgress({ phase: 'downloading', percent: 0 })
-    await downloadModel((percent) => onProgress({ phase: 'downloading', percent }))
-  }
+  if (!(await isModelDownloaded())) throw new Error(MODEL_MISSING_MESSAGE)
   if (!isModelLoaded()) {
     onProgress({ phase: 'loading', percent: 0 })
     await loadModel(getModelPath(), (percent) => onProgress({ phase: 'loading', percent }))

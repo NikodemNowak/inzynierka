@@ -3,17 +3,15 @@ import { Stack, useLocalSearchParams, useRouter } from 'expo-router'
 import { ActivityIndicator, Alert, Button, Pressable, ScrollView, Share, StyleSheet, Text, TextInput, View } from 'react-native'
 import { useNotesStore } from '../../state/notesStore'
 import { useTasksStore } from '../../state/tasksStore'
+import { useModelStore } from '../../state/modelStore'
 import { formatNoteAsText } from '../../export/noteText'
-import type { ProcessingProgress } from '../../ai/noteProcessing'
+import { MODEL_MISSING_MESSAGE, type ProcessingProgress } from '../../ai/noteProcessing'
 import { AudioNotePlayer } from '../../audio/AudioNotePlayer'
 import { NoteTasks } from '../../tasks/NoteTasks'
 import { NoteTags } from '../../tags/NoteTags'
 import { isCategory } from '../../domain/categories'
 
 const formatProcessingStatus = (progress: ProcessingProgress): string => {
-  if (progress.phase === 'downloading') {
-    return `Pobieranie modelu: ${(progress.percent ?? 0).toFixed(0)}%`
-  }
   if (progress.phase === 'loading') {
     return `Ładowanie modelu: ${(progress.percent ?? 0).toFixed(0)}%`
   }
@@ -33,6 +31,7 @@ export default function EditNoteScreen() {
   // Selected whole and filtered here on purpose: a selector that builds a new
   // array on every read is never reference-equal, which spins the store
   // subscription into an endless re-render.
+  const modelReady = useModelStore((state) => state.status === 'ready')
   const allTasks = useTasksStore((state) => state.tasks)
   const noteTasks = useMemo(() => allTasks.filter((t) => t.noteId === id), [allTasks, id])
   const router = useRouter()
@@ -193,8 +192,9 @@ export default function EditNoteScreen() {
       <Button
         title={processing ? 'Przetwarzanie…' : 'Przetwórz przez LLM'}
         onPress={processNote}
-        disabled={saving || processing}
+        disabled={saving || processing || !modelReady}
       />
+      {!modelReady && <Text style={styles.hint}>{MODEL_MISSING_MESSAGE}</Text>}
       {progress && <Text style={styles.status}>{formatProcessingStatus(progress)}</Text>}
       {processing && <ActivityIndicator />}
       <Button
@@ -234,6 +234,7 @@ const styles = StyleSheet.create({
   deleteWrap: { marginTop: 8 },
   status: { color: '#1F4E79', fontSize: 14 },
   error: { color: '#B91C1C', fontSize: 14 },
+  hint: { fontSize: 13, color: '#6B7280', fontStyle: 'italic' },
   headerAction: { fontSize: 16, color: '#1F4E79', fontWeight: '600', paddingHorizontal: 4 },
   headerActionDisabled: { color: '#9CA3AF' },
 })
