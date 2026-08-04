@@ -3,6 +3,7 @@ import type { Note, NoteInput } from '../domain/note'
 import * as repository from '../data/notesRepository'
 import { processNoteWithLlm, type ProcessingProgress } from '../ai/noteProcessing'
 import { enqueueLlm } from '../ai/llmQueue'
+import { deleteRecordingFile } from '../audio/audioFiles'
 import { useTasksStore } from './tasksStore'
 
 interface NotesState {
@@ -47,8 +48,10 @@ export const useNotesStore = create<NotesState>((set, get) => ({
     set({ notes: get().notes.map((n) => (n.id === id ? updated : n)).sort(byNewest) })
   },
   remove: async (id) => {
+    const note = get().notes.find((n) => n.id === id)
     await repository.deleteNote(id)
     await useTasksStore.getState().removeForNote(id)
+    await deleteRecordingFile(note?.audioUri ?? null)
     set((state) => {
       const { [id]: _p, ...processing } = state.processing
       const { [id]: _e, ...processingError } = state.processingError
