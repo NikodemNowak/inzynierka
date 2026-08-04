@@ -9,6 +9,18 @@ export const isModelDownloaded = async (): Promise<boolean> => {
   return info.exists && info.size > 0
 }
 
+export const getModelSizeBytes = async (): Promise<number> => {
+  const info = await FileSystem.getInfoAsync(getModelPath())
+  return info.exists ? info.size : 0
+}
+
+// Reclaiming the storage is the user's counterpart to agreeing to the download:
+// the model is the only thing this app ever fetched, so it must be removable.
+export const deleteModel = async (): Promise<void> => {
+  await FileSystem.deleteAsync(getModelPath(), { idempotent: true })
+  await FileSystem.deleteAsync(`${getModelPath()}.part`, { idempotent: true })
+}
+
 export const downloadModel = async (
   onProgress: (percent: number) => void,
 ): Promise<string> => {
