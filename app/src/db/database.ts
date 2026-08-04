@@ -28,6 +28,10 @@ const initDatabase = async (): Promise<SQLite.SQLiteDatabase> => {
       done INTEGER NOT NULL DEFAULT 0,
       createdAt INTEGER NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS settings (
+      key TEXT PRIMARY KEY NOT NULL,
+      value TEXT NOT NULL
+    );
   `)
   await addColumnIfMissing(db, 'notes', 'summary', 'TEXT')
   await addColumnIfMissing(db, 'notes', 'audioUri', 'TEXT')
