@@ -105,12 +105,16 @@ export default function NotesListScreen() {
           contentContainerStyle={styles.listContent}
         />
       )}
-      <Link href="/dev/poc" style={styles.devLink}>
-        Ekran dev: POC LLM
-      </Link>
-      <Link href="/dev/stt-probe" style={styles.devLink}>
-        Ekran dev: STT probe
-      </Link>
+      {__DEV__ && (
+        <>
+          <Link href="/dev/poc" style={styles.devLink}>
+            Ekran dev: POC LLM
+          </Link>
+          <Link href="/dev/stt-probe" style={styles.devLink}>
+            Ekran dev: STT probe
+          </Link>
+        </>
+      )}
     </View>
   )
 }
