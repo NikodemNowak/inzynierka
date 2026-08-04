@@ -1,11 +1,8 @@
 import * as FileSystem from 'expo-file-system/legacy'
-
-const MODEL_URL =
-  'https://huggingface.co/unsloth/Qwen3-1.7B-GGUF/resolve/main/Qwen3-1.7B-Q4_K_M.gguf'
-const MODEL_FILENAME = 'Qwen3-1.7B-Q4_K_M.gguf'
+import { MODEL_CONFIG } from './modelConfig'
 
 export const getModelPath = (): string =>
-  `${FileSystem.documentDirectory}${MODEL_FILENAME}`
+  `${FileSystem.documentDirectory}${MODEL_CONFIG.filename}`
 
 export const isModelDownloaded = async (): Promise<boolean> => {
   const info = await FileSystem.getInfoAsync(getModelPath())
@@ -25,7 +22,7 @@ export const downloadModel = async (
   await FileSystem.deleteAsync(tempPath, { idempotent: true })
 
   const download = FileSystem.createDownloadResumable(
-    MODEL_URL,
+    MODEL_CONFIG.url,
     tempPath,
     {},
     ({ totalBytesWritten, totalBytesExpectedToWrite }) => {
