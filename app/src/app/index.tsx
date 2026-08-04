@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Link, Redirect, Stack, useRouter } from 'expo-router'
-import { Button, FlatList, Pressable, StyleSheet, Text, View } from 'react-native'
+import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useNotesStore } from '../state/notesStore'
 import { useSettingsStore } from '../state/settingsStore'
 import { NOTE_CATEGORIES } from '../domain/categories'
@@ -8,6 +9,8 @@ import { NoteRow } from '../notes/NoteRow'
 import { NotesToolbar } from '../notes/NotesToolbar'
 import { DraftBanner } from '../notes/DraftBanner'
 import { selectVisibleNotes } from '../notes/noteListView'
+import { Button } from '../ui/Button'
+import { colors, spacing, type } from '../ui/theme'
 
 export default function NotesListScreen() {
   const notes = useNotesStore((state) => state.notes)
@@ -16,6 +19,7 @@ export default function NotesListScreen() {
   const settingsLoaded = useSettingsStore((state) => state.loaded)
   const onboardingCompleted = useSettingsStore((state) => state.onboardingCompleted)
   const router = useRouter()
+  const insets = useSafeAreaInsets()
 
   // Search text and the selected category are transient: reopening the list
   // should show everything, the way any search box behaves. Only the sort mode
@@ -33,34 +37,21 @@ export default function NotesListScreen() {
 
   // First run: explain what the app does and ask about the model download before
   // anything else happens. Waits for settings so the screen never flashes.
-  if (!settingsLoaded) return <View style={styles.container} />
+  if (!settingsLoaded) return <View style={styles.screen} />
   if (!onboardingCompleted) return <Redirect href="/welcome" />
 
   return (
-    <View style={styles.container}>
+    <View style={styles.screen}>
       <Stack.Screen
         options={{
           title: 'Notatki',
-          headerLeft: () => (
-            <View style={styles.headerActions}>
+          headerRight: () => (
+            <View style={styles.headerLinks}>
               <Pressable onPress={() => router.push('/tasks')} hitSlop={8}>
-                <Text style={styles.headerAction}>Zadania</Text>
+                <Text style={styles.headerLink}>Zadania</Text>
               </Pressable>
               <Pressable onPress={() => router.push('/settings')} hitSlop={8}>
-                <Text style={styles.headerAction}>Ustawienia</Text>
-              </Pressable>
-            </View>
-          ),
-          headerRight: () => (
-            <View style={styles.headerActions}>
-              <Pressable onPress={() => router.push('/record')} hitSlop={8}>
-                <Text style={styles.headerAction}>Nagraj</Text>
-              </Pressable>
-              <Pressable onPress={() => router.push('/import')} hitSlop={8}>
-                <Text style={styles.headerAction}>Wczytaj</Text>
-              </Pressable>
-              <Pressable onPress={() => router.push('/note/new')} hitSlop={8}>
-                <Text style={styles.headerAction}>+ Nowa</Text>
+                <Text style={styles.headerLink}>Ustawienia</Text>
               </Pressable>
             </View>
           ),
@@ -70,7 +61,12 @@ export default function NotesListScreen() {
       <DraftBanner />
 
       {notes.length === 0 ? (
-        <Text style={styles.empty}>Brak notatek. Dodaj pierwszą przyciskiem „+ Nowa".</Text>
+        <View style={styles.empty}>
+          <Text style={styles.emptyTitle}>Jeszcze nic tu nie ma</Text>
+          <Text style={styles.emptyBody}>
+            Nagraj pierwszą notatkę. Mowa zamieni się w tekst na tym urządzeniu.
+          </Text>
+        </View>
       ) : (
         <>
           <NotesToolbar
@@ -83,13 +79,14 @@ export default function NotesListScreen() {
             onSelectCategory={setCategory}
           />
           {visibleNotes.length === 0 ? (
-            <View style={styles.noResults}>
-              <Text style={styles.empty}>
+            <View style={styles.empty}>
+              <Text style={styles.emptyTitle}>Brak wyników</Text>
+              <Text style={styles.emptyBody}>
                 {query.trim().length > 0
-                  ? `Nic nie pasuje do „${query.trim()}".`
-                  : 'Brak notatek w tej kategorii.'}
+                  ? `Żadna notatka nie zawiera „${query.trim()}".`
+                  : 'Żadna notatka nie należy do tej kategorii.'}
               </Text>
-              <Button title="Wyczyść filtry" onPress={clearFilters} />
+              <Button label="Wyczyść filtry" onPress={clearFilters} style={styles.emptyAction} />
             </View>
           ) : (
             <FlatList
@@ -110,30 +107,60 @@ export default function NotesListScreen() {
         </>
       )}
 
+      {/* Recording is what the app is for, so it sits under the thumb rather
+          than crowded into the header with everything else. */}
+      <View style={[styles.actionBar, { paddingBottom: spacing.sm + insets.bottom }]}>
+        <Button label="Nagraj notatkę" variant="primary" onPress={() => router.push('/record')} />
+        <View style={styles.secondaryActions}>
+          <Button label="Wczytaj plik" variant="quiet" onPress={() => router.push('/import')} />
+          <Text style={styles.actionDivider}>·</Text>
+          <Button label="Wpisz ręcznie" variant="quiet" onPress={() => router.push('/note/new')} />
+        </View>
+      </View>
+
       {__DEV__ && (
-        <>
+        <View style={[styles.devBar, { paddingBottom: insets.bottom }]}>
           <Link href="/dev/poc" style={styles.devLink}>
-            Ekran dev: POC LLM
+            POC LLM
           </Link>
           <Link href="/dev/stt-probe" style={styles.devLink}>
-            Ekran dev: STT probe
+            STT probe
           </Link>
           <Link href="/dev/metrics" style={styles.devLink}>
-            Ekran dev: wydajność modelu
+            Wydajność
           </Link>
-        </>
+        </View>
       )}
     </View>
   )
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  listContent: { paddingVertical: 8 },
-  empty: { padding: 16, fontSize: 16, color: '#666' },
-  noResults: { alignItems: 'flex-start', gap: 4, paddingHorizontal: 16 },
-  separator: { height: 1, backgroundColor: '#eee', marginLeft: 16 },
-  headerActions: { flexDirection: 'row', gap: 12 },
-  headerAction: { fontSize: 16, color: '#1F4E79', fontWeight: '600', paddingHorizontal: 4 },
-  devLink: { padding: 16, fontSize: 13, color: '#999', textAlign: 'center' },
+  screen: { flex: 1, backgroundColor: colors.paper },
+  listContent: { paddingBottom: spacing.sm },
+  separator: { height: 1, backgroundColor: colors.line, marginLeft: spacing.lg },
+  headerLinks: { flexDirection: 'row', gap: spacing.lg },
+  headerLink: { ...type.label, color: colors.navy },
+  empty: { flex: 1, paddingHorizontal: spacing.lg, paddingTop: spacing.xxl, gap: spacing.sm },
+  emptyTitle: { ...type.title, color: colors.ink },
+  emptyBody: { ...type.body, color: colors.muted },
+  emptyAction: { alignSelf: 'flex-start', marginTop: spacing.sm },
+  actionBar: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: colors.line,
+    backgroundColor: colors.paper,
+    gap: spacing.xs,
+  },
+  secondaryActions: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
+  actionDivider: { color: colors.faint, paddingHorizontal: spacing.xs },
+  devBar: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: spacing.lg,
+    paddingBottom: spacing.sm,
+  },
+  devLink: { ...type.meta, color: colors.faint },
 })

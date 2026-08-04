@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Pressable, StyleSheet, Text, View } from 'react-native'
 import { useDraftStore } from '../state/draftStore'
 import { useNotesStore } from '../state/notesStore'
+import { colors, radius, spacing, type } from '../ui/theme'
 
 const formatTime = (ms: number): string =>
   new Date(ms).toLocaleString('pl-PL', {
@@ -70,20 +71,22 @@ export function DraftBanner() {
 }
 
 const styles = StyleSheet.create({
+  // Amber marks recording state elsewhere in the app; an interrupted recording
+  // is exactly that state, unfinished — so the banner belongs to the same family.
   container: {
-    margin: 16,
-    marginBottom: 0,
-    padding: 12,
-    gap: 6,
-    borderRadius: 10,
-    backgroundColor: '#FEF3C7',
+    marginHorizontal: spacing.lg,
+    marginTop: spacing.md,
+    padding: spacing.md,
+    gap: spacing.xs,
+    borderRadius: radius.md,
+    backgroundColor: colors.emberSoft,
     borderWidth: 1,
-    borderColor: '#FCD34D',
+    borderColor: '#F3D9B5',
   },
-  title: { fontSize: 15, fontWeight: '700', color: '#92400E' },
-  preview: { fontSize: 14, color: '#78350F' },
-  note: { fontSize: 12, color: '#92400E', fontStyle: 'italic' },
-  actions: { flexDirection: 'row', gap: 20, marginTop: 4 },
-  keep: { fontSize: 15, fontWeight: '600', color: '#1F4E79' },
-  discard: { fontSize: 15, fontWeight: '600', color: '#B91C1C' },
+  title: { ...type.label, color: colors.ember, fontSize: 14 },
+  preview: { ...type.body, color: colors.body },
+  note: { ...type.meta, color: colors.muted },
+  actions: { flexDirection: 'row', gap: spacing.xl, marginTop: spacing.xs },
+  keep: { ...type.label, color: colors.navy },
+  discard: { ...type.label, color: colors.danger },
 })

@@ -1,6 +1,8 @@
 import { useCallback, useState } from 'react'
 import { Stack, useRouter } from 'expo-router'
-import { ActivityIndicator, Button, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { ScrollView, StyleSheet, Text, View } from 'react-native'
+import { Button } from '../ui/Button'
+import { colors, radius, spacing, type } from '../ui/theme'
 import * as DocumentPicker from 'expo-document-picker'
 import { useNotesStore } from '../state/notesStore'
 import { useSpeechRecorder, type RecordingResult } from '../stt/useSpeechRecorder'
@@ -106,27 +108,24 @@ export default function ImportAudioScreen() {
       </View>
 
       <View style={styles.actions}>
-        <Button title="Wybierz plik audio" onPress={pickAndTranscribe} disabled={busy} />
+        <Button label="Wybierz plik audio" variant="primary" onPress={pickAndTranscribe} disabled={busy} busy={busy} />
       </View>
-      {busy && <ActivityIndicator />}
       {saving && <Text style={styles.status}>Zapisywanie notatki…</Text>}
     </ScrollView>
   )
 }
 
 const styles = StyleSheet.create({
-  container: { padding: 16, gap: 12 },
-  status: { color: '#1F4E79', fontSize: 16, textAlign: 'center' },
+  container: { padding: spacing.lg, gap: spacing.lg, backgroundColor: colors.paper },
+  status: { ...type.body, color: colors.muted, textAlign: 'center' },
   transcriptBox: {
-    borderWidth: 1,
-    borderColor: '#D1D5DB',
-    borderRadius: 8,
-    padding: 12,
-    minHeight: 160,
-    backgroundColor: '#F9FAFB',
+    borderRadius: radius.md,
+    padding: spacing.lg,
+    minHeight: 180,
+    backgroundColor: colors.surface,
   },
-  transcript: { fontSize: 17, lineHeight: 24, color: '#111827' },
-  placeholder: { fontSize: 15, color: '#9CA3AF', fontStyle: 'italic' },
-  actions: { marginTop: 8 },
-  error: { color: '#B91C1C', fontSize: 14, textAlign: 'center' },
+  transcript: { ...type.body, fontSize: 17, lineHeight: 26, color: colors.ink },
+  placeholder: { ...type.body, color: colors.faint },
+  actions: { marginTop: spacing.xs },
+  error: { ...type.body, color: colors.danger, textAlign: 'center' },
 })

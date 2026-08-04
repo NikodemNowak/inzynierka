@@ -1,15 +1,20 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native'
 import type { Note } from '../domain/note'
 import { isCategory } from '../domain/categories'
+import { colors, spacing, type } from '../ui/theme'
 
 const formatDate = (ms: number): string =>
   new Date(ms).toLocaleDateString('pl-PL', {
     day: '2-digit',
     month: '2-digit',
-    year: 'numeric',
     hour: '2-digit',
     minute: '2-digit',
   })
+
+const formatDuration = (ms: number): string => {
+  const totalSeconds = Math.round(ms / 1000)
+  return `${Math.floor(totalSeconds / 60)}:${(totalSeconds % 60).toString().padStart(2, '0')}`
+}
 
 interface NoteRowProps {
   note: Note
@@ -21,43 +26,43 @@ interface NoteRowProps {
 
 export function NoteRow({ note, timestamp, onPress }: NoteRowProps) {
   const categories = note.tags.filter(isCategory)
+  const preview = note.summary?.trim() || note.content.trim()
+
   return (
-    <Pressable style={styles.row} onPress={onPress}>
-      <Text style={styles.rowTitle} numberOfLines={1}>
-        {note.title.trim().length > 0 ? note.title : '(bez tytułu)'}
+    <Pressable
+      style={({ pressed }) => [styles.row, pressed && styles.pressed]}
+      onPress={onPress}
+      accessibilityRole="button"
+    >
+      <Text style={styles.title} numberOfLines={1}>
+        {note.title.trim().length > 0 ? note.title : 'Bez tytułu'}
       </Text>
-      {note.content.trim().length > 0 && (
-        <Text style={styles.rowPreview} numberOfLines={2}>
-          {note.summary?.trim() || note.content}
+
+      {preview.length > 0 && (
+        <Text style={styles.preview} numberOfLines={2}>
+          {preview}
         </Text>
       )}
-      {categories.length > 0 && (
-        <View style={styles.rowTags}>
-          {categories.map((tag) => (
-            <Text key={tag} style={styles.rowTag}>
-              {tag}
-            </Text>
-          ))}
-        </View>
-      )}
-      <Text style={styles.rowDate}>{formatDate(timestamp)}</Text>
+
+      <View style={styles.meta}>
+        <Text style={styles.time}>{formatDate(timestamp)}</Text>
+        {note.durationMs !== null && (
+          <Text style={styles.time}>· {formatDuration(note.durationMs)}</Text>
+        )}
+        {categories.length > 0 && <Text style={styles.categories}>· {categories.join(' · ')}</Text>}
+      </View>
     </Pressable>
   )
 }
 
 const styles = StyleSheet.create({
-  row: { paddingHorizontal: 16, paddingVertical: 12, gap: 4 },
-  rowTitle: { fontSize: 17, fontWeight: '600' },
-  rowPreview: { fontSize: 14, color: '#444' },
-  rowDate: { fontSize: 12, color: '#999' },
-  rowTags: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 2 },
-  rowTag: {
-    fontSize: 12,
-    color: '#1F4E79',
-    backgroundColor: '#E0F2FE',
-    borderRadius: 10,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    overflow: 'hidden',
-  },
+  row: { paddingHorizontal: spacing.lg, paddingVertical: spacing.md, gap: 3 },
+  pressed: { backgroundColor: colors.surface },
+  title: { ...type.title, color: colors.ink },
+  preview: { ...type.body, color: colors.muted },
+  // Time, length and categories read as one line of record metadata rather than
+  // three competing decorations.
+  meta: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, marginTop: 2 },
+  time: { ...type.meta, color: colors.faint },
+  categories: { ...type.meta, color: colors.navy },
 })

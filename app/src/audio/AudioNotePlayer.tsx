@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Pressable, StyleSheet, Text, View } from 'react-native'
 import { useAudioPlayer, useAudioPlayerStatus } from 'expo-audio'
+import { colors, radius, spacing, type } from '../ui/theme'
 
 type Props = {
   uri: string
@@ -128,51 +129,54 @@ export function AudioNotePlayer({ uri, durationMs }: Props) {
 
 const styles = StyleSheet.create({
   container: {
-    borderWidth: 1,
-    borderColor: '#D1D5DB',
-    borderRadius: 8,
-    padding: 12,
-    gap: 12,
-    backgroundColor: '#F9FAFB',
+    borderRadius: radius.md,
+    padding: spacing.md,
+    gap: spacing.md,
+    backgroundColor: colors.surface,
   },
-  topRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
+  topRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.md,
+  },
   playButton: {
-    backgroundColor: '#1F4E79',
-    borderRadius: 8,
-    paddingHorizontal: 16,
+    backgroundColor: colors.navy,
+    borderRadius: radius.sm,
+    paddingHorizontal: spacing.lg,
     paddingVertical: 9,
     minWidth: 76,
     alignItems: 'center',
   },
-  playButtonText: { color: '#FFFFFF', fontSize: 14, fontWeight: '700' },
-  timeText: { color: '#111827', fontSize: 14, fontVariant: ['tabular-nums'] },
+  playButtonText: { ...type.label, color: colors.paper },
+  timeText: { ...type.meta, color: colors.body, fontSize: 13 },
   waveform: {
-    height: 56,
+    height: 48,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 3,
   },
   waveformBar: {
     flex: 1,
-    borderRadius: 2,
+    borderRadius: 1,
   },
-  waveformBarActive: { backgroundColor: '#1F4E79' },
-  waveformBarInactive: { backgroundColor: '#CBD5E1' },
-  rateRow: { flexDirection: 'row', gap: 8 },
+  waveformBarActive: { backgroundColor: colors.navy },
+  waveformBarInactive: { backgroundColor: '#D5DBE3' },
+  rateRow: { flexDirection: 'row', gap: spacing.sm },
   rateButton: {
     flex: 1,
     borderWidth: 1,
-    borderColor: '#CBD5E1',
-    borderRadius: 8,
-    paddingVertical: 8,
+    borderColor: colors.line,
+    borderRadius: radius.sm,
+    paddingVertical: 7,
     alignItems: 'center',
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.paper,
   },
   rateButtonActive: {
-    backgroundColor: '#E0F2FE',
-    borderColor: '#1F4E79',
+    backgroundColor: colors.navySoft,
+    borderColor: colors.navy,
   },
-  rateText: { color: '#334155', fontSize: 13, fontWeight: '600' },
-  rateTextActive: { color: '#1F4E79' },
+  rateText: { ...type.meta, color: colors.muted, fontSize: 12 },
+  rateTextActive: { color: colors.navy },
   pressed: { opacity: 0.75 },
 })

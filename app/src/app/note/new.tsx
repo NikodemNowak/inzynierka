@@ -1,6 +1,9 @@
 import { useState } from 'react'
 import { Stack, useRouter } from 'expo-router'
-import { Button, ScrollView, StyleSheet, Text, TextInput } from 'react-native'
+import { ScrollView, StyleSheet, Text } from 'react-native'
+import { Button } from '../../ui/Button'
+import { Field } from '../../ui/Field'
+import { colors, spacing, type } from '../../ui/theme'
 import { useNotesStore } from '../../state/notesStore'
 
 export default function NewNoteScreen() {
@@ -39,51 +42,35 @@ export default function NewNoteScreen() {
     <ScrollView contentContainerStyle={styles.container}>
       <Stack.Screen options={{ title: 'Nowa notatka' }} />
       {error && <Text style={styles.error}>{error}</Text>}
-      <TextInput
-        value={title}
-        onChangeText={setTitle}
-        placeholder="Tytuł (opcjonalny)"
-        style={styles.title}
-      />
-      <TextInput
+      <Field label="Tytuł" value={title} onChangeText={setTitle} placeholder="Bez tytułu" />
+      <Field
+        label="Treść"
         value={content}
         onChangeText={setContent}
-        placeholder="Treść notatki"
+        placeholder="Wpisz treść notatki"
         multiline
-        style={styles.content}
+        minHeight={160}
       />
-      <TextInput
+      <Field
+        label="Streszczenie"
         value={summary}
         onChangeText={setSummary}
-        placeholder="Streszczenie (opcjonalne)"
+        placeholder="Opcjonalne"
         multiline
-        style={styles.summary}
+        minHeight={80}
       />
-      <Button title={saving ? 'Zapisywanie…' : 'Zapisz'} onPress={save} disabled={saving} />
+      <Button
+        label={saving ? 'Zapisuję…' : 'Zapisz notatkę'}
+        variant="primary"
+        onPress={save}
+        disabled={saving}
+        busy={saving}
+      />
     </ScrollView>
   )
 }
 
 const styles = StyleSheet.create({
-  container: { padding: 16, gap: 12 },
-  title: { borderWidth: 1, borderColor: '#ccc', borderRadius: 8, padding: 10, fontSize: 16 },
-  content: {
-    borderWidth: 1,
-    borderColor: '#ccc',
-    borderRadius: 8,
-    padding: 10,
-    fontSize: 16,
-    minHeight: 160,
-    textAlignVertical: 'top',
-  },
-  summary: {
-    borderWidth: 1,
-    borderColor: '#ccc',
-    borderRadius: 8,
-    padding: 10,
-    fontSize: 16,
-    minHeight: 96,
-    textAlignVertical: 'top',
-  },
-  error: { color: '#B91C1C', fontSize: 14 },
+  container: { padding: spacing.lg, gap: spacing.lg, backgroundColor: colors.paper },
+  error: { ...type.body, color: colors.danger },
 })

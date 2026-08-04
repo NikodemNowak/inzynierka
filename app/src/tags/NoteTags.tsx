@@ -1,5 +1,6 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native'
 import { NOTE_CATEGORIES } from '../domain/categories'
+import { colors, radius, spacing, type } from '../ui/theme'
 
 export function NoteTags({
   tags,
@@ -36,12 +37,23 @@ export function NoteTags({
 }
 
 const styles = StyleSheet.create({
-  container: { gap: 8, marginTop: 4 },
-  heading: { fontSize: 16, fontWeight: '700', color: '#111827' },
-  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  chip: { borderRadius: 16, paddingVertical: 6, paddingHorizontal: 14, borderWidth: 1 },
-  chipActive: { backgroundColor: '#1F4E79', borderColor: '#1F4E79' },
-  chipInactive: { backgroundColor: '#FFFFFF', borderColor: '#CBD5E1' },
-  textActive: { color: '#FFFFFF', fontSize: 14 },
-  textInactive: { color: '#374151', fontSize: 14 },
+  container: { gap: spacing.sm },
+  heading: {
+    ...type.label,
+    color: colors.muted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+    fontSize: 11,
+  },
+  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  chip: {
+    borderRadius: radius.pill,
+    paddingVertical: 6,
+    paddingHorizontal: spacing.md,
+    borderWidth: 1,
+  },
+  chipActive: { backgroundColor: colors.navy, borderColor: colors.navy },
+  chipInactive: { backgroundColor: colors.paper, borderColor: colors.line },
+  textActive: { ...type.label, color: colors.paper },
+  textInactive: { ...type.label, color: colors.body },
 })

@@ -2,6 +2,7 @@ import { Stack, useRouter } from 'expo-router'
 import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native'
 import { useTasksStore } from '../state/tasksStore'
 import { useNotesStore } from '../state/notesStore'
+import { colors, radius, spacing, type } from '../ui/theme'
 
 export default function TasksScreen() {
   const tasks = useTasksStore((s) => s.tasks)
@@ -11,16 +12,19 @@ export default function TasksScreen() {
 
   const titleFor = (noteId: string): string => {
     const note = notes.find((n) => n.id === noteId)
-    return note?.title?.trim() || '(notatka)'
+    return note?.title?.trim() || 'Bez tytułu'
   }
 
   return (
-    <View style={styles.container}>
+    <View style={styles.screen}>
       <Stack.Screen options={{ title: 'Zadania' }} />
       {tasks.length === 0 ? (
-        <Text style={styles.empty}>
-          Brak zadań. Otwórz notatkę i użyj „Zaproponuj zadania", aby je dodać.
-        </Text>
+        <View style={styles.empty}>
+          <Text style={styles.emptyTitle}>Brak zadań</Text>
+          <Text style={styles.emptyBody}>
+            Otwórz notatkę i wybierz „Zaproponuj zadania", aby wyciągnąć z niej listę do zrobienia.
+          </Text>
+        </View>
       ) : (
         <FlatList
           data={tasks}
@@ -29,13 +33,18 @@ export default function TasksScreen() {
           contentContainerStyle={styles.listContent}
           renderItem={({ item }) => (
             <View style={styles.row}>
-              <Pressable onPress={() => toggle(item.id)} hitSlop={8}>
+              <Pressable
+                onPress={() => toggle(item.id)}
+                hitSlop={10}
+                accessibilityRole="checkbox"
+                accessibilityState={{ checked: item.done }}
+              >
                 <View style={[styles.checkbox, item.done && styles.checkboxDone]} />
               </Pressable>
               <View style={styles.body}>
                 <Text style={[styles.text, item.done && styles.done]}>{item.text}</Text>
-                <Pressable onPress={() => router.push(`/note/${item.noteId}`)} hitSlop={4}>
-                  <Text style={styles.link}>← {titleFor(item.noteId)}</Text>
+                <Pressable onPress={() => router.push(`/note/${item.noteId}`)} hitSlop={6}>
+                  <Text style={styles.link}>{titleFor(item.noteId)}</Text>
                 </Pressable>
               </View>
             </View>
@@ -47,15 +56,30 @@ export default function TasksScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  listContent: { paddingVertical: 8 },
-  empty: { padding: 16, fontSize: 16, color: '#666' },
-  row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 12 },
-  checkbox: { width: 24, height: 24, borderRadius: 6, borderWidth: 2, borderColor: '#1F4E79' },
-  checkboxDone: { backgroundColor: '#1F4E79' },
+  screen: { flex: 1, backgroundColor: colors.paper },
+  listContent: { paddingVertical: spacing.sm },
+  empty: { paddingHorizontal: spacing.lg, paddingTop: spacing.xxl, gap: spacing.sm },
+  emptyTitle: { ...type.title, color: colors.ink },
+  emptyBody: { ...type.body, color: colors.muted },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.md,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+  },
+  checkbox: {
+    width: 20,
+    height: 20,
+    borderRadius: radius.sm,
+    borderWidth: 1.5,
+    borderColor: colors.navy,
+    marginTop: 2,
+  },
+  checkboxDone: { backgroundColor: colors.navy },
   body: { flex: 1, gap: 2 },
-  text: { fontSize: 16, color: '#111827' },
-  done: { textDecorationLine: 'line-through', color: '#9CA3AF' },
-  link: { fontSize: 13, color: '#1F4E79' },
-  separator: { height: 1, backgroundColor: '#eee', marginLeft: 52 },
+  text: { ...type.body, color: colors.ink },
+  done: { textDecorationLine: 'line-through', color: colors.faint },
+  link: { ...type.meta, color: colors.navy },
+  separator: { height: 1, backgroundColor: colors.line, marginLeft: 52 },
 })

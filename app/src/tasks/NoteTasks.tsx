@@ -1,5 +1,7 @@
 import { useState } from 'react'
-import { ActivityIndicator, Button, Pressable, StyleSheet, Text, View } from 'react-native'
+import { Pressable, StyleSheet, Text, View } from 'react-native'
+import { Button } from '../ui/Button'
+import { colors, radius, spacing, type } from '../ui/theme'
 import { useTasksStore } from '../state/tasksStore'
 import { useModelStore } from '../state/modelStore'
 import { enqueueLlm } from '../ai/llmQueue'
@@ -83,41 +85,52 @@ export function NoteTasks({ noteId, content }: { noteId: string; content: string
 
       {error && <Text style={styles.error}>{error}</Text>}
       {status && <Text style={styles.status}>{status}</Text>}
-      {busy && <ActivityIndicator />}
 
-      <Button title="Zaproponuj zadania" onPress={propose} disabled={busy || !modelReady} />
+      <Button
+        label="Zaproponuj zadania"
+        onPress={propose}
+        disabled={busy || !modelReady}
+        busy={busy}
+      />
     </View>
   )
 }
 
 const styles = StyleSheet.create({
-  container: { gap: 8, marginTop: 4 },
-  heading: { fontSize: 16, fontWeight: '700', color: '#111827' },
-  row: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  checkbox: {
-    width: 22,
-    height: 22,
-    borderRadius: 5,
-    borderWidth: 2,
-    borderColor: '#1F4E79',
+  container: { gap: spacing.sm },
+  heading: {
+    ...type.label,
+    color: colors.muted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+    fontSize: 11,
   },
-  checkboxDone: { backgroundColor: '#1F4E79' },
-  taskText: { flex: 1, fontSize: 15, color: '#111827' },
-  taskDone: { textDecorationLine: 'line-through', color: '#9CA3AF' },
-  removeX: { fontSize: 16, color: '#B91C1C', paddingHorizontal: 4 },
-  empty: { fontSize: 14, color: '#6B7280', fontStyle: 'italic' },
-  proposals: { gap: 6, paddingVertical: 4 },
-  proposalsTitle: { fontSize: 13, color: '#6B7280' },
+  row: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingVertical: 2 },
+  checkbox: {
+    width: 20,
+    height: 20,
+    borderRadius: radius.sm,
+    borderWidth: 1.5,
+    borderColor: colors.navy,
+  },
+  checkboxDone: { backgroundColor: colors.navy },
+  taskText: { ...type.body, flex: 1, color: colors.ink },
+  taskDone: { textDecorationLine: 'line-through', color: colors.faint },
+  removeX: { fontSize: 15, color: colors.faint, paddingHorizontal: spacing.xs },
+  empty: { ...type.body, color: colors.muted },
+  proposals: { gap: spacing.sm, paddingVertical: spacing.xs },
+  proposalsTitle: { ...type.meta, color: colors.muted },
   proposalRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    backgroundColor: '#EFF6FF',
-    borderRadius: 8,
-    padding: 10,
+    gap: spacing.sm,
+    backgroundColor: colors.navySoft,
+    borderRadius: radius.md,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
   },
-  proposalPlus: { fontSize: 18, color: '#1F4E79', fontWeight: '700' },
-  proposalText: { flex: 1, fontSize: 15, color: '#1F2937' },
-  error: { color: '#B91C1C', fontSize: 14 },
-  status: { color: '#1F4E79', fontSize: 14 },
+  proposalPlus: { fontSize: 17, color: colors.navy, fontWeight: '700' },
+  proposalText: { ...type.body, flex: 1, color: colors.ink },
+  error: { ...type.body, color: colors.danger },
+  status: { ...type.meta, color: colors.navy },
 })

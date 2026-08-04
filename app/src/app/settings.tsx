@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { Stack } from 'expo-router'
-import { ActivityIndicator, Alert, Button, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { Button } from '../ui/Button'
+import { colors, spacing, type } from '../ui/theme'
 import { useNotesStore } from '../state/notesStore'
 import { useTasksStore } from '../state/tasksStore'
 import { useModelStore } from '../state/modelStore'
@@ -44,23 +46,21 @@ function ModelSection() {
         <>
           <Text style={styles.value}>Nie pobrany</Text>
           <Button
-            title={`Pobierz model (~${approxGb(MODEL_CONFIG.approxSizeMb)})`}
+            label={`Pobierz model (~${approxGb(MODEL_CONFIG.approxSizeMb)})`}
+            variant="primary"
             onPress={() => void download()}
           />
         </>
       )}
 
       {status === 'downloading' && (
-        <>
-          <Text style={styles.value}>Pobieranie: {progress.toFixed(0)}%</Text>
-          <ActivityIndicator />
-        </>
+        <Text style={styles.value}>Pobieranie: {progress.toFixed(0)}%</Text>
       )}
 
       {status === 'ready' && (
         <>
           <Text style={styles.value}>Pobrany — {formatGb(sizeBytes)} na urządzeniu</Text>
-          <Button title="Usuń model" color="#B91C1C" onPress={confirmRemove} />
+          <Button label="Usuń model" variant="danger" onPress={confirmRemove} />
         </>
       )}
 
@@ -119,12 +119,12 @@ function DataSection() {
         audio, które zostają na urządzeniu.
       </Text>
       <Button
-        title={`Eksportuj notatki (${notes.length})`}
+        label={`Eksportuj notatki (${notes.length})`}
         onPress={exportAll}
         disabled={busy || notes.length === 0}
+        busy={busy}
       />
       {notes.length === 0 && <Text style={styles.hint}>Brak notatek do wyeksportowania.</Text>}
-      {busy && <ActivityIndicator />}
       {error && <Text style={styles.error}>{error}</Text>}
     </View>
   )
@@ -142,12 +142,18 @@ export default function SettingsScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { padding: 16, gap: 28 },
-  section: { gap: 10 },
-  heading: { fontSize: 17, fontWeight: '700', color: '#111827' },
-  description: { fontSize: 14, color: '#4B5563', lineHeight: 20 },
-  listItem: { fontSize: 14, color: '#4B5563', lineHeight: 20, paddingLeft: 4 },
-  value: { fontSize: 15, color: '#1F4E79', fontWeight: '600' },
-  hint: { fontSize: 13, color: '#6B7280', fontStyle: 'italic' },
-  error: { color: '#B91C1C', fontSize: 14 },
+  container: { padding: spacing.lg, gap: spacing.xl, backgroundColor: colors.paper },
+  section: { gap: spacing.md },
+  heading: {
+    ...type.label,
+    color: colors.muted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+    fontSize: 11,
+  },
+  description: { ...type.body, color: colors.body },
+  listItem: { ...type.body, color: colors.body, paddingLeft: spacing.xs },
+  value: { ...type.body, color: colors.ink, fontWeight: '600' },
+  hint: { ...type.meta, color: colors.muted },
+  error: { ...type.body, color: colors.danger },
 })

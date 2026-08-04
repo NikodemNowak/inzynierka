@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router'
-import { ActivityIndicator, Alert, Button, Pressable, ScrollView, Share, StyleSheet, Text, TextInput, View } from 'react-native'
+import { Alert, Pressable, ScrollView, Share, StyleSheet, Text, View } from 'react-native'
+import { Button } from '../../ui/Button'
+import { Field } from '../../ui/Field'
+import { colors, spacing, type } from '../../ui/theme'
 import { useNotesStore } from '../../state/notesStore'
 import { useTasksStore } from '../../state/tasksStore'
 import { useModelStore } from '../../state/modelStore'
@@ -71,8 +74,8 @@ export default function EditNoteScreen() {
     return (
       <View style={styles.container}>
         <Stack.Screen options={{ title: 'Notatka' }} />
-        <Text style={styles.error}>Nie znaleziono notatki.</Text>
-        <Button title="Wróć do listy" onPress={goToList} />
+        <Text style={styles.error}>Ta notatka już nie istnieje.</Text>
+        <Button label="Wróć do listy" onPress={goToList} />
       </View>
     )
   }
@@ -165,76 +168,68 @@ export default function EditNoteScreen() {
       {error && <Text style={styles.error}>{error}</Text>}
       {processError && !processing && <Text style={styles.error}>{processError}</Text>}
       {note.audioUri && <AudioNotePlayer uri={note.audioUri} durationMs={note.durationMs} />}
-      <TextInput
+
+      <Field
+        label="Tytuł"
         value={title}
         onChangeText={setTitle}
-        placeholder="Tytuł (opcjonalny)"
-        style={styles.title}
+        placeholder="Bez tytułu"
         editable={!processing}
+        textStyle={styles.titleText}
       />
-      <TextInput
+      <Field
+        label="Transkrypcja"
         value={content}
         onChangeText={setContent}
         placeholder="Treść notatki"
         multiline
-        style={styles.content}
+        minHeight={140}
         editable={!processing}
       />
-      <TextInput
+      <Field
+        label="Streszczenie"
         value={summary}
         onChangeText={setSummary}
-        placeholder="Streszczenie (opcjonalne)"
+        placeholder="Wygeneruj lub napisz własne"
         multiline
-        style={styles.summary}
+        minHeight={80}
         editable={!processing}
       />
+
       <NoteTags tags={tags} onChange={setTags} editable={!processing} />
+
       <Button
-        title={processing ? 'Przetwarzanie…' : 'Przetwórz przez LLM'}
+        label={processing ? 'Przetwarzam…' : 'Przetwórz lokalnym modelem'}
         onPress={processNote}
         disabled={saving || processing || !modelReady}
+        busy={processing}
       />
       {!modelReady && <Text style={styles.hint}>{MODEL_MISSING_MESSAGE}</Text>}
       {progress && <Text style={styles.status}>{formatProcessingStatus(progress)}</Text>}
-      {processing && <ActivityIndicator />}
       <Button
-        title={saving ? 'Zapisywanie…' : 'Zapisz'}
+        label={saving ? 'Zapisuję…' : 'Zapisz zmiany'}
+        variant="primary"
         onPress={save}
         disabled={saving || processing}
+        busy={saving}
       />
+
+      <View style={styles.divider} />
       <NoteTasks noteId={note.id} content={content} />
-      <View style={styles.deleteWrap}>
-        <Button title="Usuń" color="#B91C1C" onPress={confirmDelete} disabled={processing} />
-      </View>
+
+      <View style={styles.divider} />
+      <Button label="Usuń notatkę" variant="danger" onPress={confirmDelete} disabled={processing} />
     </ScrollView>
   )
 }
 
 const styles = StyleSheet.create({
-  container: { padding: 16, gap: 12 },
-  title: { borderWidth: 1, borderColor: '#ccc', borderRadius: 8, padding: 10, fontSize: 16 },
-  content: {
-    borderWidth: 1,
-    borderColor: '#ccc',
-    borderRadius: 8,
-    padding: 10,
-    fontSize: 16,
-    minHeight: 160,
-    textAlignVertical: 'top',
-  },
-  summary: {
-    borderWidth: 1,
-    borderColor: '#ccc',
-    borderRadius: 8,
-    padding: 10,
-    fontSize: 16,
-    minHeight: 96,
-    textAlignVertical: 'top',
-  },
-  deleteWrap: { marginTop: 8 },
-  status: { color: '#1F4E79', fontSize: 14 },
-  error: { color: '#B91C1C', fontSize: 14 },
-  hint: { fontSize: 13, color: '#6B7280', fontStyle: 'italic' },
-  headerAction: { fontSize: 16, color: '#1F4E79', fontWeight: '600', paddingHorizontal: 4 },
-  headerActionDisabled: { color: '#9CA3AF' },
+  container: { padding: spacing.lg, gap: spacing.lg, backgroundColor: colors.paper },
+  titleText: { ...type.title },
+  divider: { height: 1, backgroundColor: colors.line, marginVertical: spacing.xs },
+  status: { ...type.meta, color: colors.navy },
+  error: { ...type.body, color: colors.danger },
+  hint: { ...type.meta, color: colors.muted },
+  headerAction: { ...type.label, color: colors.navy },
+  headerActionDisabled: { color: colors.faint },
 })

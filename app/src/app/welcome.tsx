@@ -1,5 +1,7 @@
 import { Stack, useRouter } from 'expo-router'
-import { Button, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { ScrollView, StyleSheet, Text, View } from 'react-native'
+import { Button } from '../ui/Button'
+import { colors, spacing, type } from '../ui/theme'
 import { useModelStore } from '../state/modelStore'
 import { useSettingsStore } from '../state/settingsStore'
 import { MODEL_CONFIG } from '../ai/modelConfig'
@@ -59,13 +61,15 @@ export default function WelcomeScreen() {
       ) : (
         <View style={styles.actions}>
           <Button
-            title={
+            label={
               downloading
-                ? `Pobieranie… ${progress.toFixed(0)}%`
+                ? `Pobieram… ${progress.toFixed(0)}%`
                 : `Pobierz model (~${Math.round(MODEL_CONFIG.approxSizeMb / 10) / 100} GB)`
             }
+            variant="primary"
             onPress={startDownload}
             disabled={downloading}
+            busy={downloading}
           />
           <Text style={styles.hint}>
             Możesz też zacząć bez modelu — nagrywanie, transkrypcja i notatki działają od razu, a
@@ -77,7 +81,8 @@ export default function WelcomeScreen() {
       {error && <Text style={styles.error}>{error}</Text>}
 
       <Button
-        title={downloading ? 'Przejdź do notatek (pobieranie trwa w tle)' : 'Przejdź do notatek'}
+        label={downloading ? 'Przejdź do notatek — pobieranie trwa w tle' : 'Przejdź do notatek'}
+        variant={downloading ? 'secondary' : 'primary'}
         onPress={finish}
       />
     </ScrollView>
@@ -85,13 +90,13 @@ export default function WelcomeScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { padding: 20, gap: 18 },
-  heading: { fontSize: 24, fontWeight: '700', color: '#111827', lineHeight: 30 },
-  point: { gap: 4 },
-  pointTitle: { fontSize: 16, fontWeight: '600', color: '#1F4E79' },
-  pointBody: { fontSize: 14, color: '#4B5563', lineHeight: 20 },
-  actions: { gap: 8, marginTop: 4 },
-  hint: { fontSize: 13, color: '#6B7280', lineHeight: 18 },
-  ready: { fontSize: 15, color: '#2E7D32', fontWeight: '600' },
-  error: { color: '#B91C1C', fontSize: 14 },
+  container: { padding: spacing.xl, gap: spacing.xl, backgroundColor: colors.paper },
+  heading: { ...type.display, color: colors.ink },
+  point: { gap: spacing.xs },
+  pointTitle: { ...type.label, color: colors.navy, fontSize: 14 },
+  pointBody: { ...type.body, color: colors.body },
+  actions: { gap: spacing.md },
+  hint: { ...type.meta, color: colors.muted, lineHeight: 18 },
+  ready: { ...type.body, color: colors.success, fontWeight: '600' },
+  error: { ...type.body, color: colors.danger },
 })
