@@ -16,6 +16,9 @@ export const normalizeForSearch = (text: string): string =>
     .toLocaleLowerCase('pl')
     .normalize('NFD')
     .replace(/\p{M}/gu, '')
+    // Ł is a distinct letter, not L with a mark, so Unicode decomposition leaves
+    // it alone. Without this, "sluzbowa" would never find "służbowa".
+    .replace(/ł/g, 'l')
 
 // Every word of the query has to appear somewhere, in any order: "aneks czerwca"
 // finds a note mentioning both. Matching is on substrings, so inflected forms
