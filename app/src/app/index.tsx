@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link, Stack, useRouter } from 'expo-router'
+import { Link, Redirect, Stack, useRouter } from 'expo-router'
 import { Button, FlatList, Pressable, StyleSheet, Text, View } from 'react-native'
 import { useNotesStore } from '../state/notesStore'
 import { useSettingsStore } from '../state/settingsStore'
@@ -12,6 +12,8 @@ export default function NotesListScreen() {
   const notes = useNotesStore((state) => state.notes)
   const sortMode = useSettingsStore((state) => state.sortMode)
   const setSortMode = useSettingsStore((state) => state.setSortMode)
+  const settingsLoaded = useSettingsStore((state) => state.loaded)
+  const onboardingCompleted = useSettingsStore((state) => state.onboardingCompleted)
   const router = useRouter()
 
   // Search text and the selected category are transient: reopening the list
@@ -27,6 +29,11 @@ export default function NotesListScreen() {
     setQuery('')
     setCategory(null)
   }
+
+  // First run: explain what the app does and ask about the model download before
+  // anything else happens. Waits for settings so the screen never flashes.
+  if (!settingsLoaded) return <View style={styles.container} />
+  if (!onboardingCompleted) return <Redirect href="/welcome" />
 
   return (
     <View style={styles.container}>
