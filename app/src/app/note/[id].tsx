@@ -1,7 +1,9 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router'
-import { ActivityIndicator, Alert, Button, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
+import { ActivityIndicator, Alert, Button, Pressable, ScrollView, Share, StyleSheet, Text, TextInput, View } from 'react-native'
 import { useNotesStore } from '../../state/notesStore'
+import { useTasksStore } from '../../state/tasksStore'
+import { formatNoteAsText } from '../../export/noteText'
 import type { ProcessingProgress } from '../../ai/noteProcessing'
 import { AudioNotePlayer } from '../../audio/AudioNotePlayer'
 import { NoteTasks } from '../../tasks/NoteTasks'
@@ -28,6 +30,11 @@ export default function EditNoteScreen() {
   const processWithLlm = useNotesStore((state) => state.processWithLlm)
   const progress = useNotesStore((state) => (id ? state.processing[id] : undefined))
   const processError = useNotesStore((state) => (id ? state.processingError[id] : undefined))
+  // Selected whole and filtered here on purpose: a selector that builds a new
+  // array on every read is never reference-equal, which spins the store
+  // subscription into an endless re-render.
+  const allTasks = useTasksStore((state) => state.tasks)
+  const noteTasks = useMemo(() => allTasks.filter((t) => t.noteId === id), [allTasks, id])
   const router = useRouter()
 
   // Return to the list even when this screen was opened without a back entry
@@ -113,6 +120,21 @@ export default function EditNoteScreen() {
     await processWithLlm(note.id)
   }
 
+  // Shares what is on screen rather than what is stored, so unsaved edits are
+  // not silently dropped from the shared text. A cancelled share sheet is a
+  // normal outcome, not an error.
+  const shareNote = async () => {
+    const text = formatNoteAsText(
+      { ...note, title: title.trim(), content: content.trim(), summary: summary.trim() || null, tags },
+      noteTasks,
+    )
+    try {
+      await Share.share({ message: text })
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    }
+  }
+
   const confirmDelete = () => {
     Alert.alert('Usunąć notatkę?', 'Tej operacji nie można cofnąć.', [
       { text: 'Anuluj', style: 'cancel' },
@@ -129,7 +151,18 @@ export default function EditNoteScreen() {
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
-      <Stack.Screen options={{ title: 'Edycja notatki' }} />
+      <Stack.Screen
+        options={{
+          title: 'Edycja notatki',
+          headerRight: () => (
+            <Pressable onPress={shareNote} hitSlop={8} disabled={processing}>
+              <Text style={[styles.headerAction, processing && styles.headerActionDisabled]}>
+                Udostępnij
+              </Text>
+            </Pressable>
+          ),
+        }}
+      />
       {error && <Text style={styles.error}>{error}</Text>}
       {processError && !processing && <Text style={styles.error}>{processError}</Text>}
       {note.audioUri && <AudioNotePlayer uri={note.audioUri} durationMs={note.durationMs} />}
@@ -201,4 +234,6 @@ const styles = StyleSheet.create({
   deleteWrap: { marginTop: 8 },
   status: { color: '#1F4E79', fontSize: 14 },
   error: { color: '#B91C1C', fontSize: 14 },
+  headerAction: { fontSize: 16, color: '#1F4E79', fontWeight: '600', paddingHorizontal: 4 },
+  headerActionDisabled: { color: '#9CA3AF' },
 })
