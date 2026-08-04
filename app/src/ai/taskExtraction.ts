@@ -1,5 +1,7 @@
 import { generate } from './llm'
 import { ensureModelReady } from './noteProcessing'
+import { parseTasks } from './noteOutput'
+import { recordGeneration } from './generationMetrics'
 
 const TASKS_SYSTEM =
   'Wypisujesz konkretne zadania do zrobienia z polskich notatek. Odpowiadasz wyłącznie po polsku.'
@@ -18,23 +20,6 @@ Notatka:
 ${content}
 """`
 
-// The model returns a loose list; pull out one task per line, drop bullets,
-// numbering and any leaked instruction/heading lines. Small models over-produce,
-// so cap the count.
-const parseTasks = (raw: string): string[] => {
-  const cleaned = raw.replace(/<think>[\s\S]*?(<\/think>|$)/gi, '')
-  return cleaned
-    .split('\n')
-    .map((line) => line.trim().replace(/^[-*•\d.)\s]+/, '').trim())
-    .filter(
-      (line) =>
-        line.length > 1 &&
-        !/^(zasady|notatka|zadania|wypisz)\b/i.test(line) &&
-        !line.includes('"""'),
-    )
-    .slice(0, 8)
-}
-
 export const extractTasks = async (
   content: string,
   onStatus: (status: string) => void,
@@ -47,5 +32,6 @@ export const extractTasks = async (
     system: TASKS_SYSTEM,
     nPredict: 200,
   })
+  recordGeneration('tasks', content.length, result)
   return parseTasks(result.text)
 }
