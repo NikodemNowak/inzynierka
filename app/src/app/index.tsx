@@ -118,6 +118,9 @@ export default function NotesListScreen() {
           <Link href="/dev/stt-probe" style={styles.devLink}>
             Ekran dev: STT probe
           </Link>
+          <Link href="/dev/metrics" style={styles.devLink}>
+            Ekran dev: wydajność modelu
+          </Link>
         </>
       )}
     </View>

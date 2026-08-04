@@ -2,6 +2,7 @@ import * as FileSystem from 'expo-file-system/legacy'
 import * as Sharing from 'expo-sharing'
 import type { Note } from '../domain/note'
 import type { Task } from '../domain/task'
+import { listMetrics, type GenerationMetric } from '../data/metricsRepository'
 
 const EXPORT_VERSION = 1
 
@@ -27,6 +28,9 @@ export interface ExportPayload {
   version: number
   exportedAt: number
   notes: ExportedNote[]
+  // Performance measurements travel with the export so the numbers behind the
+  // stated criteria can be read off a device that is not attached to a debugger.
+  metrics: GenerationMetric[]
 }
 
 // The app has no cloud sync, so this file is the only way a user's own data can
@@ -38,9 +42,11 @@ export const buildExportPayload = (
   notes: readonly Note[],
   tasks: readonly Task[],
   exportedAt: number,
+  metrics: readonly GenerationMetric[] = [],
 ): ExportPayload => ({
   version: EXPORT_VERSION,
   exportedAt,
+  metrics: [...metrics],
   notes: notes.map((note) => ({
     id: note.id,
     title: note.title,
@@ -71,7 +77,7 @@ export const shareNotesExport = async (
   }
 
   const exportedAt = Date.now()
-  const payload = buildExportPayload(notes, tasks, exportedAt)
+  const payload = buildExportPayload(notes, tasks, exportedAt, await listMetrics())
   // Written to the cache directory: the file exists only to hand over to the
   // share sheet, and the system may reclaim it afterwards.
   const path = `${FileSystem.cacheDirectory}${exportFileName(exportedAt)}`

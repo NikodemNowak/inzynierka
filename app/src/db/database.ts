@@ -32,6 +32,15 @@ const initDatabase = async (): Promise<SQLite.SQLiteDatabase> => {
       key TEXT PRIMARY KEY NOT NULL,
       value TEXT NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS metrics (
+      id TEXT PRIMARY KEY NOT NULL,
+      phase TEXT NOT NULL,
+      model TEXT NOT NULL,
+      inputChars INTEGER NOT NULL,
+      ttftMs INTEGER NOT NULL,
+      tokensPerSecond REAL NOT NULL,
+      createdAt INTEGER NOT NULL
+    );
   `)
   await addColumnIfMissing(db, 'notes', 'summary', 'TEXT')
   await addColumnIfMissing(db, 'notes', 'audioUri', 'TEXT')
