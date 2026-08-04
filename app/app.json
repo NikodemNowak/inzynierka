@@ -49,9 +49,12 @@
         {
           "microphonePermission": "Pozwól aplikacji Notatki na nagrywanie dźwięku.",
           "speechRecognitionPermission": "Pozwól aplikacji Notatki na rozpoznawanie mowy.",
-          "androidSpeechServicePackages": ["com.google.android.googlequicksearchbox"]
+          "androidSpeechServicePackages": [
+            "com.google.android.googlequicksearchbox"
+          ]
         }
-      ]
+      ],
+      "expo-sharing"
     ]
   }
 }
