@@ -1,5 +1,7 @@
 import { getDatabase } from '../db/database'
 import type { Note, NoteInput } from '../domain/note'
+import * as FileSystem from 'expo-file-system/legacy'
+import { resolveRecordingUri, toStoredRecordingPath } from '../audio/audioPath'
 
 // Tags are stored as a JSON array string in the `tags` TEXT column.
 type NoteRow = Omit<Note, 'tags'> & { tags: string | null }
@@ -17,7 +19,19 @@ const parseTags = (raw: string | null): string[] => {
   }
 }
 
-const toNote = (row: NoteRow): Note => ({ ...row, tags: parseTags(row.tags) })
+const toNote = (row: NoteRow): Note => ({
+  ...row,
+  tags: parseTags(row.tags),
+  audioUri:
+    row.audioUri && FileSystem.documentDirectory
+      ? resolveRecordingUri(row.audioUri, FileSystem.documentDirectory)
+      : row.audioUri,
+})
+
+const storedAudioPath = (uri: string | null): string | null =>
+  uri && FileSystem.documentDirectory
+    ? toStoredRecordingPath(uri, FileSystem.documentDirectory)
+    : uri
 
 export const listNotes = async (): Promise<Note[]> => {
   const db = await getDatabase()
@@ -53,7 +67,7 @@ export const createNote = async (input: NoteInput): Promise<Note> => {
       note.content,
       note.summary,
       JSON.stringify(note.tags),
-      note.audioUri,
+      storedAudioPath(note.audioUri),
       note.durationMs,
       note.createdAt,
       note.updatedAt,
@@ -72,7 +86,7 @@ export const updateNote = async (id: string, input: NoteInput): Promise<Note> =>
       input.content,
       input.summary,
       JSON.stringify(input.tags),
-      input.audioUri,
+      storedAudioPath(input.audioUri),
       input.durationMs,
       now,
       id,

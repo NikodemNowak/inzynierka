@@ -158,18 +158,18 @@ export const useSpeechRecorder = (
     })
   }
 
-  // Joins the recorded parts into the single file the note refers to. A failure
-  // here must not cost the recording, so the first part is kept as a fallback.
+  // Ignore zero-frame sessions and join the parts that actually contain audio.
+  // A missing or invalid recording must not be attached to an otherwise valid note.
   const resolveAudio = async (): Promise<string | null> => {
+    if (sourceRef.current) return sourceRef.current.uri
     const parts = audioPartsRef.current
     if (parts.length === 0) return null
-    if (parts.length === 1) return parts[0] ?? null
     try {
       const target = `${RECORDINGS_DIR}${Date.now().toString(36)}-full.wav`
       const { uri } = await concatWavFiles(parts, target)
       return uri
     } catch {
-      return parts[0] ?? null
+      return null
     }
   }
 

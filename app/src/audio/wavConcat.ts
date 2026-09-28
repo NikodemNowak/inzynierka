@@ -1,9 +1,27 @@
-import { File } from 'expo-file-system'
+import { File, FileMode } from 'expo-file-system'
 
 const HEADER_BYTES = 44
 const SAMPLE_RATE = 16000
 const CHANNELS = 1
 const BITS_PER_SAMPLE = 16
+
+export const findWavData = (header: Uint8Array): { offset: number; size: number } | null => {
+  if (header.length < 12) return null
+  const ascii = (offset: number, length: number) =>
+    String.fromCharCode(...header.subarray(offset, offset + length))
+  if (ascii(0, 4) !== 'RIFF' || ascii(8, 4) !== 'WAVE') {
+    throw new Error('Nieprawidłowy plik WAV')
+  }
+
+  const view = new DataView(header.buffer, header.byteOffset, header.byteLength)
+  let offset = 12
+  while (offset + 8 <= header.length) {
+    const size = view.getUint32(offset + 4, true)
+    if (ascii(offset, 4) === 'data') return { offset: offset + 8, size }
+    offset += 8 + size + (size % 2)
+  }
+  return null
+}
 
 // A restarted recognition session writes its own file, so a recording that was
 // interrupted arrives as several parts. They all share the format we request
@@ -44,29 +62,39 @@ export interface ConcatResult {
   durationMs: number
 }
 
-// Copies a part's samples into the writer without holding the file in memory.
-// The leading header has to be dropped, and it may straddle the first chunks,
-// so the skip is tracked across reads.
+const readWavDataInfo = (file: File): { offset: number; size: number } => {
+  const handle = file.open(FileMode.ReadOnly)
+  try {
+    const header = handle.readBytes(Math.min(file.size ?? 0, 64 * 1024))
+    const info = findWavData(header)
+    if (!info || info.offset + info.size > (file.size ?? 0)) {
+      throw new Error('Niekompletny plik WAV')
+    }
+    return info
+  } finally {
+    handle.close()
+  }
+}
+
+// Copy only the PCM data chunk. Core Audio's WAV header can include a 4 KiB
+// FLLR chunk, so skipping a fixed 44 bytes would copy header padding as audio.
 const pipeSamples = async (
   file: File,
+  info: { offset: number; size: number },
   writer: WritableStreamDefaultWriter<Uint8Array>,
 ): Promise<void> => {
-  const reader = file.readableStream().getReader()
-  let toSkip = HEADER_BYTES
+  const handle = file.open(FileMode.ReadOnly)
   try {
-    for (;;) {
-      const { done, value } = await reader.read()
-      if (done) break
-      if (value === undefined) continue
-      if (toSkip >= value.length) {
-        toSkip -= value.length
-        continue
-      }
-      await writer.write(toSkip > 0 ? value.subarray(toSkip) : value)
-      toSkip = 0
+    handle.offset = info.offset
+    let remaining = info.size
+    while (remaining > 0) {
+      const bytes = handle.readBytes(Math.min(remaining, 64 * 1024))
+      if (bytes.length === 0) throw new Error('Niekompletny plik WAV')
+      await writer.write(bytes)
+      remaining -= bytes.length
     }
   } finally {
-    reader.releaseLock()
+    handle.close()
   }
 }
 
@@ -76,13 +104,18 @@ export const concatWavFiles = async (
   partUris: readonly string[],
   targetUri: string,
 ): Promise<ConcatResult> => {
-  const parts = partUris.map((uri) => new File(uri)).filter((file) => file.exists)
+  const parts = partUris
+    .map((uri) => ({ uri, file: new File(uri) }))
+    .filter(({ file }) => file.exists)
+    .map(({ uri, file }) => ({ uri, file, info: readWavDataInfo(file) }))
+    .filter(({ info }) => info.size > 0)
   if (parts.length === 0) throw new Error('Brak plików do połączenia')
+  if (parts.length === 1) {
+    const part = parts[0]!
+    return { uri: part.uri, durationMs: wavDurationMs(part.info.size) }
+  }
 
-  const dataBytes = parts.reduce(
-    (total, file) => total + Math.max(0, (file.size ?? 0) - HEADER_BYTES),
-    0,
-  )
+  const dataBytes = parts.reduce((total, part) => total + part.info.size, 0)
 
   const target = new File(targetUri)
   if (target.exists) target.delete()
@@ -91,9 +124,14 @@ export const concatWavFiles = async (
   const writer = target.writableStream().getWriter()
   try {
     await writer.write(buildWavHeader(dataBytes))
-    for (const part of parts) await pipeSamples(part, writer)
-  } finally {
+    for (const part of parts) await pipeSamples(part.file, part.info, writer)
     await writer.close()
+  } catch (error) {
+    try {
+      await writer.abort()
+    } catch {}
+    if (target.exists) target.delete()
+    throw error
   }
 
   return { uri: targetUri, durationMs: wavDurationMs(dataBytes) }
