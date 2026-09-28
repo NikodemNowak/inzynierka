@@ -145,6 +145,17 @@ export const useSpeechRecorder = (
       continuous: true,
       requiresOnDeviceRecognition: true,
       addsPunctuation: true,
+      ...(Platform.OS === 'ios'
+        ? {
+            // Avoid the persistent playback attenuation reported with the
+            // recognizer's default "measurement" mode on iOS.
+            iosCategory: {
+              category: 'playAndRecord' as const,
+              categoryOptions: ['defaultToSpeaker' as const, 'allowBluetooth' as const],
+              mode: 'default' as const,
+            },
+          }
+        : {}),
       ...(source
         ? { audioSource: { uri: source.uri } }
         : {
