@@ -178,6 +178,16 @@ export const useSpeechRecorder = (
     finalizedRef.current = true
     stopTimer()
     setBoth('idle')
+    if (Platform.OS === 'ios') {
+      // The recognizer stops its engine but leaves the shared audio session active.
+      // Deactivate only after its final end event so playback can start a fresh
+      // session without the volume reduction left behind by recognition.
+      try {
+        ExpoSpeechRecognitionModule.setAudioSessionActiveIOS(false)
+      } catch {
+        // Keep the captured note even if iOS refuses to deactivate the session.
+      }
+    }
     const elapsed = startTimeRef.current > 0 ? Date.now() - startTimeRef.current : 0
     void resolveAudio().then((audioUri) => {
       onCompleteRef.current({ transcript: composeTranscript(), audioUri, durationMs: elapsed })
