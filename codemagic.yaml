@@ -11,7 +11,7 @@ workflows:
       - name: Install dependencies
         script: |
           cd app
-          npm ci
+          npm ci --legacy-peer-deps
       - name: Generate iOS project
         script: |
           cd app
