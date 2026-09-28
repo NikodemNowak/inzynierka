@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
-import { Pressable, StyleSheet, Text, View } from 'react-native'
-import { useAudioPlayer, useAudioPlayerStatus } from 'expo-audio'
+import { Platform, Pressable, StyleSheet, Text, View } from 'react-native'
+import { setAudioModeAsync, useAudioPlayer, useAudioPlayerStatus } from 'expo-audio'
 import { colors, radius, spacing, type } from '../ui/theme'
 
 type Props = {
@@ -37,6 +37,7 @@ export function AudioNotePlayer({ uri, durationMs }: Props) {
   const player = useAudioPlayer({ uri }, { updateInterval: 250 })
   const status = useAudioPlayerStatus(player)
   const [scrubberWidth, setScrubberWidth] = useState(0)
+  const [playbackError, setPlaybackError] = useState<string | null>(null)
 
   const bars = useMemo(() => createWaveformBars(uri), [uri])
   const durationSeconds = status.duration > 0 ? status.duration : (durationMs ?? 0) / 1000
@@ -44,12 +45,23 @@ export function AudioNotePlayer({ uri, durationMs }: Props) {
   const progress = durationSeconds > 0 ? currentSeconds / durationSeconds : 0
   const activeRate = status.playbackRate || 1
 
-  const togglePlayback = () => {
+  const togglePlayback = async () => {
     if (status.playing) {
       player.pause()
       return
     }
-    player.play()
+    setPlaybackError(null)
+    try {
+      // Speech recognition leaves the shared iOS audio session in recording mode.
+      // Restore speaker playback before starting the player.
+      if (Platform.OS === 'ios') {
+        await setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true })
+      }
+      if (status.didJustFinish) await player.seekTo(0)
+      player.play()
+    } catch (error) {
+      setPlaybackError(error instanceof Error ? error.message : String(error))
+    }
   }
 
   const seekToPosition = (locationX: number) => {
@@ -68,7 +80,7 @@ export function AudioNotePlayer({ uri, durationMs }: Props) {
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={status.playing ? 'Pauza' : 'Odtwórz'}
-          onPress={togglePlayback}
+          onPress={() => void togglePlayback()}
           style={({ pressed }) => [styles.playButton, pressed && styles.pressed]}
         >
           <Text style={styles.playButtonText}>{status.playing ? 'Pauza' : 'Play'}</Text>
@@ -77,6 +89,9 @@ export function AudioNotePlayer({ uri, durationMs }: Props) {
           {formatAudioTime(currentSeconds)} / {formatAudioTime(durationSeconds)}
         </Text>
       </View>
+      {(playbackError || status.error) && (
+        <Text style={styles.error}>{playbackError || status.error}</Text>
+      )}
 
       <Pressable
         accessibilityRole="adjustable"
@@ -150,6 +165,7 @@ const styles = StyleSheet.create({
   },
   playButtonText: { ...type.label, color: colors.paper },
   timeText: { ...type.meta, color: colors.body, fontSize: 13 },
+  error: { ...type.meta, color: colors.danger },
   waveform: {
     height: 48,
     flexDirection: 'row',
