@@ -243,13 +243,9 @@ export const useSpeechRecorder = (
 
     setInfo('Pobieranie modelu języka offline (≈40 MB)…')
     try {
-      const result = await ExpoSpeechRecognitionModule.androidTriggerOfflineModelDownload({
+      await ExpoSpeechRecognitionModule.androidTriggerOfflineModelDownload({
         locale: LOCALE,
       })
-      if (result.status === 'download_canceled') {
-        setError('Pobieranie modelu języka zostało anulowane')
-        return false
-      }
       return true
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
