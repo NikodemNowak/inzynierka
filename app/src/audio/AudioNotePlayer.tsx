@@ -1,6 +1,11 @@
 import { useMemo, useState } from 'react'
 import { Platform, Pressable, StyleSheet, Text, View } from 'react-native'
-import { setAudioModeAsync, useAudioPlayer, useAudioPlayerStatus } from 'expo-audio'
+import {
+  setAudioModeAsync,
+  setIsAudioActiveAsync,
+  useAudioPlayer,
+  useAudioPlayerStatus,
+} from 'expo-audio'
 import { colors, radius, spacing, type } from '../ui/theme'
 
 type Props = {
@@ -52,10 +57,16 @@ export function AudioNotePlayer({ uri, durationMs }: Props) {
     }
     setPlaybackError(null)
     try {
-      // Speech recognition leaves the shared iOS audio session in recording mode.
-      // Restore speaker playback before starting the player.
+      // Speech recognition leaves the shared iOS session active. Switching its
+      // category while active does not restore normal playback volume, so stop
+      // the session first. player.play() activates it again in playback mode.
       if (Platform.OS === 'ios') {
-        await setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true })
+        await setIsAudioActiveAsync(false)
+        await setAudioModeAsync({
+          allowsRecording: false,
+          playsInSilentMode: true,
+          interruptionMode: 'doNotMix',
+        })
       }
       if (status.didJustFinish) await player.seekTo(0)
       player.play()
