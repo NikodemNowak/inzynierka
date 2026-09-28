@@ -1,0 +1,43 @@
+workflows:
+  ios-unsigned:
+    name: iOS unsigned device build
+    instance_type: mac_mini_m2
+    max_build_duration: 120
+    environment:
+      node: v22.11.0
+      xcode: latest
+      cocoapods: default
+    scripts:
+      - name: Install dependencies
+        script: |
+          cd app
+          npm ci
+      - name: Generate iOS project
+        script: |
+          cd app
+          npx expo prebuild --platform ios --no-install
+      - name: Install CocoaPods dependencies
+        script: |
+          cd app/ios
+          pod install
+      - name: Build for iPhone without signing
+        script: |
+          cd app
+          xcodebuild \
+            -workspace ios/Notatki.xcworkspace \
+            -scheme Notatki \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath "$CM_BUILD_DIR/ios-build" \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+      - name: Package unsigned IPA
+        script: |
+          set -eu
+          mkdir -p "$CM_BUILD_DIR/ipa/Payload"
+          cp -R "$CM_BUILD_DIR/ios-build/Build/Products/Release-iphoneos/Notatki.app" "$CM_BUILD_DIR/ipa/Payload/"
+          cd "$CM_BUILD_DIR/ipa"
+          zip -qry -y "$CM_BUILD_DIR/Notatki-unsigned.ipa" Payload
+    artifacts:
+      - Notatki-unsigned.ipa
+      - /tmp/xcodebuild_logs/*.log
