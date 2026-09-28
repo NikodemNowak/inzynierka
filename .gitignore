@@ -13,7 +13,7 @@
 *.bbl
 *.blg
 
-# ─── React Native / Expo (kod apki dojdzie później) ───
+# ─── React Native / Expo ───
 node_modules/
 .expo/
 .expo-shared/
@@ -53,3 +53,7 @@ Thumbs.db
 .vscode/
 .idea/
 *.swp
+
+# Lokalne instrukcje dla agentów — poza repozytorium
+AGENTS.md
+CLAUDE.md
