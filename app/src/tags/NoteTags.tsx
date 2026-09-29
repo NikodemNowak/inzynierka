@@ -42,10 +42,7 @@ const styles = StyleSheet.create({
   container: { gap: spacing.sm },
   heading: {
     ...type.label,
-    color: colors.muted,
-    textTransform: 'uppercase',
-    letterSpacing: 0.6,
-    fontSize: 11,
+    color: colors.navy,
   },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   chip: {
@@ -55,8 +52,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     borderWidth: 1,
   },
-  chipActive: { backgroundColor: colors.navy, borderColor: colors.navy },
+  chipActive: { backgroundColor: colors.navySoft, borderColor: colors.navySoft },
   chipInactive: { backgroundColor: colors.paper, borderColor: colors.line },
-  textActive: { ...type.label, color: colors.paper },
+  textActive: { ...type.label, color: colors.navy },
   textInactive: { ...type.label, color: colors.body },
 })

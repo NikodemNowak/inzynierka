@@ -10,6 +10,7 @@ export default function TasksScreen() {
   const toggle = useTasksStore((s) => s.toggle)
   const notes = useNotesStore((s) => s.notes)
   const router = useRouter()
+  const pending = tasks.filter((task) => !task.done).length
 
   const titleFor = (noteId: string): string => {
     const note = notes.find((n) => n.id === noteId)
@@ -29,10 +30,17 @@ export default function TasksScreen() {
         </View>
       ) : (
         <FlatList
+          style={styles.list}
           data={tasks}
           keyExtractor={(t) => t.id}
           ItemSeparatorComponent={() => <View style={styles.separator} />}
           contentContainerStyle={styles.listContent}
+          ListHeaderComponent={
+            <View style={styles.listHeader}>
+              <Text style={styles.listTitle}>Do zrobienia</Text>
+              <Text style={styles.count}>{pending} z {tasks.length}</Text>
+            </View>
+          }
           renderItem={({ item }) => (
             <View style={styles.row}>
               <Pressable
@@ -48,7 +56,12 @@ export default function TasksScreen() {
               </Pressable>
               <View style={styles.body}>
                 <Text style={[styles.text, item.done && styles.done]}>{item.text}</Text>
-                <Pressable onPress={() => router.push(`/note/${item.noteId}`)} hitSlop={6}>
+                <Pressable
+                  onPress={() => router.push(`/note/${item.noteId}`)}
+                  hitSlop={6}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Otwórz notatkę ${titleFor(item.noteId)}`}
+                >
                   <Text style={styles.link}>{titleFor(item.noteId)}</Text>
                 </Pressable>
               </View>
@@ -61,18 +74,36 @@ export default function TasksScreen() {
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.paper },
-  listContent: { paddingVertical: spacing.sm },
-  empty: { paddingHorizontal: spacing.lg, paddingTop: spacing.xxl, gap: spacing.sm },
+  screen: { flex: 1, backgroundColor: colors.canvas },
+  list: {
+    flexGrow: 0,
+    margin: spacing.lg,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.line,
+    backgroundColor: colors.paper,
+  },
+  listContent: { paddingBottom: spacing.sm },
+  listHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.sm,
+  },
+  listTitle: { ...type.title, color: colors.ink },
+  count: { ...type.label, color: colors.navy },
+  empty: { paddingHorizontal: spacing.xl, paddingTop: spacing.xxl, gap: spacing.sm },
   emptyTitle: { ...type.title, color: colors.ink },
   emptyBody: { ...type.body, color: colors.muted },
   emptyAction: { alignSelf: 'flex-start', marginTop: spacing.sm },
   row: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    gap: spacing.sm,
+    gap: spacing.md,
     paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
+    paddingVertical: spacing.lg,
   },
   checkboxButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   checkbox: {
@@ -86,9 +117,9 @@ const styles = StyleSheet.create({
   },
   checkboxDone: { backgroundColor: colors.navy },
   checkmark: { color: colors.paper, fontSize: 14, lineHeight: 18, fontWeight: '700' },
-  body: { flex: 1, gap: 2 },
+  body: { flex: 1, gap: spacing.xs },
   text: { ...type.body, color: colors.ink },
   done: { textDecorationLine: 'line-through', color: colors.faint },
-  link: { ...type.meta, color: colors.navy },
-  separator: { height: 1, backgroundColor: colors.line, marginLeft: 52 },
+  link: { ...type.label, color: colors.navy, fontWeight: '500' },
+  separator: { height: 1, backgroundColor: colors.line, marginLeft: 68 },
 })

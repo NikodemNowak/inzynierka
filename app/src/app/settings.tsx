@@ -92,26 +92,17 @@ function ModelSection() {
 
 function PrivacySection() {
   return (
-    <View style={styles.section}>
-      <Text style={styles.heading} accessibilityRole="header">
+    <View style={styles.privacySection}>
+      <Text style={styles.privacyHeading} accessibilityRole="header">
         Prywatność
       </Text>
-      <Text style={styles.description}>
-        Nagrania i notatki są zapisane tylko na tym urządzeniu. Aplikacja nie wymaga konta ani nie
-        synchronizuje danych.
+      <Text style={styles.privacyLead}>
+        Twoje nagrania i notatki zostają na telefonie.
       </Text>
-      <View style={styles.privacyRow}>
-        <Text style={styles.privacyLabel}>Transkrypcja</Text>
-        <Text style={styles.privacyDetail}>Lokalnie, gdy systemowy model języka jest dostępny.</Text>
-      </View>
-      <View style={styles.privacyRow}>
-        <Text style={styles.privacyLabel}>Podsumowania</Text>
-        <Text style={styles.privacyDetail}>Model uruchamia się na tym telefonie.</Text>
-      </View>
-      <View style={styles.privacyRow}>
-        <Text style={styles.privacyLabel}>Internet</Text>
-        <Text style={styles.privacyDetail}>Model AI pobiera się tylko po Twojej decyzji.</Text>
-      </View>
+      <Text style={styles.privacyBody}>
+        Bez konta i synchronizacji. Transkrypcja działa lokalnie, gdy system ma odpowiedni model
+        języka. Model AI pobierasz tylko po własnej decyzji; później działa offline.
+      </Text>
     </View>
   )
 }
@@ -156,7 +147,7 @@ function DataSection() {
 
 export default function SettingsScreen() {
   return (
-    <ScrollView contentContainerStyle={styles.container}>
+    <ScrollView style={styles.screen} contentContainerStyle={styles.container}>
       <Stack.Screen options={{ title: 'Ustawienia' }} />
       <ModelSection />
       <PrivacySection />
@@ -166,27 +157,36 @@ export default function SettingsScreen() {
 }
 
 const styles = StyleSheet.create({
+  screen: { backgroundColor: colors.canvas },
   container: {
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.xl,
     paddingBottom: spacing.xxl,
-    backgroundColor: colors.paper,
+    gap: spacing.lg,
   },
   section: {
     gap: spacing.md,
-    paddingBottom: spacing.xl,
-    marginBottom: spacing.xl,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.line,
+    padding: spacing.lg,
+    borderRadius: radius.lg,
+    backgroundColor: colors.paper,
+    borderWidth: 1,
+    borderColor: colors.line,
   },
-  lastSection: { gap: spacing.md },
-  heading: { ...type.title, color: colors.ink },
+  lastSection: {
+    gap: spacing.md,
+    padding: spacing.lg,
+    borderRadius: radius.lg,
+    backgroundColor: colors.paper,
+    borderWidth: 1,
+    borderColor: colors.line,
+  },
+  heading: { ...type.title, color: colors.ink, fontSize: 19, lineHeight: 25 },
   description: { ...type.body, color: colors.body },
   statusPanel: {
     backgroundColor: colors.surface,
     borderRadius: radius.md,
     padding: spacing.lg,
-    gap: spacing.xs,
+    gap: spacing.sm,
   },
   value: { ...type.body, color: colors.ink, fontWeight: '600' },
   detail: { ...type.label, color: colors.muted, fontWeight: '400' },
@@ -199,9 +199,15 @@ const styles = StyleSheet.create({
   },
   progressFill: { height: '100%', backgroundColor: colors.navy },
   removeButton: { alignSelf: 'flex-start' },
-  privacyRow: { flexDirection: 'row', gap: spacing.md },
-  privacyDetail: { ...type.body, color: colors.body, flex: 1 },
-  privacyLabel: { ...type.label, color: colors.ink, width: 110, paddingTop: 2 },
+  privacySection: {
+    gap: spacing.md,
+    padding: spacing.xl,
+    borderRadius: radius.lg,
+    backgroundColor: colors.navy,
+  },
+  privacyHeading: { ...type.label, color: '#DCEAF6', letterSpacing: 0.5 },
+  privacyLead: { ...type.title, color: colors.paper, fontSize: 20, lineHeight: 27 },
+  privacyBody: { ...type.body, color: '#EAF0F6' },
   hint: { ...type.meta, color: colors.muted },
   error: { ...type.body, color: colors.danger },
 })

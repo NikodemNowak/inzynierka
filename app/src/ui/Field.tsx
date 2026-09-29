@@ -12,8 +12,7 @@ interface FieldProps {
   textStyle?: TextStyle
 }
 
-// A labelled rule instead of a box. The note screen is mostly text the user
-// dictated; boxing every part of it turns a record into a form.
+// Keep long dictated text easy to scan and edit without boxing every field.
 export function Field({
   label,
   value,
@@ -48,13 +47,10 @@ export function Field({
 }
 
 const styles = StyleSheet.create({
-  container: { gap: spacing.xs },
+  container: { gap: spacing.sm },
   label: {
     ...type.label,
-    color: colors.muted,
-    textTransform: 'uppercase',
-    letterSpacing: 0.6,
-    fontSize: 12,
+    color: colors.navy,
   },
   input: {
     ...type.body,

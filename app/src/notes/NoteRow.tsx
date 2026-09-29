@@ -56,13 +56,13 @@ export function NoteRow({ note, timestamp, onPress }: NoteRowProps) {
 }
 
 const styles = StyleSheet.create({
-  row: { paddingHorizontal: spacing.lg, paddingVertical: spacing.md, gap: 3 },
+  row: { paddingHorizontal: spacing.lg, paddingVertical: spacing.lg, gap: spacing.xs },
   pressed: { backgroundColor: colors.surface },
-  title: { ...type.title, color: colors.ink },
-  preview: { ...type.body, color: colors.muted },
+  title: { ...type.title, color: colors.ink, fontSize: 17, lineHeight: 23 },
+  preview: { ...type.body, color: colors.body },
   // Time, length and categories read as one line of record metadata rather than
   // three competing decorations.
-  meta: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, marginTop: 2 },
-  time: { ...type.meta, color: colors.faint },
-  categories: { ...type.meta, color: colors.navy },
+  meta: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, marginTop: spacing.xs },
+  time: { ...type.meta, color: colors.muted },
+  categories: { ...type.label, color: colors.navy, fontSize: 12 },
 })

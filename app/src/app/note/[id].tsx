@@ -189,7 +189,7 @@ export default function EditNoteScreen() {
         onChangeText={setContent}
         placeholder="Treść notatki"
         multiline
-        minHeight={140}
+        minHeight={content.trim().length > 0 ? 140 : 72}
         editable={!processing}
       />
       <Field
@@ -198,7 +198,7 @@ export default function EditNoteScreen() {
         onChangeText={setSummary}
         placeholder="Wygeneruj lub napisz własne"
         multiline
-        minHeight={80}
+        minHeight={summary.trim().length > 0 ? 80 : 48}
         editable={!processing}
       />
 

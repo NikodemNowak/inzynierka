@@ -10,7 +10,7 @@ import { NotesToolbar } from '../notes/NotesToolbar'
 import { DraftBanner } from '../notes/DraftBanner'
 import { selectVisibleNotes } from '../notes/noteListView'
 import { Button } from '../ui/Button'
-import { colors, spacing, type } from '../ui/theme'
+import { colors, radius, spacing, type } from '../ui/theme'
 
 export default function NotesListScreen() {
   const notes = useNotesStore((state) => state.notes)
@@ -98,6 +98,7 @@ export default function NotesListScreen() {
             </View>
           ) : (
             <FlatList
+              style={styles.list}
               data={visibleNotes}
               keyExtractor={(item) => item.id}
               renderItem={({ item }) => (
@@ -144,19 +145,27 @@ export default function NotesListScreen() {
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.paper },
+  screen: { flex: 1, backgroundColor: colors.canvas },
+  list: {
+    marginHorizontal: spacing.lg,
+    marginBottom: spacing.lg,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.line,
+    backgroundColor: colors.paper,
+  },
   listContent: { paddingBottom: spacing.sm },
   separator: { height: 1, backgroundColor: colors.line, marginLeft: spacing.lg },
   headerLinks: { flexDirection: 'row', gap: spacing.md },
   headerAction: { minHeight: 44, justifyContent: 'center' },
   headerLink: { ...type.label, color: colors.navy },
-  empty: { flex: 1, paddingHorizontal: spacing.lg, paddingTop: spacing.xxl, gap: spacing.sm },
+  empty: { flex: 1, paddingHorizontal: spacing.xl, paddingTop: spacing.xxl, gap: spacing.sm },
   emptyTitle: { ...type.title, color: colors.ink },
   emptyBody: { ...type.body, color: colors.muted },
   emptyAction: { alignSelf: 'flex-start', marginTop: spacing.sm },
   actionBar: {
     paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
+    paddingTop: spacing.lg,
     paddingBottom: spacing.sm,
     borderTopWidth: 1,
     borderTopColor: colors.line,

@@ -91,13 +91,14 @@ export default function ImportAudioScreen() {
   const error = saveError ?? recorder.error
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
+    <ScrollView style={styles.screen} contentContainerStyle={styles.container}>
       <Stack.Screen options={{ title: 'Import audio' }} />
       <Text style={styles.status}>{statusLabel(recorder.status)}</Text>
       {recorder.info && <Text style={styles.status}>{recorder.info}</Text>}
       {error && <Text style={styles.error}>{error}</Text>}
 
       <View style={styles.transcriptBox}>
+        <Text style={styles.transcriptLabel}>Transkrypcja</Text>
         {recorder.transcript.length > 0 ? (
           <Text style={styles.transcript}>{recorder.transcript}</Text>
         ) : (
@@ -116,16 +117,21 @@ export default function ImportAudioScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { padding: spacing.lg, gap: spacing.lg, backgroundColor: colors.paper },
+  screen: { backgroundColor: colors.canvas },
+  container: { padding: spacing.lg, gap: spacing.lg },
   status: { ...type.body, color: colors.muted, textAlign: 'center' },
   transcriptBox: {
-    borderRadius: radius.md,
-    padding: spacing.lg,
-    minHeight: 180,
-    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
+    padding: spacing.xl,
+    minHeight: 200,
+    gap: spacing.lg,
+    backgroundColor: colors.paper,
+    borderWidth: 1,
+    borderColor: colors.line,
   },
+  transcriptLabel: { ...type.label, color: colors.navy },
   transcript: { ...type.body, fontSize: 17, lineHeight: 26, color: colors.ink },
-  placeholder: { ...type.body, color: colors.faint },
+  placeholder: { ...type.body, color: colors.muted },
   actions: { marginTop: spacing.xs },
   error: { ...type.body, color: colors.danger, textAlign: 'center' },
 })

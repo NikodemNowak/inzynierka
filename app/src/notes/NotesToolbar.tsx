@@ -55,14 +55,12 @@ export function NotesToolbar({
         )}
       </View>
 
-      {/* Sorting is a reading preference, not a filter, so it stays typographic
-          — underlined text — while filters stay as chips. */}
       <View style={styles.sortRow}>
         {SORT_OPTIONS.map(({ mode, label }) => (
           <Pressable
             key={mode}
             onPress={() => onSortModeChange(mode)}
-            style={styles.sortAction}
+            style={[styles.sortAction, sortMode === mode && styles.sortActionActive]}
             accessibilityRole="button"
             accessibilityState={{ selected: sortMode === mode }}
           >
@@ -108,15 +106,17 @@ export function NotesToolbar({
 }
 
 const styles = StyleSheet.create({
-  container: { gap: spacing.md, paddingTop: spacing.md, paddingBottom: spacing.sm },
+  container: { gap: spacing.md, paddingTop: spacing.lg, paddingBottom: spacing.lg },
   searchRow: { justifyContent: 'center', paddingHorizontal: spacing.lg },
   search: {
     ...type.body,
     color: colors.ink,
-    backgroundColor: colors.surface,
+    backgroundColor: colors.paper,
     borderRadius: radius.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: 11,
+    borderWidth: 1,
+    borderColor: colors.line,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: 13,
     paddingRight: 40,
   },
   clear: {
@@ -128,14 +128,17 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   clearMark: { fontSize: 15, color: colors.muted },
-  sortRow: { flexDirection: 'row', gap: spacing.lg, paddingHorizontal: spacing.lg },
-  sortAction: { minHeight: 44, justifyContent: 'center' },
-  sort: { ...type.label, color: colors.muted, paddingBottom: 2 },
-  sortActive: {
-    color: colors.ink,
-    borderBottomWidth: 2,
-    borderBottomColor: colors.navy,
+  sortRow: {
+    flexDirection: 'row',
+    marginHorizontal: spacing.lg,
+    padding: spacing.xs,
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
   },
+  sortAction: { flex: 1, minHeight: 40, justifyContent: 'center', borderRadius: radius.sm },
+  sortActionActive: { backgroundColor: colors.paper },
+  sort: { ...type.label, color: colors.muted, textAlign: 'center' },
+  sortActive: { color: colors.navy },
   filterScroll: { flexGrow: 0 },
   filterBar: { gap: spacing.sm, paddingHorizontal: spacing.lg, alignItems: 'center' },
   filterAction: { minHeight: 44, justifyContent: 'center' },
@@ -147,8 +150,8 @@ const styles = StyleSheet.create({
     borderColor: colors.line,
     borderRadius: radius.pill,
     paddingHorizontal: spacing.md,
-    paddingVertical: 6,
+    paddingVertical: 8,
     overflow: 'hidden',
   },
-  chipActive: { backgroundColor: colors.navy, borderColor: colors.navy, color: colors.paper },
+  chipActive: { backgroundColor: colors.navySoft, borderColor: colors.navySoft, color: colors.navy },
 })

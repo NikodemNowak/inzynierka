@@ -40,7 +40,7 @@ export default function WelcomeScreen() {
   }
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
+    <ScrollView style={styles.screen} contentContainerStyle={styles.container}>
       <Stack.Screen options={{ title: 'Witaj', headerBackVisible: false }} />
 
       <Text style={styles.heading} accessibilityRole="header">
@@ -95,16 +95,19 @@ export default function WelcomeScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { padding: spacing.xl, gap: spacing.xl, backgroundColor: colors.paper },
+  screen: { backgroundColor: colors.canvas },
+  container: { padding: spacing.xl, gap: spacing.xl },
   heading: { ...type.display, color: colors.ink },
   point: { gap: spacing.xs },
   pointTitle: { ...type.label, color: colors.navy, fontSize: 14 },
   pointBody: { ...type.body, color: colors.body },
   modelSection: {
     gap: spacing.md,
-    padding: spacing.lg,
-    backgroundColor: colors.surface,
-    borderRadius: radius.md,
+    padding: spacing.xl,
+    backgroundColor: colors.paper,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.line,
   },
   modelTitle: { ...type.title, color: colors.ink },
   modelDetail: { ...type.body, color: colors.body },

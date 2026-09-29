@@ -7,8 +7,9 @@ export const colors = {
   body: '#374151',
   muted: '#6B7280',
   faint: '#9CA3AF',
-  line: '#E5E7EB',
-  surface: '#F7F7F5',
+  line: '#E2E8F0',
+  surface: '#F1F5F9',
+  canvas: '#F8FAFC',
   paper: '#FFFFFF',
   navy: '#1F4E79',
   navySoft: '#EAF0F6',
@@ -30,7 +31,8 @@ export const spacing = {
 
 export const radius = {
   sm: 6,
-  md: 10,
+  md: 12,
+  lg: 18,
   pill: 999,
 } as const
 

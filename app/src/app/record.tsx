@@ -121,12 +121,16 @@ export default function RecordNoteScreen() {
         contentContainerStyle={styles.transcriptContent}
         keyboardShouldPersistTaps="handled"
       >
+        <Text style={styles.transcriptLabel}>Transkrypcja na żywo</Text>
         {recorder.transcript.length > 0 ? (
           <Text style={styles.transcript}>{recorder.transcript}</Text>
         ) : (
-          <Text style={styles.placeholder}>
-            Tekst pojawi się tutaj w trakcie mówienia. Nic nie opuszcza urządzenia.
-          </Text>
+          <View style={styles.emptyTranscript}>
+            <Text style={styles.emptyTitle}>Mów naturalnie</Text>
+            <Text style={styles.placeholder}>
+              Rozpoznany tekst pojawi się tutaj podczas nagrywania.
+            </Text>
+          </View>
         )}
       </ScrollView>
 
@@ -145,9 +149,9 @@ export default function RecordNoteScreen() {
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.paper },
-  counterBlock: { alignItems: 'center', paddingTop: spacing.xl, paddingBottom: spacing.lg, gap: spacing.sm },
-  counter: { ...type.counter, color: colors.faint },
+  screen: { flex: 1, backgroundColor: colors.canvas },
+  counterBlock: { alignItems: 'center', paddingTop: spacing.xl, paddingBottom: spacing.xl, gap: spacing.sm },
+  counter: { ...type.counter, color: colors.ink },
   counterLive: { color: colors.ember },
   statusRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   liveDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.ember },
@@ -158,17 +162,25 @@ const styles = StyleSheet.create({
   transcriptArea: {
     flex: 1,
     marginHorizontal: spacing.lg,
-    borderRadius: radius.md,
-    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
+    backgroundColor: colors.paper,
+    borderWidth: 1,
+    borderColor: colors.line,
   },
-  transcriptContent: { padding: spacing.lg },
-  transcript: { ...type.body, fontSize: 17, lineHeight: 26, color: colors.ink },
-  placeholder: { ...type.body, color: colors.faint },
+  transcriptContent: { padding: spacing.xl, flexGrow: 1 },
+  transcriptLabel: { ...type.label, color: colors.navy, letterSpacing: 0.2 },
+  transcript: { ...type.body, fontSize: 17, lineHeight: 27, color: colors.ink, marginTop: spacing.xl },
+  emptyTranscript: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: spacing.sm, paddingBottom: spacing.xxl },
+  emptyTitle: { ...type.title, color: colors.ink, textAlign: 'center' },
+  placeholder: { ...type.body, color: colors.muted, textAlign: 'center' },
   actionBar: {
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.lg,
     paddingBottom: spacing.lg,
     gap: spacing.sm,
+    backgroundColor: colors.paper,
+    borderTopWidth: 1,
+    borderTopColor: colors.line,
   },
   saving: { ...type.meta, color: colors.muted, textAlign: 'center' },
 })
