@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="pl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Notatki — wszystkie wizualizacje</title>
+    <link rel="stylesheet" href="index.css" />
+  </head>
+  <body>
+    <main>
+      <header>
+        <div>
+          <a href="flows.html">← Mapa przepływów</a>
+          <h1>Notatki — przegląd ekranów</h1>
+          <p>
+            dziesięć zestawów w jasnym i ciemnym motywie. Każda plansza zawiera
+            trzy wizualizacje. Kliknij, aby obejrzeć je w powiększeniu.
+          </p>
+        </div>
+        <div class="switch" aria-label="Motyw wizualizacji">
+          <button id="light" aria-pressed="true">Jasny</button
+          ><button id="dark" aria-pressed="false">Ciemny</button>
+        </div>
+      </header>
+      <nav id="nav" aria-label="Zestawy ekranów"></nav>
+      <div id="boards"></div>
+      <footer>
+        <a href="processing.html"
+          >Zobacz animację wspólnego statusu i wiele kategorii</a
+        ><br />Wizualizacje przedstawiają projekt interfejsu. Kolejne etapy
+        tworzenia tekstu są klatkami planowanej animacji. To makiety
+        referencyjne, a nie zrzuty aktualnej aplikacji.<br /><a
+          href="flows.html"
+          >Otwórz mapę przejść między ekranami</a
+        >
+      </footer>
+      <noscript
+        >Włącz JavaScript, aby otworzyć galerię. Wszystkie plansze są też
+        dostępne w katalogu assets.</noscript
+      >
+    </main>
+    <dialog id="zoom">
+      <div class="bar">
+        <strong id="zoom-title"></strong
+        ><a id="download" download="notatki-plansza.png">Pobierz PNG</a
+        ><button id="close">Zamknij ×</button>
+      </div>
+      <div class="dialog-content">
+        <img id="zoom-image" alt="Powiększona plansza ekranów" />
+      </div>
+    </dialog>
+    <script src="screens.js"></script>
+    <script src="index.js"></script>
+  </body>
+</html>
