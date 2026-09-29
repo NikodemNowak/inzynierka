@@ -47,7 +47,7 @@
   },
   "expo": {
     "autolinking": {
-      "// react-native-gesture-handler": "Pulled in transitively by expo-router (drawer layout), unused here — navigation is a plain Stack. Its codegen output paths exceed the Windows 260-character limit and break the native build, so it is not linked.",
+      "// react-native-gesture-handler": "Pulled in transitively by expo-router (drawer layout), unused here — navigation uses Stack and JavaScript tabs. Its codegen output paths exceed the Windows 260-character limit and break the native build, so it is not linked.",
       "exclude": [
         "react-native-gesture-handler"
       ]

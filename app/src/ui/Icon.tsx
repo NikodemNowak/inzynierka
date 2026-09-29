@@ -2,6 +2,22 @@ import { Pressable } from 'react-native'
 import Svg, { Path } from 'react-native-svg'
 import { useTheme } from './theme'
 
+// Six evenly spaced teeth keep the cog symmetric and legible at toolbar size.
+const settingsOutline = Array.from({ length: 6 }, (_, tooth) =>
+  [
+    [-30, 7.6],
+    [-16, 7.6],
+    [-11, 10],
+    [11, 10],
+    [16, 7.6],
+  ]
+    .map(([offset, radius]) => {
+      const angle = ((tooth * 60 - 90 + offset) * Math.PI) / 180
+      return `${(12 + radius * Math.cos(angle)).toFixed(3)} ${(12 + radius * Math.sin(angle)).toFixed(3)}`
+    })
+    .join('L'),
+).join('L')
+
 const paths = {
   'chevron-left': 'm14 5-7 7 7 7',
   'chevron-right': 'm10 5 7 7-7 7',
@@ -15,8 +31,7 @@ const paths = {
   waveform: 'M3 10v4M7 6v12M12 3v18M17 7v10M21 10v4',
   note: 'M6 3h12a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2ZM8 8h8M8 12h8M8 16h5',
   tasks: 'M9 5h11M9 12h11M9 19h11m-16-15 1 1 2-2m-3 9 1 1 2-2m-3 9 1 1 2-2',
-  settings:
-    'm9 3 1-1h4l1 3 3 1 2 2-1 3 1 3-2 2-3 1-1 3h-4l-1-3-3-1-2-2 1-3-1-3 2-2 3-1ZM12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8',
+  settings: `M${settingsOutline}ZM12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7`,
   search: 'M10.5 3a7.5 7.5 0 1 0 0 15 7.5 7.5 0 0 0 0-15m5.5 13 5 5',
   sort: 'M8 4v16m-4-4 4 4 4-4M16 20V4m-4 4 4-4 4 4',
   download: 'M12 3v12m-5-5 5 5 5-5M4 16v4h16v-4',

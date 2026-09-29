@@ -37,7 +37,9 @@ export default function RootLayout() {
           contentStyle: { backgroundColor: colors.canvas },
           header: (props) => <AppHeader {...props} />,
         }}
-      />
+      >
+        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+      </Stack>
     </SafeAreaProvider>
   )
 }

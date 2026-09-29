@@ -67,7 +67,15 @@ const addOptions: ReadonlyArray<{
     route: '/note/new',
   },
 ]
-export function HomeNavigation({ active }: { active: 'notes' | 'tasks' }) {
+export type HomeTab = 'notes' | 'tasks'
+
+export function HomeNavigation({
+  active,
+  onSelect,
+}: {
+  active: HomeTab
+  onSelect: (tab: HomeTab) => void
+}) {
   const { colors } = useTheme()
   const insets = useSafeAreaInsets()
   const router = useRouter()
@@ -75,6 +83,7 @@ export function HomeNavigation({ active }: { active: 'notes' | 'tasks' }) {
   return (
     <>
       <View
+        testID="home-tab-bar"
         style={{
           paddingBottom: Math.max(insets.bottom, 10),
           paddingTop: 10,
@@ -109,8 +118,7 @@ export function HomeNavigation({ active }: { active: 'notes' | 'tasks' }) {
             <Pressable
               key={tab}
               onPress={() => {
-                if (active !== tab)
-                  router.replace(tab === 'notes' ? '/' : '/tasks')
+                if (active !== tab) onSelect(tab)
               }}
               accessibilityRole="tab"
               accessibilityState={{ selected: active === tab }}

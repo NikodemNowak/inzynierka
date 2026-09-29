@@ -1,12 +1,11 @@
-import { useState } from 'react'
-import { Stack, useRouter } from 'expo-router'
+import { useMemo, useState } from 'react'
+import { useRouter } from 'expo-router'
 import { Alert, FlatList, Pressable, Text, View } from 'react-native'
-import { useTasksStore } from '../state/tasksStore'
-import { useNotesStore } from '../state/notesStore'
-import { HomeHeader, HomeNavigation } from '../ui/HomeNavigation'
-import { EmptyState } from '../ui/EmptyState'
-import { Icon } from '../ui/Icon'
-import { type, useTheme } from '../ui/theme'
+import { useTasksStore } from '../../state/tasksStore'
+import { useNotesStore } from '../../state/notesStore'
+import { EmptyState } from '../../ui/EmptyState'
+import { Icon } from '../../ui/Icon'
+import { type, useTheme } from '../../ui/theme'
 
 export default function TasksScreen() {
   const { colors } = useTheme()
@@ -15,10 +14,16 @@ export default function TasksScreen() {
   const notes = useNotesStore((s) => s.notes)
   const router = useRouter()
   const [completed, setCompleted] = useState(false)
-  const pending = tasks.filter((task) => !task.done).length
-  const titleFor = (id: string) =>
-    notes.find((note) => note.id === id)?.title.trim() || 'Bez tytułu'
-  const visible = tasks.filter((task) => task.done === completed)
+  const pending = useMemo(() => tasks.filter((task) => !task.done).length, [tasks])
+  const noteTitles = useMemo(
+    () => new Map(notes.map((note) => [note.id, note.title.trim() || 'Bez tytułu'])),
+    [notes],
+  )
+  const titleFor = (id: string) => noteTitles.get(id) ?? 'Bez tytułu'
+  const visible = useMemo(
+    () => tasks.filter((task) => task.done === completed),
+    [tasks, completed],
+  )
   const onToggle = async (id: string) => {
     try {
       await toggle(id)
@@ -28,8 +33,6 @@ export default function TasksScreen() {
   }
   return (
     <View style={{ flex: 1, backgroundColor: colors.canvas }}>
-      <Stack.Screen options={{ headerShown: false }} />
-      <HomeHeader title="Zadania" />
       {!!tasks.length && (
         <View
           style={{
@@ -91,7 +94,7 @@ export default function TasksScreen() {
           }
           action={{
             label: 'Przejdź do notatek',
-            onPress: () => router.replace('/'),
+            onPress: () => router.navigate('/'),
           }}
         />
       ) : (
@@ -169,7 +172,6 @@ export default function TasksScreen() {
           )}
         />
       )}
-      <HomeNavigation active="tasks" />
     </View>
   )
 }

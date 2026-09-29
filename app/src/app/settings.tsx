@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import {
   Alert,
   Pressable,
@@ -11,9 +11,12 @@ import { Stack, useRouter } from 'expo-router'
 import { useNotesStore } from '../state/notesStore'
 import { useTasksStore } from '../state/tasksStore'
 import { useModelStore } from '../state/modelStore'
+import { useSettingsStore } from '../state/settingsStore'
 import { shareNotesExport } from '../export/exportNotes'
 import { MODEL_CONFIG } from '../ai/modelConfig'
+import type { AppearancePreference } from '../ui/appearance'
 import { Button } from '../ui/Button'
+import { BottomSheet } from '../ui/BottomSheet'
 import { Icon } from '../ui/Icon'
 import { radius, spacing, type, useTheme } from '../ui/theme'
 
@@ -306,6 +309,45 @@ function DataSection() {
 function PreferencesSection() {
   const router = useRouter()
   const { colors } = useTheme()
+  const appearancePreference = useSettingsStore((state) => state.appearancePreference)
+  const setAppearancePreference = useSettingsStore((state) => state.setAppearancePreference)
+  const [appearanceVisible, setAppearanceVisible] = useState(false)
+  const [appearanceSaving, setAppearanceSaving] = useState(false)
+  const [appearanceError, setAppearanceError] = useState<string | null>(null)
+  const appearanceSaveLock = useRef(false)
+
+  const chooseAppearance = async (preference: AppearancePreference) => {
+    if (appearanceSaveLock.current) return
+    appearanceSaveLock.current = true
+    setAppearanceError(null)
+    setAppearanceSaving(true)
+    try {
+      await setAppearancePreference(preference)
+      setAppearanceVisible(false)
+    } catch {
+      setAppearanceError('Nie udało się zapisać ustawienia. Przywrócono poprzedni wygląd.')
+    } finally {
+      appearanceSaveLock.current = false
+      setAppearanceSaving(false)
+    }
+  }
+
+  const appearanceLabel: Record<AppearancePreference, string> = {
+    system: 'System',
+    light: 'Jasny',
+    dark: 'Ciemny',
+  }
+
+  const appearanceOptions: ReadonlyArray<{
+    value: AppearancePreference
+    title: string
+    description: string
+  }> = [
+    { value: 'system', title: 'System', description: 'Zgodny z ustawieniami urządzenia' },
+    { value: 'light', title: 'Jasny', description: 'Jasny wygląd aplikacji' },
+    { value: 'dark', title: 'Ciemny', description: 'Ciemny wygląd aplikacji' },
+  ]
+
   return (
     <View style={styles.section}>
       <Text
@@ -320,15 +362,25 @@ function PreferencesSection() {
           { backgroundColor: colors.paper, borderColor: colors.line },
         ]}
       >
-        <View style={styles.preferenceRow}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`Wygląd: ${appearanceLabel[appearancePreference]}`}
+          accessibilityHint="Otwiera wybór wyglądu aplikacji"
+          onPress={() => {
+            setAppearanceError(null)
+            setAppearanceVisible(true)
+          }}
+          style={styles.preferenceRow}
+        >
           <Icon name="phone" color={colors.accent} size={21} />
           <Text style={[styles.preferenceLabel, { color: colors.ink }]}>
             Wygląd
           </Text>
           <Text style={[styles.preferenceValue, { color: colors.muted }]}>
-            Zgodny z systemem
+            {appearanceLabel[appearancePreference]}
           </Text>
-        </View>
+          <Icon name="chevron-right" color={colors.muted} size={20} />
+        </Pressable>
         <Pressable
           accessibilityRole="button"
           onPress={() => router.push('/welcome')}
@@ -345,6 +397,69 @@ function PreferencesSection() {
           <Icon name="chevron-right" color={colors.muted} size={20} />
         </Pressable>
       </View>
+      <BottomSheet
+        visible={appearanceVisible}
+        onClose={() => setAppearanceVisible(false)}
+        title="Wygląd"
+      >
+        <View
+          accessibilityRole="radiogroup"
+          accessibilityLabel="Wybór wyglądu"
+        >
+          {appearanceOptions.map((option, index) => {
+            const selected = appearancePreference === option.value
+            return (
+              <Pressable
+                key={option.value}
+                accessibilityRole="radio"
+                accessibilityLabel={`${option.title}. ${option.description}`}
+                accessibilityState={{ checked: selected, disabled: appearanceSaving }}
+                disabled={appearanceSaving}
+                onPress={() => void chooseAppearance(option.value)}
+                style={[
+                  styles.appearanceOption,
+                  index < appearanceOptions.length - 1 && {
+                    borderBottomColor: colors.line,
+                    borderBottomWidth: StyleSheet.hairlineWidth,
+                  },
+                ]}
+              >
+                <View style={styles.appearanceOptionCopy}>
+                  <Text
+                    style={[
+                      styles.appearanceOptionTitle,
+                      { color: selected ? colors.accent : colors.ink },
+                    ]}
+                  >
+                    {option.title}
+                  </Text>
+                  <Text
+                    style={[
+                      styles.appearanceOptionDescription,
+                      { color: colors.muted },
+                    ]}
+                  >
+                    {option.description}
+                  </Text>
+                </View>
+                {selected ? (
+                  <Icon name="check" color={colors.accent} size={22} />
+                ) : (
+                  <View style={styles.appearanceCheckSpace} />
+                )}
+              </Pressable>
+            )
+          })}
+        </View>
+        {appearanceError && (
+          <Text
+            style={[styles.appearanceError, { color: colors.danger }]}
+            accessibilityRole="alert"
+          >
+            {appearanceError}
+          </Text>
+        )}
+      </BottomSheet>
     </View>
   )
 }
@@ -500,5 +615,17 @@ const styles = StyleSheet.create({
   preferenceLabel: { ...type.body, flex: 1, fontSize: 15 },
   preferenceValue: { ...type.meta },
   preferenceAction: { borderTopWidth: StyleSheet.hairlineWidth },
+  appearanceOption: {
+    minHeight: 68,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    paddingVertical: spacing.md,
+  },
+  appearanceOptionCopy: { flex: 1, gap: 3 },
+  appearanceOptionTitle: { ...type.body, fontWeight: '600' },
+  appearanceOptionDescription: { ...type.meta },
+  appearanceCheckSpace: { width: 22, height: 22 },
+  appearanceError: { ...type.meta },
   devRow: { minHeight: 52, flexDirection: 'row', alignItems: 'center' },
 })

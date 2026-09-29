@@ -1,7 +1,9 @@
 import { useColorScheme } from 'react-native'
+import { useSettingsStore } from '../state/settingsStore'
+import { resolveColorScheme } from './appearance'
 
-// Shared semantic colors; app screens follow the system appearance.
-export const colors = {
+// Stable semantic palettes shared by every screen.
+const lightColors = {
   ink: '#172131',
   body: '#49576A',
   muted: '#64748A',
@@ -21,6 +23,7 @@ export const colors = {
   success: '#39705F',
   overlay: 'rgba(13,22,35,0.38)',
 }
+export const colors = lightColors
 export type ThemeColors = typeof colors
 const darkColors: ThemeColors = {
   ink: '#EEF3FA',
@@ -43,7 +46,9 @@ const darkColors: ThemeColors = {
   overlay: 'rgba(0,0,0,0.6)',
 }
 export function useTheme() {
-  const isDark = useColorScheme() === 'dark'
+  const preference = useSettingsStore((state) => state.appearancePreference)
+  const systemScheme = useColorScheme()
+  const isDark = resolveColorScheme(preference, systemScheme) === 'dark'
   return { colors: isDark ? darkColors : colors, isDark }
 }
 

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import {
-  Animated,
+  AppState,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -8,358 +8,49 @@ import {
   View,
   useWindowDimensions,
 } from 'react-native'
-import { LinearGradient } from 'expo-linear-gradient'
 import { Stack, useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { MODEL_CONFIG } from '../ai/modelConfig'
+import { OnboardingIllustration } from '../onboarding/OnboardingIllustrations'
 import { useModelStore } from '../state/modelStore'
 import { useSettingsStore } from '../state/settingsStore'
 import { Button } from '../ui/Button'
 import { Icon, IconButton } from '../ui/Icon'
-import { RevealText, useReducedMotion } from '../ui/Motion'
+import { useReducedMotion } from '../ui/Motion'
 import { radius, spacing, type, useTheme } from '../ui/theme'
 
 const ONBOARDING_PAGES = [
   {
     title: 'Notatki, które zostają u Ciebie',
-    body: 'Nagrania i tekst zapisują się na Twoim telefonie. Bez konta i synchronizacji.',
+    body: 'Nagranie i tekst zapisują się na tym telefonie. Nie potrzebujesz konta.',
   },
   {
     title: 'Mów. Tekst pojawia się na żywo.',
-    body: 'Po nagraniu możesz poprawić każde zdanie. Transkrypcja działa na urządzeniu, gdy systemowy model mowy jest dostępny.',
+    body: 'Zamieniaj głos w tekst podczas nagrania. Po zatrzymaniu możesz poprawić każde zdanie.',
   },
   {
     title: 'Mniej tekstu. Więcej konkretów.',
-    body: 'Opcjonalny model AI tworzy tytuły i podsumowania na urządzeniu. Pobierz go teraz albo później w Ustawieniach.',
+    body: 'Opcjonalny model działa na urządzeniu i pomaga przygotować tytuł oraz podsumowanie. Pobierz go teraz albo później w Ustawieniach.',
   },
 ] as const
-
-const BAR_LEVELS = [
-  0.24, 0.38, 0.55, 0.76, 0.92, 0.64, 0.48, 0.71, 0.89, 0.58, 0.36, 0.68, 0.84,
-  0.53, 0.32,
-]
 
 const formatGb = (bytes: number): string =>
   `${(bytes / 1024 ** 3).toLocaleString('pl-PL', { maximumFractionDigits: 1 })} GB`
 
 const approximateModelSize = (): string =>
   formatGb(MODEL_CONFIG.approxSizeMb * 1024 ** 2)
-
-function useDrift(
-  active: boolean,
-  distance: number,
-): Animated.AnimatedInterpolation<number> {
-  const reduced = useReducedMotion()
-  const value = useRef(new Animated.Value(0)).current
-
-  useEffect(() => {
-    if (!active || reduced) {
-      value.setValue(0)
-      return
-    }
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(value, {
-          toValue: 1,
-          duration: 1450,
-          useNativeDriver: true,
-        }),
-        Animated.timing(value, {
-          toValue: 0,
-          duration: 1650,
-          useNativeDriver: true,
-        }),
-      ]),
-    )
-    loop.start()
-    return () => loop.stop()
-  }, [active, reduced, value])
-
-  return value.interpolate({ inputRange: [0, 1], outputRange: [0, distance] })
-}
-
-function WaveformBars({
-  active,
-  color,
-  compact = false,
-}: {
-  active: boolean
-  color: string
-  compact?: boolean
-}) {
-  const reduced = useReducedMotion()
-  const bars = useRef(
-    BAR_LEVELS.map((level) => new Animated.Value(level)),
-  ).current
-
-  useEffect(() => {
-    if (!active || reduced) {
-      bars.forEach((bar, index) => bar.setValue(BAR_LEVELS[index] ?? 0.5))
-      return
-    }
-    const animations = bars.map((bar, index) => {
-      const peak = 0.32 + ((index * 5) % 7) * 0.095
-      return Animated.loop(
-        Animated.sequence([
-          Animated.delay(index * 34),
-          Animated.timing(bar, {
-            toValue: peak,
-            duration: 280,
-            useNativeDriver: true,
-          }),
-          Animated.timing(bar, {
-            toValue: BAR_LEVELS[index] ?? 0.5,
-            duration: 420,
-            useNativeDriver: true,
-          }),
-        ]),
-      )
-    })
-    animations.forEach((animation) => animation.start())
-    return () => animations.forEach((animation) => animation.stop())
-  }, [active, bars, reduced])
-
-  return (
-    <View
-      accessible
-      accessibilityLabel="Przebieg fali dźwiękowej"
-      style={[styles.waveBars, compact && styles.waveBarsCompact]}
-    >
-      {bars.map((bar, index) => (
-        <Animated.View
-          key={index}
-          style={[
-            styles.waveBar,
-            compact ? styles.waveBarCompact : styles.waveBarLarge,
-            { backgroundColor: color, transform: [{ scaleY: bar }] },
-          ]}
-        />
-      ))}
-    </View>
-  )
-}
-
-function RecordingArt({ active }: { active: boolean }) {
-  const { colors, isDark } = useTheme()
-  const float = useDrift(active, -8)
-  return (
-    <LinearGradient
-      colors={[colors.canvas, colors.accentSoft] as const}
-      style={[styles.recordingArt, { borderColor: colors.line }]}
-    >
-      <View
-        style={[
-          styles.waveHalo,
-          { backgroundColor: isDark ? '#8BB8F220' : '#3566A81A' },
-        ]}
-      />
-      <View style={[styles.micOrb, { backgroundColor: colors.accentSoft }]}>
-        <Icon name="mic" color={colors.accent} size={29} />
-      </View>
-      <View style={styles.heroWave}>
-        <WaveformBars active={active} color={colors.accent} />
-      </View>
-      <Animated.View
-        style={[
-          styles.liveTranscriptCard,
-          {
-            backgroundColor: colors.paper,
-            borderColor: colors.line,
-            transform: [{ translateY: float }, { rotateZ: '2deg' }],
-          },
-        ]}
-      >
-        <View style={styles.cardMicRow}>
-          <View
-            style={[
-              styles.cardMicBadge,
-              { backgroundColor: colors.accentSoft },
-            ]}
-          >
-            <Icon name="mic" color={colors.accent} size={17} />
-          </View>
-          <View
-            style={[styles.timePill, { backgroundColor: colors.surface }]}
-          />
-        </View>
-        <View
-          style={[
-            styles.artLine,
-            { backgroundColor: colors.line, width: '92%' },
-          ]}
-        />
-        <View
-          style={[
-            styles.artLine,
-            { backgroundColor: colors.line, width: '76%' },
-          ]}
-        />
-        <View
-          style={[
-            styles.artLine,
-            { backgroundColor: colors.line, width: '58%' },
-          ]}
-        />
-      </Animated.View>
-      <View
-        style={[styles.connectionDot, { backgroundColor: colors.accent }]}
-      />
-    </LinearGradient>
-  )
-}
-
-function TranscriptArt({ active }: { active: boolean }) {
-  const { colors } = useTheme()
-  const float = useDrift(active, -5)
-  return (
-    <LinearGradient
-      colors={[colors.canvas, colors.accentSoft] as const}
-      style={[styles.transcriptArt, { borderColor: colors.line }]}
-    >
-      <Animated.View
-        style={[
-          styles.transcriptCard,
-          {
-            backgroundColor: colors.paper,
-            borderColor: colors.line,
-            transform: [{ translateY: float }],
-          },
-        ]}
-      >
-        <View style={styles.cardMicRow}>
-          <View
-            style={[
-              styles.cardMicBadge,
-              { backgroundColor: colors.accentSoft },
-            ]}
-          >
-            <Icon name="mic" color={colors.accent} size={17} />
-          </View>
-          <Text style={[styles.recordingTime, { color: colors.muted }]}>
-            00:12
-          </Text>
-        </View>
-        <RevealText
-          text="Spotkanie z promotorem dotyczyło kolejnych kroków. Omówiliśmy plan na najbliższy tydzień."
-          animate={active}
-          style={[styles.transcriptText, { color: colors.body }]}
-        />
-        <WaveformBars active={active} color={colors.accent} compact />
-      </Animated.View>
-    </LinearGradient>
-  )
-}
-
-function SummaryArt({ active }: { active: boolean }) {
-  const { colors, isDark } = useTheme()
-  const leftFloat = useDrift(active, 5)
-  const rightFloat = useDrift(active, -7)
-  return (
-    <LinearGradient
-      colors={[colors.canvas, colors.accentSoft] as const}
-      style={[styles.summaryArt, { borderColor: colors.line }]}
-    >
-      <Animated.View
-        style={[
-          styles.sourceCard,
-          {
-            backgroundColor: colors.paper,
-            borderColor: colors.line,
-            transform: [{ translateY: leftFloat }, { rotateZ: '-7deg' }],
-          },
-        ]}
-      >
-        <View
-          style={[
-            styles.artLine,
-            { backgroundColor: colors.line, width: '64%' },
-          ]}
-        />
-        <Text style={[styles.sourceCardTitle, { color: colors.ink }]}>
-          Spotkanie z promotorem
-        </Text>
-        <View
-          style={[
-            styles.artLine,
-            { backgroundColor: colors.line, width: '95%' },
-          ]}
-        />
-        <View
-          style={[
-            styles.artLine,
-            { backgroundColor: colors.line, width: '78%' },
-          ]}
-        />
-      </Animated.View>
-      <Icon name="arrow-right" color={colors.accent} size={27} />
-      <Animated.View
-        style={[
-          styles.summaryCard,
-          {
-            backgroundColor: colors.paper,
-            borderColor: colors.line,
-            transform: [{ translateY: rightFloat }, { rotateZ: '4deg' }],
-          },
-        ]}
-      >
-        <View style={styles.sparkleRow}>
-          <Icon name="sparkles" color={colors.accent} size={23} />
-          <View
-            style={[
-              styles.artLine,
-              { backgroundColor: colors.line, width: '58%' },
-            ]}
-          />
-        </View>
-        <Text style={[styles.summaryCardTitle, { color: colors.ink }]}>
-          Podsumowanie
-        </Text>
-        {[0, 1, 2].map((item) => (
-          <View key={item} style={styles.summaryBulletRow}>
-            <View
-              style={[
-                styles.summaryBullet,
-                { backgroundColor: isDark ? '#8BB8F2' : '#3566A8' },
-              ]}
-            />
-            <View
-              style={[
-                styles.artLine,
-                {
-                  backgroundColor: colors.line,
-                  width: item === 2 ? '63%' : '82%',
-                },
-              ]}
-            />
-          </View>
-        ))}
-      </Animated.View>
-    </LinearGradient>
-  )
-}
-
-function OnboardingIllustration({
-  page,
-  active,
-}: {
-  page: number
-  active: boolean
-}) {
-  if (page === 0) return <RecordingArt active={active} />
-  if (page === 1) return <TranscriptArt active={active} />
-  return <SummaryArt active={active} />
-}
-
 function PageHeader({
   page,
   onBack,
   onSkip,
   onSelectPage,
+  disabled,
 }: {
   page: number
   onBack: () => void
   onSkip: () => void
   onSelectPage: (page: number) => void
+  disabled: boolean
 }) {
   const { colors } = useTheme()
   return (
@@ -369,6 +60,7 @@ function PageHeader({
           name="chevron-left"
           label="Poprzedni krok"
           onPress={onBack}
+          disabled={disabled}
           size={25}
         />
       ) : (
@@ -380,8 +72,9 @@ function PageHeader({
             <Pressable
               key={item.title}
               accessibilityRole="tab"
-              accessibilityState={{ selected: page === index }}
               accessibilityLabel={`Krok ${index + 1} z ${ONBOARDING_PAGES.length}`}
+              accessibilityState={{ selected: page === index, disabled }}
+              disabled={disabled}
               onPress={() => onSelectPage(index)}
               hitSlop={8}
               style={styles.dotHitTarget}
@@ -407,6 +100,8 @@ function PageHeader({
         onPress={onSkip}
         accessibilityRole="button"
         accessibilityLabel="Pomiń wprowadzenie i przejdź do notatek"
+        accessibilityState={{ disabled }}
+        disabled={disabled}
         style={styles.skipButton}
       >
         <Text style={[styles.skipLabel, { color: colors.accent }]}>Pomiń</Text>
@@ -526,6 +221,7 @@ export default function WelcomeScreen() {
   const [page, setPage] = useState(0)
   const [isFinishing, setIsFinishing] = useState(false)
   const [finishError, setFinishError] = useState<string | null>(null)
+  const [appActive, setAppActive] = useState(AppState.currentState === 'active')
   const finishLock = useRef(false)
   const pager = useRef<ScrollView>(null)
   const status = useModelStore((state) => state.status)
@@ -536,6 +232,13 @@ export default function WelcomeScreen() {
   const completeOnboarding = useSettingsStore(
     (state) => state.completeOnboarding,
   )
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      setAppActive(nextState === 'active')
+    })
+    return () => subscription.remove()
+  }, [])
 
   const goToPage = (target: number) => {
     const next = Math.max(0, Math.min(ONBOARDING_PAGES.length - 1, target))
@@ -550,7 +253,7 @@ export default function WelcomeScreen() {
     setFinishError(null)
     try {
       await completeOnboarding()
-      router.replace('/')
+      router.dismissTo('/')
     } catch (caughtError) {
       finishLock.current = false
       setIsFinishing(false)
@@ -562,22 +265,33 @@ export default function WelcomeScreen() {
     }
   }
 
-  const pagePadding = {
-    paddingTop: Math.max(insets.top, spacing.md) + spacing.sm,
-    paddingBottom: Math.max(insets.bottom, spacing.md),
-  }
-
   return (
     <View style={[styles.screen, { backgroundColor: colors.canvas }]}>
       <Stack.Screen
         options={{ title: 'Witaj', headerShown: false, gestureEnabled: false }}
       />
+      <View
+        style={[
+          styles.topBar,
+          { paddingTop: Math.max(insets.top, spacing.sm) },
+        ]}
+      >
+        <PageHeader
+          page={page}
+          onBack={() => goToPage(page - 1)}
+          onSkip={() => void finish()}
+          onSelectPage={goToPage}
+          disabled={isFinishing}
+        />
+      </View>
+
       <ScrollView
         ref={pager}
         horizontal
         pagingEnabled
         bounces={false}
         showsHorizontalScrollIndicator={false}
+        scrollEnabled={!isFinishing}
         onMomentumScrollEnd={(event) => {
           const index = Math.round(
             event.nativeEvent.contentOffset.x / Math.max(1, width),
@@ -591,17 +305,16 @@ export default function WelcomeScreen() {
           <View key={item.title} style={{ width, flex: 1 }}>
             <ScrollView
               style={styles.verticalPage}
-              contentContainerStyle={[styles.pageContent, pagePadding]}
+              contentContainerStyle={styles.pageContent}
               showsVerticalScrollIndicator={false}
+              nestedScrollEnabled
             >
-              <PageHeader
-                page={index}
-                onBack={() => goToPage(page - 1)}
-                onSkip={() => void finish()}
-                onSelectPage={goToPage}
-              />
               <View style={styles.artFrame}>
-                <OnboardingIllustration page={index} active={page === index} />
+                <OnboardingIllustration
+                  page={index as 0 | 1 | 2}
+                  active={page === index}
+                  appActive={appActive}
+                />
               </View>
               <Text
                 style={[styles.pageTitle, { color: colors.ink }]}
@@ -613,91 +326,97 @@ export default function WelcomeScreen() {
                 {item.body}
               </Text>
 
-              {index === ONBOARDING_PAGES.length - 1 ? (
-                <>
-                  <View style={styles.finalModelArea}>
-                    <ModelChoice
-                      status={status}
-                      progress={progress}
-                      isCancelling={isCancelling}
-                      onDownload={() => void download()}
-                    />
-                    {error && (
-                      <Text
-                        style={[styles.modelError, { color: colors.danger }]}
-                        accessibilityRole="alert"
-                      >
-                        {error}
-                      </Text>
-                    )}
-                    <Text
-                      style={[styles.modelFootnote, { color: colors.muted }]}
-                    >
-                      Model pobierzesz też później w Ustawieniach.
-                    </Text>
-                  </View>
-                  <View style={styles.footerSpacer} />
-                  {status === 'ready' ? (
-                    <Button
-                      label={
-                        isFinishing ? 'Otwieram notatki…' : 'Przejdź do notatek'
-                      }
-                      variant="primary"
-                      icon="arrow-right"
-                      onPress={() => void finish()}
-                      disabled={isFinishing}
-                      busy={isFinishing}
-                    />
-                  ) : (
-                    <Button
-                      label={
-                        isFinishing
-                          ? 'Otwieram notatki…'
-                          : 'Pomiń i przejdź do notatek'
-                      }
-                      variant="quiet"
-                      icon="arrow-right"
-                      onPress={() => void finish()}
-                      disabled={isFinishing}
-                      busy={isFinishing}
-                    />
-                  )}
-                  {finishError && (
+              {index === ONBOARDING_PAGES.length - 1 && (
+                <View style={styles.finalModelArea}>
+                  <ModelChoice
+                    status={status}
+                    progress={progress}
+                    isCancelling={isCancelling}
+                    onDownload={() => void download()}
+                  />
+                  {error && (
                     <Text
                       style={[styles.modelError, { color: colors.danger }]}
                       accessibilityRole="alert"
                     >
-                      {finishError}
+                      {error}
                     </Text>
                   )}
-                </>
-              ) : (
-                <>
-                  <View style={styles.footerSpacer} />
-                  <Button
-                    label={isFinishing ? 'Otwieram notatki…' : 'Dalej'}
-                    variant="primary"
-                    icon="arrow-right"
-                    onPress={() => goToPage(page + 1)}
-                    disabled={isFinishing}
-                    busy={isFinishing}
-                  />
-                </>
+                  {status !== 'ready' && (
+                    <Text style={[styles.modelFootnote, { color: colors.muted }]}>
+                      Model pobierzesz też później w Ustawieniach.
+                    </Text>
+                  )}
+                </View>
               )}
             </ScrollView>
           </View>
         ))}
       </ScrollView>
+
+      <View
+        style={[
+          styles.footer,
+          {
+            backgroundColor: colors.canvas,
+            paddingBottom: Math.max(insets.bottom, spacing.md),
+          },
+        ]}
+      >
+        {finishError && (
+          <Text
+            style={[styles.finishError, { color: colors.danger }]}
+            accessibilityRole="alert"
+          >
+            {finishError}
+          </Text>
+        )}
+        {page < ONBOARDING_PAGES.length - 1 ? (
+          <Button
+            label="Dalej"
+            variant="primary"
+            icon="arrow-right"
+            onPress={() => goToPage(page + 1)}
+            disabled={isFinishing}
+          />
+        ) : (
+          <Button
+            label={
+              isFinishing
+                ? 'Otwieram notatki…'
+                : status === 'ready' || status === 'downloading'
+                  ? 'Przejdź do notatek'
+                  : 'Pomiń i przejdź do notatek'
+            }
+            variant={
+              status === 'ready' || status === 'downloading'
+                ? 'primary'
+                : 'quiet'
+            }
+            icon="arrow-right"
+            onPress={() => void finish()}
+            disabled={isFinishing}
+            busy={isFinishing}
+          />
+        )}
+      </View>
     </View>
   )
 }
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
+  topBar: { paddingHorizontal: spacing.xl, paddingBottom: spacing.xs },
   pager: { flex: 1 },
   pagerContent: { flexGrow: 1 },
   verticalPage: { flex: 1 },
-  pageContent: { flexGrow: 1, paddingHorizontal: spacing.xl, gap: spacing.md },
+  pageContent: {
+    flexGrow: 1,
+    paddingHorizontal: spacing.xl,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.lg,
+    gap: spacing.md,
+  },
   pageHeader: {
     minHeight: 50,
     flexDirection: 'row',
@@ -723,151 +442,12 @@ const styles = StyleSheet.create({
   pageCounter: { ...type.meta },
   skipButton: {
     minWidth: 54,
-    height: 44,
+    minHeight: 44,
     alignItems: 'flex-end',
     justifyContent: 'center',
   },
   skipLabel: { ...type.body, fontSize: 15, fontWeight: '600' },
-  artFrame: { marginTop: spacing.xs, marginBottom: spacing.sm },
-  recordingArt: {
-    height: 222,
-    borderWidth: 1,
-    borderRadius: radius.lg,
-    overflow: 'hidden',
-    justifyContent: 'center',
-  },
-  waveHalo: {
-    position: 'absolute',
-    left: -36,
-    top: 22,
-    width: 190,
-    height: 190,
-    borderRadius: radius.pill,
-  },
-  micOrb: {
-    position: 'absolute',
-    left: 28,
-    top: 30,
-    width: 50,
-    height: 50,
-    borderRadius: radius.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  heroWave: { position: 'absolute', left: 9, top: 88 },
-  waveBars: { height: 72, flexDirection: 'row', alignItems: 'center', gap: 4 },
-  waveBarsCompact: { height: 30, gap: 3, opacity: 0.72 },
-  waveBar: { borderRadius: radius.pill },
-  waveBarLarge: { width: 4, height: 58 },
-  waveBarCompact: { width: 3, height: 23 },
-  liveTranscriptCard: {
-    position: 'absolute',
-    right: 15,
-    top: 36,
-    width: '53%',
-    padding: spacing.md,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    gap: spacing.sm,
-    shadowColor: '#000',
-    shadowOpacity: 0.08,
-    shadowRadius: 15,
-    shadowOffset: { width: 0, height: 7 },
-    elevation: 3,
-  },
-  cardMicRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  cardMicBadge: {
-    width: 34,
-    height: 34,
-    borderRadius: radius.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  timePill: { width: 44, height: 8, borderRadius: radius.pill },
-  artLine: { height: 8, borderRadius: radius.pill },
-  connectionDot: {
-    position: 'absolute',
-    right: '39%',
-    top: 111,
-    width: 10,
-    height: 10,
-    borderRadius: radius.pill,
-    borderWidth: 3,
-    borderColor: '#FFFFFF99',
-  },
-  transcriptArt: {
-    minHeight: 222,
-    borderWidth: 1,
-    borderRadius: radius.lg,
-    padding: spacing.md,
-    justifyContent: 'center',
-  },
-  transcriptCard: {
-    padding: spacing.lg,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    gap: spacing.md,
-    shadowColor: '#000',
-    shadowOpacity: 0.08,
-    shadowRadius: 15,
-    shadowOffset: { width: 0, height: 7 },
-    elevation: 3,
-  },
-  recordingTime: { ...type.meta },
-  transcriptText: { ...type.body, fontSize: 15, lineHeight: 22 },
-  summaryArt: {
-    height: 202,
-    borderWidth: 1,
-    borderRadius: radius.lg,
-    justifyContent: 'center',
-    alignItems: 'center',
-    overflow: 'hidden',
-  },
-  sourceCard: {
-    position: 'absolute',
-    left: '7%',
-    top: 48,
-    width: '40%',
-    minHeight: 111,
-    padding: spacing.md,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    gap: spacing.sm,
-    shadowColor: '#000',
-    shadowOpacity: 0.06,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 5 },
-    elevation: 2,
-  },
-  sourceCardTitle: { ...type.label, fontSize: 12, lineHeight: 16 },
-  summaryCard: {
-    position: 'absolute',
-    right: '6%',
-    top: 25,
-    width: '48%',
-    minHeight: 142,
-    padding: spacing.md,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    gap: spacing.sm,
-    shadowColor: '#000',
-    shadowOpacity: 0.09,
-    shadowRadius: 15,
-    shadowOffset: { width: 0, height: 7 },
-    elevation: 3,
-  },
-  sparkleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  summaryCardTitle: { ...type.label, fontSize: 13 },
-  summaryBulletRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  summaryBullet: { width: 6, height: 6, borderRadius: radius.pill },
+  artFrame: { minHeight: 224, justifyContent: 'center' },
   pageTitle: {
     ...type.display,
     fontSize: 29,
@@ -876,7 +456,7 @@ const styles = StyleSheet.create({
     marginTop: spacing.xs,
   },
   pageBody: { ...type.body, fontSize: 16, lineHeight: 24 },
-  footerSpacer: { flexGrow: 1, minHeight: spacing.sm },
+  footer: { paddingHorizontal: spacing.xl, paddingTop: spacing.sm },
   finalModelArea: { gap: spacing.sm, marginTop: spacing.xs },
   modelChoice: {
     minHeight: 68,
@@ -898,7 +478,11 @@ const styles = StyleSheet.create({
   modelChoiceIdentity: { flex: 1, minWidth: 100, gap: 2 },
   modelChoiceName: { ...type.label, fontSize: 15 },
   modelChoiceSize: { ...type.meta },
-  modelChoiceProgress: { ...type.label, fontSize: 13 },
+  modelChoiceProgress: {
+    ...type.label,
+    fontSize: 13,
+    fontVariant: ['tabular-nums'],
+  },
   modelChoiceButton: { width: '100%' },
   modelProgressTrack: {
     height: 6,
@@ -911,4 +495,5 @@ const styles = StyleSheet.create({
   readyHint: { ...type.meta, flexBasis: '100%' },
   modelFootnote: { ...type.meta, textAlign: 'center' },
   modelError: { ...type.meta, textAlign: 'left' },
+  finishError: { ...type.body, fontSize: 14, marginBottom: spacing.sm },
 })
