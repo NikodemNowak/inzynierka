@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import type { ReactNode } from 'react'
 import {
   Keyboard,
   Pressable,
@@ -20,6 +21,7 @@ interface NotesToolbarProps {
   categories: readonly string[]
   selectedCategory: string | null
   onSelectCategory: (category: string | null) => void
+  afterSearch?: ReactNode
 }
 export function NotesToolbar({
   query,
@@ -29,6 +31,7 @@ export function NotesToolbar({
   categories,
   selectedCategory,
   onSelectCategory,
+  afterSearch,
 }: NotesToolbarProps) {
   const { colors, isDark } = useTheme()
   const [sorting, setSorting] = useState(false)
@@ -72,7 +75,17 @@ export function NotesToolbar({
             size={17}
           />
         )}
+        <IconButton
+          name="sort"
+          label="Zmień sortowanie"
+          onPress={() => {
+            Keyboard.dismiss()
+            setSorting(true)
+          }}
+          size={17}
+        />
       </View>
+      {afterSearch}
       {!!categories.length && (
         <ScrollView
           horizontal
@@ -99,7 +112,7 @@ export function NotesToolbar({
                   borderRadius: 18,
                   backgroundColor:
                     selectedCategory === category
-                      ? colors.accentSoft
+                      ? colors.action
                       : colors.surface,
                 }}
               >
@@ -109,7 +122,7 @@ export function NotesToolbar({
                     lineHeight: 18,
                     color:
                       selectedCategory === category
-                        ? colors.accent
+                        ? colors.onAction
                         : colors.body,
                     fontWeight: selectedCategory === category ? '600' : '400',
                   }}
@@ -121,27 +134,6 @@ export function NotesToolbar({
           ))}
         </ScrollView>
       )}
-      <Pressable
-        onPress={() => {
-          Keyboard.dismiss()
-          setSorting(true)
-        }}
-        accessibilityRole="button"
-        accessibilityLabel="Zmień sortowanie"
-        style={{
-          minHeight: 42,
-          flexDirection: 'row',
-          alignItems: 'center',
-          gap: 5,
-          alignSelf: 'flex-end',
-          marginRight: 24,
-        }}
-      >
-        <Icon name="sort" color={colors.muted} size={13} />
-        <Text style={{ ...type.meta, color: colors.muted }}>
-          {sortMode === 'updated' ? 'Ostatnio zmienione' : 'Ostatnio dodane'}
-        </Text>
-      </Pressable>
       <BottomSheet
         visible={sorting}
         title="Sortowanie notatek"

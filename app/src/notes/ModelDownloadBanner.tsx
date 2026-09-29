@@ -18,10 +18,12 @@ export function ModelDownloadBanner() {
       onPress={() => router.push('/settings')}
       style={({ pressed }) => ({
         marginHorizontal: 24,
-        marginBottom: 10,
-        borderRadius: 12,
-        padding: 12,
-        backgroundColor: colors.accentSoft,
+        marginTop: 8,
+        marginBottom: 8,
+        borderRadius: 9,
+        paddingHorizontal: 10,
+        paddingVertical: 8,
+        backgroundColor: colors.surface,
         flexDirection: 'row',
         alignItems: 'center',
         gap: 10,
@@ -29,10 +31,10 @@ export function ModelDownloadBanner() {
       })}
     >
       <Icon name="download" size={19} color={colors.accent} />
-      <View style={{ flex: 1, gap: 7 }}>
+      <View style={{ flex: 1, gap: 4 }}>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
           <Text style={{ color: colors.body, fontSize: 12 }}>
-            Pobieranie modelu
+            Model · pobieranie
           </Text>
           <Text
             style={{

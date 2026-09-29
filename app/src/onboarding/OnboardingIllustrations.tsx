@@ -1,292 +1,429 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Animated, Easing, StyleSheet, Text, View } from 'react-native'
+import Svg, {
+  Circle,
+  Defs,
+  Ellipse,
+  G,
+  LinearGradient,
+  Path,
+  RadialGradient,
+  Rect,
+  Stop,
+  Text as SvgText,
+} from 'react-native-svg'
 import { Icon } from '../ui/Icon'
 import { RevealText, useReducedMotion } from '../ui/Motion'
-import { radius, spacing, type, useTheme } from '../ui/theme'
+import { useTheme } from '../ui/theme'
 
-type OnboardingPage = 0 | 1 | 2
-
-const WAVE_LEVELS = [0.25, 0.43, 0.66, 0.9, 0.64, 0.38, 0.73, 1, 0.68, 0.42, 0.81, 0.52, 0.31]
+const WAVE = [12, 21, 34, 48, 63, 48, 34, 20, 15, 29, 17, 9]
+const SMALL_WAVE = [
+  8, 15, 23, 29, 21, 25, 17, 25, 21, 12, 7, 5, 10, 18, 30, 23, 26, 17, 22, 13,
+  6, 11, 8, 20, 28, 20, 13, 9,
+]
 
 export function OnboardingIllustration({
   page,
   active,
   appActive,
 }: {
-  page: OnboardingPage
+  page: 0 | 1 | 2
   active: boolean
   appActive: boolean
 }) {
-  const { colors } = useTheme()
-  const reducedMotion = useReducedMotion()
-  const entrance = useRef(new Animated.Value(1)).current
-  const hasEntered = useRef(false)
-
-  useLayoutEffect(() => {
-    if (!active || !appActive || reducedMotion || hasEntered.current) {
-      entrance.stopAnimation()
-      if (hasEntered.current || reducedMotion) entrance.setValue(1)
-      if (reducedMotion && active) hasEntered.current = true
-      return
-    }
-
-    hasEntered.current = true
-    entrance.setValue(0)
-    const animation = Animated.timing(entrance, {
-      toValue: 1,
-      duration: 340,
-      easing: Easing.out(Easing.cubic),
-      useNativeDriver: true,
-    })
-    animation.start()
-    return () => animation.stop()
-  }, [active, appActive, entrance, reducedMotion])
-
-  const translateY = entrance.interpolate({ inputRange: [0, 1], outputRange: [9, 0] })
-  const description = [
-    'Przykład prywatnej notatki na telefonie',
-    'Przykład tekstu z dyktowania',
-    'Przykład uporządkowanej notatki',
-  ][page]
-
-  return (
-    <Animated.View
-      accessible
-      accessibilityRole="image"
-      accessibilityLabel={description}
-      style={[styles.scene, { opacity: entrance, transform: [{ translateY }] }]}
-    >
-      {page === 0 ? (
-        <PrivateNoteIllustration />
-      ) : page === 1 ? (
-        <DictationIllustration
-          active={active}
-          appActive={appActive}
-          reducedMotion={reducedMotion}
-        />
-      ) : (
-        <SummaryIllustration />
-      )}
-    </Animated.View>
-  )
-}
-
-function PrivateNoteIllustration() {
-  const { colors } = useTheme()
-  return (
-    <View style={[styles.phone, { backgroundColor: colors.paper, borderColor: colors.line }]}>
-      <View style={[styles.phoneSpeaker, { backgroundColor: colors.line }]} />
-      <View style={styles.phoneHeader}>
-        <View style={styles.phoneHeaderTitle}>
-          <Icon name="note" color={colors.accent} size={17} />
-          <Text style={[styles.phoneLabel, { color: colors.ink }]}>Notatka</Text>
-        </View>
-        <Icon name="lock" color={colors.accent} size={16} />
-      </View>
-      <Text style={[styles.phoneTitle, { color: colors.ink }]}>Pomysł na projekt</Text>
-      <View style={[styles.phoneLine, { backgroundColor: colors.line }]} />
-      <View style={[styles.phoneLine, styles.phoneLineShort, { backgroundColor: colors.line }]} />
-      <View style={[styles.phoneLine, styles.phoneLineMedium, { backgroundColor: colors.line }]} />
-      <View style={[styles.privateBadge, { backgroundColor: colors.accentSoft }]}>
-        <Icon name="shield" color={colors.accent} size={13} />
-        <Text style={[styles.privateLabel, { color: colors.accent }]}>Tylko na tym telefonie</Text>
-      </View>
-    </View>
-  )
-}
-
-function DictationIllustration({
-  active,
-  appActive,
-  reducedMotion,
-}: {
-  active: boolean
-  appActive: boolean
-  reducedMotion: boolean
-}) {
-  const { colors } = useTheme()
-  const [animateTail, setAnimateTail] = useState(false)
-  const hasRevealed = useRef(false)
-
-  useEffect(() => {
-    if (!active || !appActive || reducedMotion) {
-      setAnimateTail(false)
-      return
-    }
-    if (!hasRevealed.current) {
-      hasRevealed.current = true
-      setAnimateTail(true)
-    }
-  }, [active, appActive, reducedMotion])
-
-  return (
-    <View style={[styles.dictationCard, { backgroundColor: colors.paper, borderColor: colors.line }]}>
-      <View style={styles.dictationHeader}>
-        <View style={[styles.micBadge, { backgroundColor: colors.accentSoft }]}>
-          <Icon name="mic" color={colors.accent} size={18} />
-        </View>
-        <Text style={[styles.dictationLabel, { color: colors.muted }]}>Dyktowanie</Text>
-        <Text style={[styles.timeLabel, { color: colors.muted }]}>00:12</Text>
-      </View>
-      <Waveform color={colors.accent} />
-      <RevealText
-        text="Omówmy plan na najbliższy tydzień."
-        animate={animateTail}
-        style={[styles.transcript, { color: colors.body }]}
-      />
-    </View>
-  )
-}
-
-function Waveform({ color }: { color: string }) {
+  const reduced = useReducedMotion()
+  const animate = active && appActive && !reduced
   return (
     <View
       accessible
-      accessibilityLabel="Przykładowy przebieg dźwięku"
-      style={styles.waveform}
+      accessibilityRole="image"
+      accessibilityLabel={
+        [
+          'Fala głosu zamienia się w prywatną notatkę',
+          'Słowa pojawiają się w notatce podczas mówienia',
+          'Z nagrania powstają tytuł i krótkie podsumowanie',
+        ][page]
+      }
+      style={styles.scene}
     >
-      {WAVE_LEVELS.map((level, index) => (
-        <View
-          key={index}
-          style={{
-            width: 4,
-            height: 34 * level,
-            borderRadius: radius.pill,
-            backgroundColor: color,
-          }}
-        />
-      ))}
+      {page === 0 ? (
+        <VoiceNoteArt />
+      ) : page === 1 ? (
+        <DictationArt animate={animate} />
+      ) : (
+        <SummaryArt />
+      )}
     </View>
   )
 }
 
-function SummaryIllustration() {
-  const { colors } = useTheme()
+function ArtworkDefs() {
+  const { isDark } = useTheme()
   return (
-    <View style={styles.summaryFlow}>
-      <View style={[styles.sourceCard, { backgroundColor: colors.paper, borderColor: colors.line }]}>
-        <View style={styles.summaryCardHeader}>
-          <Icon name="note" color={colors.muted} size={15} />
-          <Text style={[styles.smallCardLabel, { color: colors.muted }]}>Notatka</Text>
+    <Defs>
+      <LinearGradient id="card" x1="0" y1="0" x2="1" y2="1">
+        <Stop offset="0" stopColor={isDark ? '#23343F' : '#FFFFFF'} />
+        <Stop offset="1" stopColor={isDark ? '#1C2933' : '#FDFEFF'} />
+      </LinearGradient>
+      <LinearGradient id="blue" x1="0" y1="0" x2="1" y2="1">
+        <Stop offset="0" stopColor={isDark ? '#9CCBFA' : '#70B4FC'} />
+        <Stop offset="1" stopColor={isDark ? '#5C9DE8' : '#246FCC'} />
+      </LinearGradient>
+      <LinearGradient id="ribbon" x1="0" y1="0" x2="1" y2="1">
+        <Stop offset="0" stopColor="#78B9FA" stopOpacity="0" />
+        <Stop
+          offset="55%"
+          stopColor="#78B9FA"
+          stopOpacity={isDark ? 0.24 : 0.4}
+        />
+        <Stop offset="1" stopColor="#78B9FA" stopOpacity="0" />
+      </LinearGradient>
+      <RadialGradient id="glow">
+        <Stop
+          offset="0"
+          stopColor="#70B6FB"
+          stopOpacity={isDark ? '.10' : '.15'}
+        />
+        <Stop offset="1" stopColor="#70B6FB" stopOpacity="0" />
+      </RadialGradient>
+    </Defs>
+  )
+}
+
+function Mic({ x, y }: { x: number; y: number }) {
+  const { isDark } = useTheme()
+  return (
+    <G transform={`translate(${x} ${y})`}>
+      <Circle cx="0" cy="0" r="23" fill={isDark ? '#2C4E6B' : '#DEEEFF'} />
+      <Path
+        d="M-4-10a4 4 0 0 1 8 0v9a4 4 0 0 1-8 0ZM-8-2v1a8 8 0 0 0 16 0v-1M0 7v6M-4 13h8"
+        stroke={isDark ? '#A3D0FC' : '#2C7BD3'}
+        strokeWidth="2.1"
+        strokeLinecap="round"
+        fill="none"
+      />
+    </G>
+  )
+}
+
+function VoiceNoteArt() {
+  const { isDark } = useTheme()
+  return (
+    <Svg width="100%" height="100%" viewBox="0 0 360 280">
+      <ArtworkDefs />
+      <Ellipse cx="248" cy="160" rx="140" ry="114" fill="url(#glow)" />
+      <Path
+        d="M139 160C185 65 211 99 264 154L267 208C205 125 185 138 139 160Z"
+        fill="url(#ribbon)"
+      />
+      <Path
+        d="M135 161C175 122 180 160 208 184S241 185 269 167"
+        stroke="url(#blue)"
+        strokeWidth="4"
+        strokeLinecap="round"
+        fill="none"
+      />
+      {WAVE.map((height, i) => (
+        <Rect
+          key={i}
+          x={3 + i * 12}
+          y={158 - height * 1.08}
+          width="5.8"
+          height={height * 2.16}
+          rx="2.9"
+          fill="url(#blue)"
+        />
+      ))}
+      <G transform="rotate(-4 281 154)">
+        <Rect
+          x="215"
+          y="66"
+          width="141"
+          height="184"
+          rx="17"
+          fill={isDark ? '#050C12' : '#C1DFF8'}
+          opacity=".13"
+        />
+        <Rect
+          x="213"
+          y="59"
+          width="141"
+          height="184"
+          rx="17"
+          fill="url(#card)"
+          stroke={isDark ? '#344957' : '#F5FAFF'}
+          strokeWidth="1"
+        />
+        <Mic x={252} y={99} />
+        {[104, 94, 69, 83].map((width, i) => (
+          <Rect
+            key={i}
+            x="232"
+            y={139 + i * 19}
+            width={width}
+            height="8"
+            rx="4"
+            fill={isDark ? '#496373' : '#C9DDF2'}
+          />
+        ))}
+      </G>
+    </Svg>
+  )
+}
+
+function DictationArt({ animate }: { animate: boolean }) {
+  const { colors, isDark } = useTheme()
+  const wave = useRef(new Animated.Value(0)).current
+  const hasRevealed = useRef(false)
+  const [revealTail, setRevealTail] = useState(false)
+  useLayoutEffect(() => {
+    if (animate && !hasRevealed.current) {
+      hasRevealed.current = true
+      setRevealTail(true)
+    } else if (!animate) setRevealTail(false)
+  }, [animate])
+  useEffect(() => {
+    if (!animate) {
+      wave.setValue(0)
+      return
+    }
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(wave, {
+          toValue: 1,
+          duration: 760,
+          easing: Easing.inOut(Easing.sin),
+          useNativeDriver: true,
+        }),
+        Animated.timing(wave, {
+          toValue: 0,
+          duration: 940,
+          easing: Easing.inOut(Easing.sin),
+          useNativeDriver: true,
+        }),
+      ]),
+    )
+    loop.start()
+    return () => loop.stop()
+  }, [animate, wave])
+  return (
+    <View
+      style={[
+        styles.dictation,
+        {
+          backgroundColor: isDark ? '#1D2C36' : '#FFFFFF',
+          borderColor: isDark ? '#2B404F' : '#EDF5FF',
+          shadowColor: isDark ? '#020A11' : '#92BFEF',
+        },
+      ]}
+    >
+      <View style={styles.cardHeader}>
+        <View
+          style={[
+            styles.micBadge,
+            { backgroundColor: isDark ? '#2B4D69' : '#E0EEFF' },
+          ]}
+        >
+          <Icon name="mic" size={24} color={colors.accent} />
         </View>
-        <Text style={[styles.sourceTitle, { color: colors.ink }]}>Spotkanie</Text>
-        <View style={[styles.summaryLine, { backgroundColor: colors.line }]} />
-        <View style={[styles.summaryLine, styles.summaryLineShort, { backgroundColor: colors.line }]} />
-        <View style={[styles.summaryLine, styles.summaryLineMedium, { backgroundColor: colors.line }]} />
+        <Text
+          maxFontSizeMultiplier={1.15}
+          style={[styles.time, { color: colors.muted }]}
+        >
+          00:12
+        </Text>
       </View>
-      <Icon name="arrow-right" color={colors.accent} size={20} />
-      <View style={[styles.resultCard, { backgroundColor: colors.paper, borderColor: colors.line }]}>
-        <View style={styles.summaryCardHeader}>
-          <Icon name="sparkles" color={colors.accent} size={15} />
-          <Text style={[styles.smallCardLabel, { color: colors.accent }]}>Opracowanie</Text>
-        </View>
-        <Text style={[styles.resultTitle, { color: colors.ink }]}>Tytuł</Text>
-        <Text style={[styles.resultText, { color: colors.body }]}>Plan projektu</Text>
-        <View style={[styles.summaryLine, { backgroundColor: colors.line }]} />
-        <View style={styles.summaryBulletRow}>
-          <View style={[styles.summaryBullet, { backgroundColor: colors.accent }]} />
-          <View style={[styles.summaryLine, { backgroundColor: colors.line, flex: 1 }]} />
-        </View>
-        <View style={styles.summaryBulletRow}>
-          <View style={[styles.summaryBullet, { backgroundColor: colors.accent }]} />
-          <View style={[styles.summaryLine, styles.summaryLineMedium, { backgroundColor: colors.line }]} />
-        </View>
+      <Text
+        maxFontSizeMultiplier={1.15}
+        style={[styles.transcript, { color: colors.body }]}
+      >
+        Spotkanie z promotorem dotyczyło kolejnych kroków w projekcie.{' '}
+        <RevealText
+          text="Omówiliśmy plan na najbliższe tygodnie"
+          animate={revealTail}
+          style={{ color: colors.accent }}
+        />
+      </Text>
+      <View style={styles.wave}>
+        {SMALL_WAVE.map((height, i) => (
+          <Animated.View
+            key={i}
+            style={{
+              width: 3,
+              height,
+              borderRadius: 2,
+              backgroundColor: colors.accent,
+              opacity: 0.35 + (i % 5) * 0.12,
+              transform: [
+                {
+                  scaleY: wave.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: i % 3 === 0 ? [0.7, 1.15] : [1, 0.65],
+                  }),
+                },
+              ],
+            }}
+          />
+        ))}
       </View>
     </View>
+  )
+}
+
+function SummaryArt() {
+  const { colors, isDark } = useTheme()
+  const line = isDark ? '#506979' : '#D1DFEE'
+  return (
+    <Svg width="100%" height="100%" viewBox="0 0 360 280">
+      <ArtworkDefs />
+      <Ellipse cx="236" cy="159" rx="143" ry="122" fill="url(#glow)" />
+      <G transform="rotate(-5 77 176)">
+        <Rect
+          x="4"
+          y="100"
+          width="138"
+          height="158"
+          rx="15"
+          fill="url(#card)"
+          stroke={isDark ? '#334956' : '#EDF6FF'}
+        />
+        <Rect x="21" y="119" width="65" height="8" rx="4" fill={line} />
+        <SvgText
+          x="21"
+          y="149"
+          fill={colors.ink}
+          fontSize="13"
+          fontWeight="600"
+        >
+          Spotkanie
+        </SvgText>
+        <SvgText
+          x="21"
+          y="167"
+          fill={colors.ink}
+          fontSize="13"
+          fontWeight="600"
+        >
+          z promotorem
+        </SvgText>
+        {[101, 101, 80].map((width, i) => (
+          <Rect
+            key={i}
+            x="21"
+            y={186 + i * 17}
+            width={width}
+            height="8"
+            rx="4"
+            fill={line}
+          />
+        ))}
+      </G>
+      <Path
+        d="M77 108C91 54 136 51 158 76"
+        fill="none"
+        stroke="url(#blue)"
+        strokeWidth="3"
+        strokeLinecap="round"
+      />
+      <Path
+        d="m149 77 13-1-3-13"
+        fill="none"
+        stroke="url(#blue)"
+        strokeWidth="3"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <G transform="rotate(4 261 158)">
+        <Rect
+          x="176"
+          y="53"
+          width="175"
+          height="221"
+          rx="16"
+          fill="url(#card)"
+          stroke={isDark ? '#334956' : '#F0F7FF'}
+        />
+        <Rect x="195" y="74" width="86" height="8" rx="4" fill={line} />
+        <SvgText
+          x="195"
+          y="113"
+          fill={colors.ink}
+          fontSize="15"
+          fontWeight="600"
+        >
+          Tytuł
+        </SvgText>
+        <SvgText x="195" y="136" fill={colors.body} fontSize="11.5">
+          Spotkanie z promotorem
+        </SvgText>
+        <Rect x="195" y="151" width="102" height="7" rx="3.5" fill={line} />
+        <SvgText
+          x="195"
+          y="189"
+          fill={colors.ink}
+          fontSize="13"
+          fontWeight="600"
+        >
+          Podsumowanie
+        </SvgText>
+        {[108, 85, 71].map((width, i) => (
+          <G key={i}>
+            <Circle cx="199" cy={207 + i * 19} r="3.5" fill={colors.accent} />
+            <Rect
+              x="213"
+              y={203 + i * 19}
+              width={width}
+              height="8"
+              rx="4"
+              fill={line}
+            />
+          </G>
+        ))}
+      </G>
+      <Path
+        d="M326 28c2.7 12 5 14.3 17 17-12 2.7-14.3 5-17 17-2.7-12-5-14.3-17-17 12-2.7 14.3-5 17-17ZM303 53c1.8 8.8 3.5 10.5 12.3 12.3-8.8 1.8-10.5 3.5-12.3 12.3-1.8-8.8-3.5-10.5-12.3-12.3 8.8-1.8 10.5-3.5 12.3-12.3Z"
+        fill="url(#blue)"
+      />
+    </Svg>
   )
 }
 
 const styles = StyleSheet.create({
   scene: {
-    minHeight: 224,
+    width: '100%',
+    height: '100%',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  phone: {
-    width: 164,
-    minHeight: 214,
-    borderWidth: 1.5,
-    borderRadius: 28,
-    paddingHorizontal: 13,
-    paddingTop: 10,
-    paddingBottom: 13,
-    alignItems: 'stretch',
-    gap: 9,
+  dictation: {
+    width: '100%',
+    borderWidth: 1,
+    borderRadius: 17,
+    padding: 20,
+    gap: 12,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.12,
+    shadowRadius: 24,
   },
-  phoneSpeaker: {
-    alignSelf: 'center',
-    width: 32,
-    height: 3,
-    borderRadius: radius.pill,
-    marginBottom: 2,
-  },
-  phoneHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  phoneHeaderTitle: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  phoneLabel: { ...type.label, fontSize: 12 },
-  phoneTitle: { ...type.label, fontSize: 13, marginTop: 3 },
-  phoneLine: { height: 6, borderRadius: radius.pill, width: '100%' },
-  phoneLineShort: { width: '73%' },
-  phoneLineMedium: { width: '86%' },
-  privateBadge: {
-    alignSelf: 'flex-start',
-    maxWidth: '100%',
+  cardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: 8,
-    paddingVertical: 5,
-    borderRadius: radius.pill,
+    justifyContent: 'space-between',
+  },
+  micBadge: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  time: { fontSize: 14, fontVariant: ['tabular-nums'] },
+  transcript: { fontSize: 18, lineHeight: 27 },
+  wave: {
+    height: 32,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
     marginTop: 2,
   },
-  privateLabel: { ...type.meta, fontSize: 10, fontWeight: '600', flexShrink: 1 },
-  dictationCard: {
-    width: '100%',
-    minHeight: 190,
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderRadius: 20,
-    padding: spacing.lg,
-    gap: spacing.md,
-  },
-  dictationHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  micBadge: { width: 36, height: 36, borderRadius: radius.pill, alignItems: 'center', justifyContent: 'center' },
-  dictationLabel: { ...type.label, flex: 1, fontSize: 13 },
-  timeLabel: { ...type.meta, fontVariant: ['tabular-nums'] },
-  waveform: { height: 38, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 2 },
-  transcript: { ...type.body, fontSize: 17, lineHeight: 25 },
-  summaryFlow: {
-    width: '100%',
-    minHeight: 206,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-  },
-  sourceCard: {
-    flex: 1,
-    minHeight: 132,
-    padding: spacing.md,
-    borderWidth: 1,
-    borderRadius: 16,
-    justifyContent: 'center',
-    gap: spacing.sm,
-  },
-  resultCard: {
-    flex: 1.23,
-    minHeight: 158,
-    padding: spacing.md,
-    borderWidth: 1,
-    borderRadius: 16,
-    justifyContent: 'center',
-    gap: 5,
-  },
-  summaryCardHeader: { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 2 },
-  smallCardLabel: { ...type.meta, fontSize: 10, fontWeight: '600' },
-  sourceTitle: { ...type.label, fontSize: 12, lineHeight: 17 },
-  resultTitle: { ...type.meta, fontSize: 10, fontWeight: '600', marginTop: 2 },
-  resultText: { ...type.label, fontSize: 12, lineHeight: 16 },
-  summaryLine: { height: 5, borderRadius: radius.pill, width: '100%' },
-  summaryLineShort: { width: '63%' },
-  summaryLineMedium: { width: '82%' },
-  summaryBulletRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  summaryBullet: { width: 5, height: 5, borderRadius: radius.pill },
 })

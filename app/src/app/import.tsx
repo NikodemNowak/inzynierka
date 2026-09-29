@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Stack, useNavigation, useRouter } from 'expo-router'
 import { usePreventRemove } from 'expo-router/react-navigation'
 import { ScrollView, StyleSheet, Text, View } from 'react-native'
+import Svg, { Path } from 'react-native-svg'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import * as DocumentPicker from 'expo-document-picker'
 import { useNotesStore } from '../state/notesStore'
@@ -37,6 +38,52 @@ const formatFileSize = (bytes: number | null): string => {
   const kilobytes = bytes / 1024
   if (kilobytes < 1024) return `${kilobytes.toFixed(kilobytes < 10 ? 1 : 0)} KB`
   return `${(kilobytes / 1024).toFixed(1)} MB`
+}
+
+const AUDIO_MARK_BARS = [
+  { x: 21, height: 8 },
+  { x: 27, height: 17 },
+  { x: 33, height: 25 },
+  { x: 39, height: 14 },
+]
+
+function AudioFileMark({
+  size,
+  color,
+  waveColor = color,
+}: {
+  size: number
+  color: string
+  waveColor?: string
+}) {
+  return (
+    <Svg
+      width={size}
+      height={size}
+      viewBox="0 0 56 56"
+      accessibilityElementsHidden
+      importantForAccessibility="no"
+    >
+      <Path
+        d="M13 5h19l12 12v34H13zM32 5v12h12"
+        fill="none"
+        stroke={color}
+        strokeWidth={2}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      {AUDIO_MARK_BARS.map((bar) => (
+        <Path
+          key={bar.x}
+          d={`M${bar.x} ${28 - bar.height / 2}v${bar.height}`}
+          fill="none"
+          stroke={waveColor}
+          strokeWidth={2.4}
+          strokeLinecap="round"
+        />
+      ))}
+    </Svg>
+  )
 }
 
 export default function ImportAudioScreen() {
@@ -284,11 +331,16 @@ export default function ImportAudioScreen() {
       <Stack.Screen options={{ title: 'Importuj nagranie' }} />
 
       {selectedAudio ? (
-        <View style={[styles.fileRow, { backgroundColor: colors.surface }]}>
+        <View
+          style={[
+            styles.fileRow,
+            { backgroundColor: colors.surface, borderColor: colors.line },
+          ]}
+        >
           <View
             style={[styles.fileIcon, { backgroundColor: colors.accentSoft }]}
           >
-            <Icon name="file" size={29} color={colors.accent} />
+            <AudioFileMark size={38} color={colors.accent} />
           </View>
           <View style={styles.fileDetails}>
             <Text
@@ -317,7 +369,11 @@ export default function ImportAudioScreen() {
             <View
               style={[styles.introIcon, { backgroundColor: colors.accentSoft }]}
             >
-              <Icon name="waveform" size={38} color={colors.accent} />
+              <AudioFileMark
+                size={55}
+                color={colors.faint}
+                waveColor={colors.accent}
+              />
             </View>
             <Text style={[styles.title, { color: colors.ink }]}>
               Zamień nagranie w notatkę
@@ -347,6 +403,12 @@ export default function ImportAudioScreen() {
             <Icon name="alert" size={21} color={colors.ember} />
             <Text style={[styles.error, { color: colors.ink }]}>{error}</Text>
           </View>
+        )}
+
+        {selectedAudio && (
+          <View
+            style={[styles.transcriptDivider, { borderColor: colors.line }]}
+          />
         )}
 
         {selectedAudio && (
@@ -496,7 +558,8 @@ const styles = StyleSheet.create({
     marginHorizontal: spacing.lg,
     marginTop: spacing.lg,
     padding: spacing.md,
-    borderRadius: 18,
+    borderRadius: 16,
+    borderWidth: 1,
   },
   fileIcon: {
     width: 54,
@@ -544,6 +607,7 @@ const styles = StyleSheet.create({
   },
   error: { ...type.body, flex: 1, fontSize: 14, lineHeight: 21 },
   transcriptSection: { gap: spacing.md, paddingTop: spacing.sm },
+  transcriptDivider: { borderBottomWidth: StyleSheet.hairlineWidth },
   transcriptLabel: { ...type.title, fontSize: 18 },
   transcript: { fontSize: 18, lineHeight: 29, letterSpacing: -0.1 },
   placeholder: { ...type.body, lineHeight: 25 },

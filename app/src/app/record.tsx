@@ -1,7 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Stack, useNavigation, useRouter } from 'expo-router'
 import { usePreventRemove } from 'expo-router/react-navigation'
-import { ScrollView, StyleSheet, Text, View } from 'react-native'
+import {
+  ActivityIndicator,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useNotesStore } from '../state/notesStore'
 import { useDraftStore } from '../state/draftStore'
@@ -35,11 +41,45 @@ const defaultTitle = (prefix = 'Nagranie'): string =>
     minute: '2-digit',
   })}`
 
-const statusLabel = (status: string, requesting: boolean): string => {
+const statusLabel = (
+  status: string,
+  requesting: boolean,
+  saving: boolean,
+): string => {
+  if (saving) return 'Zapisuję notatkę'
   if (requesting || status === 'starting') return 'Przygotowuję mikrofon'
   if (status === 'recording') return 'Nagrywanie'
   if (status === 'stopping') return 'Zapisuję nagranie'
   return 'Gotowe do nagrania'
+}
+
+const WAVEFORM_HEIGHTS = [
+  2, 2, 2, 2, 2, 2, 2, 2, 3, 4, 7, 12, 7, 4, 3, 2, 5, 9, 16, 26, 36, 26, 16, 9,
+  5, 2, 3, 4, 7, 12, 7, 4, 3, 2, 2, 2, 2, 2, 2,
+]
+
+function RecordingWaveform({
+  status,
+}: {
+  status: 'idle' | 'starting' | 'recording' | 'stopping'
+}) {
+  const { colors } = useTheme()
+  const color = status === 'recording' ? colors.accent : colors.faint
+
+  return (
+    <View
+      style={styles.waveform}
+      accessibilityElementsHidden
+      importantForAccessibility="no-hide-descendants"
+    >
+      {WAVEFORM_HEIGHTS.map((height, index) => (
+        <View
+          key={index}
+          style={[styles.waveformBar, { height, backgroundColor: color }]}
+        />
+      ))}
+    </View>
+  )
 }
 
 export default function RecordNoteScreen() {
@@ -200,6 +240,7 @@ export default function RecordNoteScreen() {
   const live = status === 'recording'
   const starting = requesting || status === 'starting'
   const busy = status === 'stopping' || saving
+  const showingProgress = starting || status === 'stopping' || saving
   const protectNavigation =
     starting ||
     live ||
@@ -240,10 +281,8 @@ export default function RecordNoteScreen() {
           {live && (
             <View style={[styles.liveDot, { backgroundColor: colors.ember }]} />
           )}
-          {starting && (
-            <View
-              style={[styles.preparingDot, { borderColor: colors.accent }]}
-            />
+          {showingProgress && (
+            <ActivityIndicator size="small" color={colors.accent} />
           )}
           <Text
             style={[
@@ -251,13 +290,13 @@ export default function RecordNoteScreen() {
               {
                 color: live
                   ? colors.ember
-                  : starting
+                  : showingProgress
                     ? colors.accent
                     : colors.muted,
               },
             ]}
           >
-            {statusLabel(status, requesting)}
+            {statusLabel(status, requesting, saving)}
           </Text>
         </View>
         <Text
@@ -266,17 +305,7 @@ export default function RecordNoteScreen() {
         >
           {formatDuration(recorder.durationMs)}
         </Text>
-        <View
-          style={styles.waveform}
-          accessibilityElementsHidden
-          importantForAccessibility="no-hide-descendants"
-        >
-          <Icon
-            name="waveform"
-            size={54}
-            color={live ? colors.accent : colors.faint}
-          />
-        </View>
+        <RecordingWaveform status={status} />
       </View>
 
       <View style={[styles.transcriptDivider, { borderColor: colors.line }]} />
@@ -456,15 +485,18 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   liveDot: { width: 9, height: 9, borderRadius: 5 },
-  preparingDot: { width: 13, height: 13, borderRadius: 7, borderWidth: 2 },
   status: { ...type.label, fontWeight: '500' },
   counter: { ...type.counter, fontVariant: ['tabular-nums'] },
   waveform: {
-    height: 57,
+    width: '82%',
+    height: 52,
+    alignSelf: 'center',
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: 'space-between',
     marginTop: 2,
   },
+  waveformBar: { width: 3, borderRadius: 999 },
   transcriptDivider: {
     marginHorizontal: spacing.lg,
     borderBottomWidth: StyleSheet.hairlineWidth,

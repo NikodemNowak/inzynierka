@@ -175,6 +175,19 @@ export default function EditNoteScreen() {
       <Stack.Screen
         options={{
           title: 'Edytuj notatkę',
+          headerBackVisible: false,
+          headerLeft: () => (
+            <Pressable
+              onPress={goToList}
+              accessibilityRole="button"
+              accessibilityLabel="Anuluj edycję"
+              style={styles.headerCancel}
+            >
+              <Text style={[styles.headerSaveText, { color: colors.accent }]}>
+                Anuluj
+              </Text>
+            </Pressable>
+          ),
           headerRight: () => (
             <Pressable
               onPress={() => void save()}
@@ -272,14 +285,6 @@ export default function EditNoteScreen() {
             {MODEL_MISSING_MESSAGE}
           </Text>
         )}
-        <Button
-          label={saving ? 'Zapisuję…' : 'Zapisz zmiany'}
-          variant="primary"
-          icon="check"
-          onPress={() => void save()}
-          disabled={!dirty || !editable}
-          busy={saving}
-        />
       </ScrollView>
 
       <BottomSheet
@@ -326,6 +331,11 @@ const styles = StyleSheet.create({
     gap: spacing.lg,
   },
   headerSave: {
+    minHeight: 44,
+    justifyContent: 'center',
+    paddingHorizontal: spacing.sm,
+  },
+  headerCancel: {
     minHeight: 44,
     justifyContent: 'center',
     paddingHorizontal: spacing.sm,

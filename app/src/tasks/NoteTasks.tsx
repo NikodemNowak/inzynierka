@@ -1,9 +1,18 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Pressable, StyleSheet, Text, View } from 'react-native'
+import {
+  Alert,
+  Modal,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native'
 import { useIsFocused } from 'expo-router/react-navigation'
-import { BottomSheet } from '../ui/BottomSheet'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Button } from '../ui/Button'
 import { Icon } from '../ui/Icon'
+import { useReducedMotion } from '../ui/Motion'
 import { radius, spacing, type, useTheme } from '../ui/theme'
 import { useTasksStore } from '../state/tasksStore'
 import { useNotesStore } from '../state/notesStore'
@@ -22,6 +31,8 @@ export function NoteTasks({
   onBusyChange?: (busy: boolean) => void
 }) {
   const { colors } = useTheme()
+  const insets = useSafeAreaInsets()
+  const reducedMotion = useReducedMotion()
   const allTasks = useTasksStore((state) => state.tasks)
   const tasks = useMemo(
     () => allTasks.filter((task) => task.noteId === noteId),
@@ -194,13 +205,13 @@ export function NoteTasks({
               style={[
                 styles.checkbox,
                 {
-                  borderColor: task.done ? colors.accent : colors.faint,
-                  backgroundColor: task.done ? colors.accent : 'transparent',
+                  borderColor: task.done ? colors.action : colors.faint,
+                  backgroundColor: task.done ? colors.action : 'transparent',
                 },
               ]}
             >
               {task.done && (
-                <Icon name="check" size={15} color={colors.onAccent} />
+                <Icon name="check" size={15} color={colors.onAction} />
               )}
             </View>
           </Pressable>
@@ -217,10 +228,26 @@ export function NoteTasks({
             accessibilityRole="button"
             accessibilityLabel={`Usuń zadanie: ${task.text}`}
             onPress={() => {
-              void remove(task.id).catch((cause: unknown) =>
-                setError(
-                  cause instanceof Error ? cause.message : String(cause),
-                ),
+              Alert.alert(
+                'Usunąć zadanie?',
+                task.text,
+                [
+                  { text: 'Anuluj', style: 'cancel' },
+                  {
+                    text: 'Usuń',
+                    style: 'destructive',
+                    onPress: () => {
+                      void remove(task.id).catch((cause: unknown) =>
+                        setError(
+                          cause instanceof Error
+                            ? cause.message
+                            : String(cause),
+                        ),
+                      )
+                    },
+                  },
+                ],
+                { cancelable: true },
               )
             }}
             hitSlop={8}
@@ -265,59 +292,125 @@ export function NoteTasks({
         busy={busy}
       />
 
-      <BottomSheet
-        visible={sheetVisible}
-        onClose={() => setSheetVisible(false)}
-        title="Propozycje z notatki"
+      <Modal
+        visible={sheetVisible && isFocused}
+        animationType={reducedMotion ? 'fade' : 'slide'}
+        presentationStyle="fullScreen"
+        statusBarTranslucent
+        onRequestClose={cancelProposals}
       >
-        <Text style={[styles.sheetDescription, { color: colors.muted }]}>
-          Zaznacz zadania, które chcesz dodać.
-        </Text>
-        {proposals.map((text) => {
-          const checked = selected.has(text)
-          return (
+        <View
+          accessibilityViewIsModal
+          style={[styles.proposalScreen, { backgroundColor: colors.canvas }]}
+        >
+          <View
+            style={[
+              styles.proposalHeader,
+              {
+                paddingTop: insets.top + spacing.xs,
+                borderBottomColor: colors.line,
+              },
+            ]}
+          >
             <Pressable
-              key={text}
-              onPress={() => toggleProposal(text)}
-              accessibilityRole="checkbox"
-              accessibilityState={{ checked }}
-              style={({ pressed }) => [
-                styles.proposalRow,
-                {
-                  backgroundColor: checked ? colors.accentSoft : colors.canvas,
-                  borderColor: checked ? colors.accentSoft : colors.line,
-                  opacity: pressed ? 0.76 : 1,
-                },
-              ]}
+              onPress={cancelProposals}
+              accessibilityRole="button"
+              accessibilityLabel="Anuluj propozycje zadań"
+              style={styles.proposalBack}
             >
-              <View
-                style={[
-                  styles.checkbox,
-                  {
-                    borderColor: checked ? colors.accent : colors.faint,
-                    backgroundColor: checked ? colors.accent : 'transparent',
-                  },
-                ]}
-              >
-                {checked && (
-                  <Icon name="check" size={15} color={colors.onAccent} />
-                )}
-              </View>
-              <Text style={[styles.proposalText, { color: colors.ink }]}>
-                {text}
-              </Text>
+              <Icon name="chevron-left" size={23} color={colors.accent} />
             </Pressable>
-          )
-        })}
-        <Button
-          label={`Dodaj zaznaczone (${selected.size})`}
-          variant="primary"
-          icon="plus"
-          onPress={() => void addSelected()}
-          disabled={selected.size === 0}
-        />
-        <Button label="Anuluj" variant="secondary" onPress={cancelProposals} />
-      </BottomSheet>
+            <Text
+              accessibilityRole="header"
+              style={[styles.proposalHeaderTitle, { color: colors.ink }]}
+            >
+              Propozycje zadań
+            </Text>
+            <View style={styles.proposalBack} />
+          </View>
+
+          <ScrollView
+            style={styles.proposalScroll}
+            contentContainerStyle={styles.proposalContent}
+            keyboardShouldPersistTaps="handled"
+          >
+            <View style={styles.proposalIntro}>
+              <Icon name="sparkles" size={30} color={colors.accent} />
+              <Text
+                accessibilityRole="header"
+                style={[styles.proposalIntroTitle, { color: colors.ink }]}
+              >
+                Co warto zrobić
+              </Text>
+            </View>
+            <Text style={[styles.sheetDescription, { color: colors.muted }]}>
+              Zaznacz zadania, które chcesz zachować.
+            </Text>
+            <View style={styles.proposalList}>
+              {proposals.map((text) => {
+                const checked = selected.has(text)
+                return (
+                  <Pressable
+                    key={text}
+                    onPress={() => toggleProposal(text)}
+                    accessibilityRole="checkbox"
+                    accessibilityState={{ checked }}
+                    style={({ pressed }) => [
+                      styles.proposalRow,
+                      {
+                        borderBottomColor: colors.line,
+                        opacity: pressed ? 0.72 : 1,
+                      },
+                    ]}
+                  >
+                    <View
+                      style={[
+                        styles.proposalCheckbox,
+                        {
+                          borderColor: checked ? colors.action : colors.faint,
+                          backgroundColor: checked
+                            ? colors.action
+                            : 'transparent',
+                        },
+                      ]}
+                    >
+                      {checked && (
+                        <Icon name="check" size={16} color={colors.onAction} />
+                      )}
+                    </View>
+                    <Text style={[styles.proposalText, { color: colors.ink }]}>
+                      {text}
+                    </Text>
+                  </Pressable>
+                )
+              })}
+            </View>
+          </ScrollView>
+
+          <View
+            style={[
+              styles.proposalFooter,
+              {
+                backgroundColor: colors.canvas,
+                borderTopColor: colors.line,
+                paddingBottom: Math.max(insets.bottom, spacing.md),
+              },
+            ]}
+          >
+            <Button
+              label={`Dodaj zaznaczone (${selected.size})`}
+              variant="primary"
+              onPress={() => void addSelected()}
+              disabled={selected.size === 0}
+            />
+            <Button
+              label="Anuluj"
+              variant="secondary"
+              onPress={cancelProposals}
+            />
+          </View>
+        </View>
+      </Modal>
     </View>
   )
 }
@@ -350,16 +443,59 @@ const styles = StyleSheet.create({
   empty: { ...type.body },
   error: { ...type.body },
   status: { ...type.meta },
-  sheetDescription: { ...type.body },
-  proposalRow: {
+  sheetDescription: { ...type.body, fontSize: 14, lineHeight: 20 },
+  proposalScreen: { flex: 1 },
+  proposalHeader: {
+    minHeight: 56,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  proposalBack: {
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  proposalHeaderTitle: { ...type.label, flex: 1, textAlign: 'center' },
+  proposalScroll: { flex: 1 },
+  proposalContent: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.xl,
+    paddingBottom: spacing.xl,
+    gap: spacing.md,
+  },
+  proposalIntro: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
-    minHeight: 58,
-    borderWidth: 1,
-    borderRadius: radius.md,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.md,
   },
-  proposalText: { ...type.body, flex: 1 },
+  proposalIntroTitle: { ...type.title, fontSize: 21, lineHeight: 28 },
+  proposalList: { marginTop: spacing.sm },
+  proposalRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.md,
+    minHeight: 72,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    paddingVertical: spacing.lg,
+  },
+  proposalCheckbox: {
+    width: 23,
+    height: 23,
+    borderRadius: 6,
+    borderWidth: 1.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 1,
+  },
+  proposalText: { ...type.body, flex: 1, lineHeight: 23 },
+  proposalFooter: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md,
+    gap: spacing.sm,
+  },
 })

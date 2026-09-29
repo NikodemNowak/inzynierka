@@ -88,7 +88,7 @@ export function AudioNotePlayer({ uri, durationMs }: Props) {
             width: 44,
             height: 44,
             borderRadius: 22,
-            backgroundColor: colors.accent,
+            backgroundColor: colors.action,
             alignItems: 'center',
             justifyContent: 'center',
             opacity: pressed ? 0.7 : 1,
@@ -96,7 +96,7 @@ export function AudioNotePlayer({ uri, durationMs }: Props) {
         >
           <Icon
             name={status.playing ? 'pause' : 'play'}
-            color={colors.onAccent}
+            color={colors.onAction}
             size={21}
           />
         </Pressable>

@@ -2,11 +2,12 @@ import type { ComponentProps } from 'react'
 import { Redirect, Tabs } from 'expo-router'
 import { View } from 'react-native'
 import { useSettingsStore } from '../../state/settingsStore'
-import { ModelDownloadBanner } from '../../notes/ModelDownloadBanner'
 import { HomeHeader, HomeNavigation } from '../../ui/HomeNavigation'
 import { useTheme } from '../../ui/theme'
 
-type TabBarProps = Parameters<NonNullable<ComponentProps<typeof Tabs>['tabBar']>>[0]
+type TabBarProps = Parameters<
+  NonNullable<ComponentProps<typeof Tabs>['tabBar']>
+>[0]
 type TabLayoutProps = Parameters<
   NonNullable<ComponentProps<typeof Tabs>['layout']>
 >[0]
@@ -36,9 +37,10 @@ function HomeFrame({ state, children }: TabLayoutProps) {
   return (
     <View style={{ flex: 1, backgroundColor: colors.canvas }}>
       <HomeHeader
-        title={state.routes[state.index]?.name === 'tasks' ? 'Zadania' : 'Notatki'}
+        title={
+          state.routes[state.index]?.name === 'tasks' ? 'Zadania' : 'Notatki'
+        }
       />
-      <ModelDownloadBanner />
       {children}
     </View>
   )
@@ -47,8 +49,11 @@ function HomeFrame({ state, children }: TabLayoutProps) {
 export default function HomeTabsLayout() {
   const { colors } = useTheme()
   const loaded = useSettingsStore((state) => state.loaded)
-  const onboardingCompleted = useSettingsStore((state) => state.onboardingCompleted)
-  if (!loaded) return <View style={{ flex: 1, backgroundColor: colors.canvas }} />
+  const onboardingCompleted = useSettingsStore(
+    (state) => state.onboardingCompleted,
+  )
+  if (!loaded)
+    return <View style={{ flex: 1, backgroundColor: colors.canvas }} />
   if (!onboardingCompleted) return <Redirect href="/welcome" />
 
   return (

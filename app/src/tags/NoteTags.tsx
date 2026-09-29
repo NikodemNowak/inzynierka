@@ -7,11 +7,13 @@ export function NoteTags({
   onChange,
   editable,
   showLabel = editable,
+  compact = false,
 }: {
   tags: string[]
   onChange: (tags: string[]) => void
   editable: boolean
   showLabel?: boolean
+  compact?: boolean
 }) {
   const { colors } = useTheme()
   const categories = editable
@@ -40,7 +42,7 @@ export function NoteTags({
               disabled={!editable}
               onPress={() => toggle(category)}
               style={({ pressed }) => [
-                styles.chip,
+                compact ? styles.compactChip : styles.chip,
                 {
                   backgroundColor: active ? colors.accentSoft : colors.surface,
                   borderColor: active ? colors.accentSoft : colors.surface,
@@ -55,7 +57,7 @@ export function NoteTags({
             >
               <Text
                 style={[
-                  styles.text,
+                  compact ? styles.compactText : styles.text,
                   { color: active ? colors.accent : colors.body },
                 ]}
               >
@@ -75,10 +77,18 @@ const styles = StyleSheet.create({
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   chip: {
     borderRadius: radius.pill,
-    minHeight: 40,
+    minHeight: 36,
     justifyContent: 'center',
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: 12,
     borderWidth: 1,
   },
-  text: { ...type.label },
+  compactChip: {
+    borderRadius: radius.pill,
+    minHeight: 30,
+    justifyContent: 'center',
+    paddingHorizontal: 10,
+    borderWidth: 1,
+  },
+  text: { ...type.label, fontSize: 13, lineHeight: 18, fontWeight: '500' },
+  compactText: { fontSize: 12, lineHeight: 16, fontWeight: '500' },
 })

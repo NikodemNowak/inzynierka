@@ -95,6 +95,19 @@ export default function NewNoteScreen() {
       <Stack.Screen
         options={{
           title: 'Nowa notatka',
+          headerBackVisible: false,
+          headerLeft: () => (
+            <Pressable
+              onPress={goToList}
+              accessibilityRole="button"
+              accessibilityLabel="Anuluj tworzenie notatki"
+              style={styles.headerCancel}
+            >
+              <Text style={[styles.headerSaveText, { color: colors.accent }]}>
+                Anuluj
+              </Text>
+            </Pressable>
+          ),
           headerRight: () => (
             <Pressable
               onPress={() => void save()}
@@ -165,14 +178,6 @@ export default function NewNoteScreen() {
           onChange={(tags) => setDraft((current) => ({ ...current, tags }))}
           editable
         />
-        <Button
-          label={saving ? 'Zapisuję…' : 'Zapisz notatkę'}
-          variant="primary"
-          icon="check"
-          onPress={() => void save()}
-          disabled={!dirty || saving}
-          busy={saving}
-        />
       </ScrollView>
 
       <BottomSheet
@@ -210,6 +215,11 @@ const styles = StyleSheet.create({
   intro: { ...type.body },
   body: { ...type.body },
   headerSave: {
+    minHeight: 44,
+    justifyContent: 'center',
+    paddingHorizontal: spacing.sm,
+  },
+  headerCancel: {
     minHeight: 44,
     justifyContent: 'center',
     paddingHorizontal: spacing.sm,

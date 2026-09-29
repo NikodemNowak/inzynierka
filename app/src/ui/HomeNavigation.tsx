@@ -3,6 +3,7 @@ import { useRouter } from 'expo-router'
 import { Pressable, Text, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { BottomSheet } from './BottomSheet'
+import { Button } from './Button'
 import { Icon, IconButton, type IconName } from './Icon'
 import { type, useTheme } from './theme'
 
@@ -50,13 +51,13 @@ const addOptions: ReadonlyArray<{
 }> = [
   {
     icon: 'mic',
-    title: 'Nagraj notatkę',
+    title: 'Nagraj',
     description: 'Mów, a tekst pojawi się na żywo',
     route: '/record',
   },
   {
     icon: 'file',
-    title: 'Importuj nagranie',
+    title: 'Importuj audio',
     description: 'Zamień plik audio w notatkę',
     route: '/import',
   },
@@ -106,13 +107,13 @@ export function HomeNavigation({
                 width: 54,
                 height: 54,
                 borderRadius: 27,
-                backgroundColor: colors.accent,
+                backgroundColor: colors.action,
                 alignItems: 'center',
                 justifyContent: 'center',
                 opacity: pressed ? 0.7 : 1,
               })}
             >
-              <Icon name="plus" size={28} color={colors.onAccent} />
+              <Icon name="plus" size={28} color={colors.onAction} />
             </Pressable>
           ) : (
             <Pressable
@@ -167,16 +168,18 @@ export function HomeNavigation({
               flexDirection: 'row',
               gap: 15,
               alignItems: 'center',
-              paddingVertical: 13,
+              padding: 16,
+              borderRadius: 12,
+              borderWidth: 1,
+              borderColor: colors.line,
+              backgroundColor: colors.paper,
               opacity: pressed ? 0.6 : 1,
             })}
           >
             <View
               style={{
-                width: 48,
-                height: 48,
-                borderRadius: 15,
-                backgroundColor: colors.accentSoft,
+                width: 32,
+                height: 40,
                 alignItems: 'center',
                 justifyContent: 'center',
               }}
@@ -194,6 +197,11 @@ export function HomeNavigation({
             <Icon name="chevron-right" color={colors.faint} size={18} />
           </Pressable>
         ))}
+        <Button
+          label="Anuluj"
+          variant="quiet"
+          onPress={() => setAdding(false)}
+        />
       </BottomSheet>
     </>
   )

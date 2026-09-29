@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import {
   Alert,
+  Modal,
   Pressable,
   ScrollView,
   Share,
@@ -15,7 +16,12 @@ import { BottomSheet } from '../../ui/BottomSheet'
 import { Button } from '../../ui/Button'
 import { Icon } from '../../ui/Icon'
 import { IconButton } from '../../ui/Icon'
-import { ProcessingIndicator, RevealText, SkeletonText } from '../../ui/Motion'
+import {
+  ProcessingIndicator,
+  RevealText,
+  SkeletonText,
+  useReducedMotion,
+} from '../../ui/Motion'
 import { radius, spacing, type, useTheme } from '../../ui/theme'
 import { useNotesStore } from '../../state/notesStore'
 import { useTasksStore } from '../../state/tasksStore'
@@ -81,7 +87,6 @@ function ProposalChoice({
         styles.choice,
         {
           backgroundColor: selected ? colors.accentSoft : colors.canvas,
-          borderColor: selected ? colors.accentSoft : colors.line,
           opacity: pressed ? 0.78 : 1,
         },
       ]}
@@ -89,13 +94,13 @@ function ProposalChoice({
       <View
         style={[
           styles.radio,
-          { borderColor: selected ? colors.accent : colors.faint },
-          selected && { backgroundColor: colors.accent },
+          { borderColor: selected ? colors.action : colors.faint },
+          selected && { backgroundColor: colors.action },
         ]}
       >
-        {selected && <Icon name="check" size={15} color={colors.onAccent} />}
+        {selected && <Icon name="check" size={15} color={colors.onAction} />}
       </View>
-      <View style={styles.choiceContent}>
+      <View style={styles.choiceValueContent}>
         <Text style={[styles.choiceLabel, { color: colors.ink }]}>{label}</Text>
         {children ?? (
           <Text style={[styles.choiceValue, { color: colors.body }]}>
@@ -111,6 +116,7 @@ export default function NoteDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>()
   const { colors } = useTheme()
   const insets = useSafeAreaInsets()
+  const reducedMotion = useReducedMotion()
   const note = useNotesStore((state) =>
     state.notes.find((item) => item.id === id),
   )
@@ -140,6 +146,7 @@ export default function NoteDetailScreen() {
   const [selection, setSelection] =
     useState<NoteProposalSelection>(NO_SELECTION)
   const [error, setError] = useState<string | null>(null)
+  const [appliedNotice, setAppliedNotice] = useState(false)
   const [revealTitle, setRevealTitle] = useState(false)
   const [revealSummary, setRevealSummary] = useState(false)
   const processing = progress !== undefined
@@ -178,6 +185,12 @@ export default function NoteDetailScreen() {
     }, 1300)
     return () => clearTimeout(timeout)
   }, [revealTitle, revealSummary])
+
+  useEffect(() => {
+    if (!appliedNotice) return
+    const timeout = setTimeout(() => setAppliedNotice(false), 2600)
+    return () => clearTimeout(timeout)
+  }, [appliedNotice])
 
   const goToList = () => {
     if (router.canGoBack()) router.back()
@@ -245,6 +258,7 @@ export default function NoteDetailScreen() {
         clearProposal(id)
         setError('Notatka zmieniła się. Wygeneruj propozycje ponownie.')
       } else {
+        setAppliedNotice(true)
         setRevealTitle(
           selection.title && proposal.generated.title !== note.title,
         )
@@ -360,6 +374,7 @@ export default function NoteDetailScreen() {
             onChange={() => undefined}
             editable={false}
             showLabel={false}
+            compact
           />
         )}
 
@@ -487,11 +502,9 @@ export default function NoteDetailScreen() {
       </ScrollView>
 
       <BottomSheet
-        visible={sheetMode !== null}
+        visible={sheetMode === 'confirm' && isFocused}
         onClose={() => setSheetMode(null)}
-        title={
-          sheetMode === 'choose' ? 'Wybierz zmiany' : 'Przygotować nową wersję?'
-        }
+        title="Przygotować nową wersję?"
       >
         {sheetMode === 'confirm' && (
           <>
@@ -521,108 +534,231 @@ export default function NoteDetailScreen() {
             )}
           </>
         )}
-        {sheetMode === 'choose' && proposal && note && (
-          <>
-            <Text style={[styles.sheetMessage, { color: colors.muted }]}>
-              Wybierz osobno dla każdego pola. Nic nie zmieni się, dopóki nie
-              zastosujesz wyboru.
+      </BottomSheet>
+
+      <Modal
+        visible={sheetMode === 'choose' && isFocused}
+        animationType={reducedMotion ? 'fade' : 'slide'}
+        presentationStyle="fullScreen"
+        statusBarTranslucent
+        onRequestClose={() => setSheetMode(null)}
+      >
+        <View
+          accessibilityViewIsModal
+          style={[styles.choiceScreen, { backgroundColor: colors.canvas }]}
+        >
+          <View
+            style={[
+              styles.choiceHeader,
+              {
+                paddingTop: insets.top + spacing.xs,
+                borderBottomColor: colors.line,
+              },
+            ]}
+          >
+            <Pressable
+              onPress={() => setSheetMode(null)}
+              accessibilityRole="button"
+              accessibilityLabel="Anuluj wybór zmian"
+              style={styles.choiceCancel}
+            >
+              <Text style={[styles.headerCancelText, { color: colors.accent }]}>
+                Anuluj
+              </Text>
+            </Pressable>
+            <Text
+              accessibilityRole="header"
+              numberOfLines={1}
+              style={[styles.choiceScreenTitle, { color: colors.ink }]}
+            >
+              Wybierz zmiany
             </Text>
-            <View style={styles.proposalSection}>
-              <Text style={[styles.choiceSectionTitle, { color: colors.ink }]}>
-                Tytuł
-              </Text>
-              <ProposalChoice
-                label="Obecny"
-                value={note.title.trim() || 'Bez tytułu'}
-                selected={!selection.title}
-                onPress={() => choose('title', false)}
-              />
-              <ProposalChoice
-                label="Nowy"
-                value={proposal.generated.title}
-                selected={selection.title}
-                onPress={() => choose('title', true)}
-              />
-            </View>
-            <View style={styles.proposalSection}>
-              <Text style={[styles.choiceSectionTitle, { color: colors.ink }]}>
-                Podsumowanie
-              </Text>
-              <ProposalChoice
-                label="Obecne"
-                value={note.summary?.trim() || 'Brak podsumowania'}
-                selected={!selection.summary}
-                onPress={() => choose('summary', false)}
-              />
-              <ProposalChoice
-                label="Nowe"
-                value={proposal.generated.summary.trim() || 'Brak podsumowania'}
-                selected={selection.summary}
-                onPress={() => choose('summary', true)}
-              />
-            </View>
-            <View style={styles.proposalSection}>
-              <Text style={[styles.choiceSectionTitle, { color: colors.ink }]}>
-                Kategorie
-              </Text>
-              <ProposalChoice
-                label="Obecne"
-                selected={!selection.tags}
-                onPress={() => choose('tags', false)}
-              >
-                {note.tags.length > 0 ? (
-                  <NoteTags
-                    tags={note.tags}
-                    onChange={() => undefined}
-                    editable={false}
-                    showLabel={false}
-                  />
-                ) : (
-                  <Text style={[styles.choiceValue, { color: colors.muted }]}>
-                    Bez kategorii
+            <View style={styles.choiceCancel} />
+          </View>
+
+          <ScrollView
+            style={styles.choiceScroll}
+            contentContainerStyle={styles.choiceScrollContent}
+            keyboardShouldPersistTaps="handled"
+          >
+            <Text style={[styles.choiceIntro, { color: colors.muted }]}>
+              Wybierz osobno dla każdego pola.
+            </Text>
+            {proposal && note ? (
+              <>
+                <View style={styles.proposalSection}>
+                  <Text
+                    style={[styles.choiceSectionTitle, { color: colors.ink }]}
+                  >
+                    Tytuł
                   </Text>
-                )}
-              </ProposalChoice>
-              <ProposalChoice
-                label="Nowe"
-                selected={selection.tags}
-                onPress={() => choose('tags', true)}
-              >
-                {proposal.generated.tags.length > 0 ? (
-                  <NoteTags
-                    tags={proposal.generated.tags}
-                    onChange={() => undefined}
-                    editable={false}
-                    showLabel={false}
-                  />
-                ) : (
-                  <Text style={[styles.choiceValue, { color: colors.muted }]}>
-                    Bez kategorii
+                  <View
+                    style={[styles.choiceGroup, { borderColor: colors.line }]}
+                  >
+                    <ProposalChoice
+                      label="Obecny"
+                      value={note.title.trim() || 'Bez tytułu'}
+                      selected={!selection.title}
+                      onPress={() => choose('title', false)}
+                    />
+                    <View
+                      style={[
+                        styles.choiceDivider,
+                        { backgroundColor: colors.line },
+                      ]}
+                    />
+                    <ProposalChoice
+                      label="Nowy"
+                      value={proposal.generated.title}
+                      selected={selection.title}
+                      onPress={() => choose('title', true)}
+                    />
+                  </View>
+                </View>
+                <View style={styles.proposalSection}>
+                  <Text
+                    style={[styles.choiceSectionTitle, { color: colors.ink }]}
+                  >
+                    Podsumowanie
                   </Text>
-                )}
-              </ProposalChoice>
-            </View>
-            <Button
-              label={`Zastosuj ${proposalChangeCount} ${pluralChanges(proposalChangeCount)}`}
-              variant="primary"
-              icon="check"
-              onPress={() => void applySelected()}
-              disabled={proposalChangeCount === 0}
-            />
+                  <View
+                    style={[styles.choiceGroup, { borderColor: colors.line }]}
+                  >
+                    <ProposalChoice
+                      label="Obecne"
+                      value={note.summary?.trim() || 'Brak podsumowania'}
+                      selected={!selection.summary}
+                      onPress={() => choose('summary', false)}
+                    />
+                    <View
+                      style={[
+                        styles.choiceDivider,
+                        { backgroundColor: colors.line },
+                      ]}
+                    />
+                    <ProposalChoice
+                      label="Nowe"
+                      value={
+                        proposal.generated.summary.trim() || 'Brak podsumowania'
+                      }
+                      selected={selection.summary}
+                      onPress={() => choose('summary', true)}
+                    />
+                  </View>
+                </View>
+                <View style={styles.proposalSection}>
+                  <Text
+                    style={[styles.choiceSectionTitle, { color: colors.ink }]}
+                  >
+                    Kategorie
+                  </Text>
+                  <View
+                    style={[styles.choiceGroup, { borderColor: colors.line }]}
+                  >
+                    <ProposalChoice
+                      label="Obecne"
+                      selected={!selection.tags}
+                      onPress={() => choose('tags', false)}
+                    >
+                      {note.tags.length > 0 ? (
+                        <NoteTags
+                          tags={note.tags}
+                          onChange={() => undefined}
+                          editable={false}
+                          showLabel={false}
+                          compact
+                        />
+                      ) : (
+                        <Text
+                          style={[styles.choiceValue, { color: colors.muted }]}
+                        >
+                          Bez kategorii
+                        </Text>
+                      )}
+                    </ProposalChoice>
+                    <View
+                      style={[
+                        styles.choiceDivider,
+                        { backgroundColor: colors.line },
+                      ]}
+                    />
+                    <ProposalChoice
+                      label="Nowe"
+                      selected={selection.tags}
+                      onPress={() => choose('tags', true)}
+                    >
+                      {proposal.generated.tags.length > 0 ? (
+                        <NoteTags
+                          tags={proposal.generated.tags}
+                          onChange={() => undefined}
+                          editable={false}
+                          showLabel={false}
+                          compact
+                        />
+                      ) : (
+                        <Text
+                          style={[styles.choiceValue, { color: colors.muted }]}
+                        >
+                          Bez kategorii
+                        </Text>
+                      )}
+                    </ProposalChoice>
+                  </View>
+                </View>
+              </>
+            ) : (
+              <Text style={[styles.choiceValue, { color: colors.muted }]}>
+                Propozycja nie jest już aktualna. Zamknij ekran i wygeneruj ją
+                ponownie.
+              </Text>
+            )}
+          </ScrollView>
+
+          <View
+            style={[
+              styles.choiceFooter,
+              {
+                backgroundColor: colors.canvas,
+                borderTopColor: colors.line,
+                paddingBottom: Math.max(insets.bottom, spacing.md),
+              },
+            ]}
+          >
+            {proposal && (
+              <Button
+                label={`Zastosuj ${proposalChangeCount} ${pluralChanges(proposalChangeCount)}`}
+                variant="primary"
+                icon="check"
+                onPress={() => void applySelected()}
+                disabled={proposalChangeCount === 0}
+              />
+            )}
             <Button
               label="Anuluj"
               variant="secondary"
               onPress={() => setSheetMode(null)}
             />
-          </>
-        )}
-        {sheetMode === 'choose' && !proposal && (
-          <Text style={[styles.sheetMessage, { color: colors.muted }]}>
-            Propozycja nie jest już aktualna. Zamknij ten panel i wygeneruj ją
-            ponownie.
-          </Text>
-        )}
-      </BottomSheet>
+          </View>
+        </View>
+      </Modal>
+
+      {appliedNotice && (
+        <View pointerEvents="box-none" style={styles.noticeHost}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Zapisano zmiany. Zamknij powiadomienie"
+            accessibilityLiveRegion="polite"
+            onPress={() => setAppliedNotice(false)}
+            style={[styles.notice, { backgroundColor: colors.action }]}
+          >
+            <Icon name="check" size={20} color={colors.onAction} />
+            <Text style={[styles.noticeText, { color: colors.onAction }]}>
+              Zapisano zmiany
+            </Text>
+            <Icon name="close" size={18} color={colors.onAction} />
+          </Pressable>
+        </View>
+      )}
     </>
   )
 }
@@ -630,9 +766,9 @@ export default function NoteDetailScreen() {
 const styles = StyleSheet.create({
   container: {
     paddingHorizontal: spacing.lg,
-    paddingTop: spacing.xl,
+    paddingTop: spacing.lg,
     paddingBottom: spacing.xxl,
-    gap: spacing.lg,
+    gap: spacing.md,
   },
   empty: {
     flex: 1,
@@ -671,16 +807,22 @@ const styles = StyleSheet.create({
   },
   sectionTitle: { ...type.title, fontSize: 20 },
   reprocessAction: {
-    minHeight: 44,
+    minHeight: 36,
     maxWidth: '58%',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'flex-end',
-    gap: spacing.sm,
+    gap: spacing.xs,
     flexShrink: 1,
   },
-  reprocessText: { ...type.label, flexShrink: 1, textAlign: 'right' },
-  body: { ...type.body },
+  reprocessText: {
+    ...type.label,
+    fontSize: 13,
+    lineHeight: 18,
+    flexShrink: 1,
+    textAlign: 'right',
+  },
+  body: { ...type.body, fontSize: 15, lineHeight: 23 },
   hint: { ...type.meta },
   error: { ...type.body },
   processingError: {
@@ -705,9 +847,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: spacing.md,
-    minHeight: 58,
-    borderWidth: 1,
-    borderRadius: radius.md,
+    minHeight: 66,
     padding: spacing.md,
   },
   radio: {
@@ -719,7 +859,57 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  choiceContent: { flex: 1, gap: spacing.xs },
+  choiceValueContent: { flex: 1, gap: spacing.xs },
   choiceLabel: { ...type.label },
-  choiceValue: { ...type.body },
+  choiceValue: { ...type.body, fontSize: 14, lineHeight: 20 },
+  choiceScreen: { flex: 1 },
+  choiceHeader: {
+    minHeight: 56,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  choiceCancel: { width: 72, minHeight: 44, justifyContent: 'center' },
+  headerCancelText: { ...type.label, fontWeight: '500' },
+  choiceScreenTitle: { ...type.label, textAlign: 'center', flex: 1 },
+  choiceScroll: { flex: 1 },
+  choiceScrollContent: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.xl,
+    gap: spacing.lg,
+  },
+  choiceIntro: { ...type.body, fontSize: 14, lineHeight: 20 },
+  choiceGroup: {
+    borderWidth: 1,
+    borderRadius: radius.md,
+    overflow: 'hidden',
+  },
+  choiceDivider: {
+    height: StyleSheet.hairlineWidth,
+    marginHorizontal: spacing.md,
+  },
+  choiceFooter: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md,
+    gap: spacing.sm,
+  },
+  noticeHost: {
+    position: 'absolute',
+    left: spacing.lg,
+    right: spacing.lg,
+    bottom: spacing.xl,
+  },
+  notice: {
+    minHeight: 54,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+  },
+  noticeText: { ...type.label, flex: 1 },
 })

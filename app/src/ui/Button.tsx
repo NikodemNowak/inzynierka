@@ -32,7 +32,7 @@ export function Button({
   const inactive = disabled || busy
   const foreground =
     variant === 'primary'
-      ? colors.onAccent
+      ? colors.onAction
       : variant === 'danger'
         ? colors.danger
         : colors.accent
@@ -52,7 +52,7 @@ export function Button({
           justifyContent: 'center',
           backgroundColor:
             variant === 'primary'
-              ? colors.accent
+              ? colors.action
               : variant === 'secondary'
                 ? colors.accentSoft
                 : 'transparent',

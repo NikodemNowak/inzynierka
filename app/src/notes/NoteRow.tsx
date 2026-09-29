@@ -1,4 +1,4 @@
-import { Pressable, Text, View } from 'react-native'
+import { Pressable, StyleSheet, Text, View } from 'react-native'
 import type { Note } from '../domain/note'
 import { isCategory } from '../domain/categories'
 import { Icon } from '../ui/Icon'
@@ -12,10 +12,12 @@ const formatDuration = (ms: number): string => {
 export function NoteRow({
   note,
   timestamp,
+  groupPosition = 'only',
   onPress,
 }: {
   note: Note
   timestamp: number
+  groupPosition?: 'first' | 'middle' | 'last' | 'only'
   onPress: () => void
 }) {
   const { colors } = useTheme()
@@ -26,30 +28,26 @@ export function NoteRow({
     hour: '2-digit',
     minute: '2-digit',
   })
+  const hasSeparator = groupPosition === 'first' || groupPosition === 'middle'
   return (
     <Pressable
       accessibilityRole="button"
       onPress={onPress}
-      style={({ pressed }) => ({
-        paddingVertical: 17,
-        paddingHorizontal: 16,
-        backgroundColor: pressed ? colors.surface : colors.paper,
-        borderRadius: 16,
-        marginBottom: 8,
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 12,
-      })}
+      style={({ pressed }) => [
+        styles.row,
+        styles[groupPosition],
+        { backgroundColor: pressed ? colors.surface : colors.paper },
+      ]}
     >
-      <View style={{ flex: 1, gap: 5 }}>
+      <View style={styles.copy}>
         <Text
           style={{
             ...type.title,
-            fontSize: 17,
-            lineHeight: 23,
+            fontSize: 16,
+            lineHeight: 21,
             color: colors.ink,
           }}
-          numberOfLines={2}
+          numberOfLines={1}
         >
           {note.title.trim() || 'Bez tytułu'}
         </Text>
@@ -58,10 +56,10 @@ export function NoteRow({
             style={{
               ...type.body,
               fontSize: 14,
-              lineHeight: 21,
+              lineHeight: 19,
               color: colors.body,
             }}
-            numberOfLines={2}
+            numberOfLines={1}
           >
             {preview}
           </Text>
@@ -70,9 +68,8 @@ export function NoteRow({
           style={{
             flexDirection: 'row',
             alignItems: 'center',
-            flexWrap: 'wrap',
-            gap: 5,
-            marginTop: 3,
+            gap: 6,
+            marginTop: 1,
           }}
         >
           <Icon
@@ -83,23 +80,60 @@ export function NoteRow({
           <Text style={{ ...type.meta, color: colors.muted }}>
             {processing
               ? 'Opracowywanie'
-              : note.audioUri
-                ? `Nagranie${note.durationMs !== null ? ' · ' + formatDuration(note.durationMs) : ''}`
-                : 'Tekst'}
+              : note.audioUri && note.durationMs !== null
+                ? formatDuration(note.durationMs)
+                : note.audioUri
+                  ? 'Nagranie'
+                  : 'Tekst'}
           </Text>
           <Text style={{ ...type.meta, color: colors.muted }}>· {time}</Text>
           {!!categories.length && (
             <Text
               numberOfLines={1}
-              style={{ ...type.meta, color: colors.accent, flexShrink: 1 }}
+              style={{
+                ...type.meta,
+                color: colors.accent,
+                flexShrink: 1,
+                marginLeft: 2,
+              }}
             >
-              · {categories.slice(0, 2).join(' · ')}
+              {categories.slice(0, 2).join(' · ')}
               {categories.length > 2 ? ` +${categories.length - 2}` : ''}
             </Text>
           )}
         </View>
       </View>
       <Icon name="chevron-right" color={colors.faint} size={17} />
+      {hasSeparator && (
+        <View
+          pointerEvents="none"
+          style={[styles.separator, { backgroundColor: colors.line }]}
+        />
+      )}
     </Pressable>
   )
 }
+
+const styles = StyleSheet.create({
+  row: {
+    minHeight: 88,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    position: 'relative',
+  },
+  only: { borderRadius: 16 },
+  first: { borderTopLeftRadius: 16, borderTopRightRadius: 16 },
+  middle: { borderRadius: 0 },
+  last: { borderBottomLeftRadius: 16, borderBottomRightRadius: 16 },
+  copy: { flex: 1, gap: 4, minWidth: 0 },
+  separator: {
+    position: 'absolute',
+    bottom: 0,
+    left: 12,
+    right: 12,
+    height: StyleSheet.hairlineWidth,
+  },
+})

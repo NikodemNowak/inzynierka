@@ -6,9 +6,13 @@ import { useSettingsStore } from '../../state/settingsStore'
 import { NOTE_CATEGORIES } from '../../domain/categories'
 import { NoteRow } from '../../notes/NoteRow'
 import { NotesToolbar } from '../../notes/NotesToolbar'
+import { ModelDownloadBanner } from '../../notes/ModelDownloadBanner'
+import {
+  NotesEmptyState,
+  NotesNoResultsState,
+} from '../../notes/NotesEmptyStates'
 import { DraftBanner } from '../../notes/DraftBanner'
 import { groupNotesByDate, selectVisibleNotes } from '../../notes/noteListView'
-import { EmptyState } from '../../ui/EmptyState'
 import { type, useTheme } from '../../ui/theme'
 
 export default function NotesListScreen() {
@@ -43,28 +47,21 @@ export default function NotesListScreen() {
           categories={usedCategories}
           selectedCategory={category}
           onSelectCategory={setCategory}
+          afterSearch={<ModelDownloadBanner />}
         />
       )}
+      {!notes.length && <ModelDownloadBanner />}
       {!notes.length ? (
-        <EmptyState
-          title="Miejsce na Twoje myśli"
-          description="Dotknij plusa na dole, aby nagrać, zaimportować lub napisać pierwszą notatkę."
-        />
+        <NotesEmptyState />
       ) : !visibleNotes.length ? (
-        <EmptyState
-          icon="search"
-          title="Brak wyników"
-          description={
-            query.trim()
-              ? `Nie znaleźliśmy notatek pasujących do „${query.trim()}”.`
-              : 'W tej kategorii nie ma jeszcze notatek.'
-          }
-          action={{
-            label: 'Wyczyść filtry',
-            onPress: () => {
+        <NotesNoResultsState
+          hasSearch={query.trim().length > 0}
+          onClear={() => {
+            if (query.trim()) {
               setQuery('')
-              setCategory(null)
-            },
+              return
+            }
+            setCategory(null)
           }}
         />
       ) : (
@@ -80,19 +77,28 @@ export default function NotesListScreen() {
               style={{
                 ...type.label,
                 color: colors.muted,
-                fontSize: 12,
-                marginTop: 10,
-                marginBottom: 10,
+                fontSize: 15,
+                marginTop: 16,
+                marginBottom: 7,
               }}
             >
               {section.title}
             </Text>
           )}
-          renderItem={({ item }) => (
+          renderItem={({ item, index, section }) => (
             <NoteRow
               note={item}
               timestamp={
                 sortMode === 'created' ? item.createdAt : item.updatedAt
+              }
+              groupPosition={
+                section.data.length === 1
+                  ? 'only'
+                  : index === 0
+                    ? 'first'
+                    : index === section.data.length - 1
+                      ? 'last'
+                      : 'middle'
               }
               onPress={() => router.push(`/note/${item.id}`)}
             />

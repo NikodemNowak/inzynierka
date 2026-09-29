@@ -105,7 +105,9 @@ function ModelSection() {
         <Text style={[styles.modelSize, { color: colors.muted }]}>
           {status === 'ready' && sizeBytes > 0
             ? `${formatGb(sizeBytes)} na urządzeniu`
-            : `${approximateModelSize()} do pobrania`}
+            : status === 'absent'
+              ? `${approximateModelSize()} do pobrania`
+              : `${approximateModelSize()} modelu`}
         </Text>
 
         {status === 'downloading' && (
@@ -137,12 +139,23 @@ function ModelSection() {
         )}
 
         {status === 'absent' && (
-          <Button
-            label={`Pobierz model · ${formatGb(approximateModelBytes)}`}
-            variant="primary"
-            icon="download"
-            onPress={() => void download()}
-          />
+          <>
+            <Button
+              label="Pobierz model"
+              variant="primary"
+              icon="download"
+              onPress={() => void download()}
+            />
+            <Text
+              style={[
+                styles.progressHint,
+                styles.modelHelper,
+                { color: colors.muted },
+              ]}
+            >
+              Nagrywanie działa bez modelu.
+            </Text>
+          </>
         )}
 
         {status === 'downloading' && (
@@ -187,17 +200,14 @@ const PRIVACY_POINTS = [
   {
     icon: 'phone' as const,
     title: 'Notatki zostają na telefonie',
-    detail: 'Tu zapisują się nagrania i tekst.',
   },
   {
     icon: 'sparkles' as const,
-    title: 'Analiza na urządzeniu',
-    detail: 'Po pobraniu model tworzy podsumowania lokalnie.',
+    title: 'Przetwarzanie działa offline',
   },
   {
     icon: 'lock' as const,
-    title: 'Bez konta i synchronizacji',
-    detail: 'Nie musisz się logować ani zakładać konta.',
+    title: 'Bez konta i logowania',
   },
 ]
 
@@ -232,9 +242,6 @@ function PrivacySection() {
             <View style={styles.privacyCopy}>
               <Text style={[styles.privacyTitle, { color: colors.ink }]}>
                 {point.title}
-              </Text>
-              <Text style={[styles.privacyDetail, { color: colors.muted }]}>
-                {point.detail}
               </Text>
             </View>
           </View>
@@ -275,42 +282,59 @@ function DataSection() {
       >
         Twoje dane
       </Text>
-      <View
-        style={[
+      <Pressable
+        accessibilityRole="button"
+        accessibilityState={{ disabled: busy || notes.length === 0 }}
+        onPress={() => void exportAll()}
+        disabled={busy || notes.length === 0}
+        style={({ pressed }) => [
           styles.dataCard,
-          { backgroundColor: colors.paper, borderColor: colors.line },
+          styles.dataRow,
+          {
+            backgroundColor: colors.paper,
+            borderColor: colors.line,
+            opacity: busy || notes.length === 0 ? 0.48 : pressed ? 0.62 : 1,
+          },
         ]}
       >
-        <Text style={[styles.dataDescription, { color: colors.muted }]}>
-          Eksportuj notatki i zadania do pliku JSON. Nagrania audio nie są
-          dołączane.
-        </Text>
-        <Button
-          label={`Eksportuj notatki · ${notes.length}`}
-          variant="secondary"
-          icon="share"
-          onPress={() => void exportAll()}
-          disabled={busy || notes.length === 0}
-          busy={busy}
-        />
-        {notes.length === 0 && (
-          <Text style={[styles.hint, { color: colors.muted }]}>
-            Brak notatek do wyeksportowania.
+        <Icon name="share" color={colors.ink} size={22} />
+        <View style={styles.dataCopy}>
+          <Text style={[styles.dataTitle, { color: colors.ink }]}>
+            {busy ? 'Eksportowanie…' : 'Eksportuj notatki'}
           </Text>
-        )}
-        {error && (
-          <Text style={[styles.error, { color: colors.danger }]}>{error}</Text>
-        )}
-      </View>
+          <Text style={[styles.dataDescription, { color: colors.muted }]}>
+            Nagrania nie są dołączane
+          </Text>
+        </View>
+        <Icon name="chevron-right" color={colors.muted} size={20} />
+      </Pressable>
+      {notes.length === 0 && (
+        <Text style={[styles.hint, { color: colors.muted }]}>
+          Brak notatek do wyeksportowania.
+        </Text>
+      )}
+      {error && (
+        <Text
+          style={[styles.error, { color: colors.danger }]}
+          accessibilityRole="alert"
+        >
+          {error}
+        </Text>
+      )}
+      <AppearancePreferences />
     </View>
   )
 }
 
-function PreferencesSection() {
+function AppearancePreferences() {
   const router = useRouter()
   const { colors } = useTheme()
-  const appearancePreference = useSettingsStore((state) => state.appearancePreference)
-  const setAppearancePreference = useSettingsStore((state) => state.setAppearancePreference)
+  const appearancePreference = useSettingsStore(
+    (state) => state.appearancePreference,
+  )
+  const setAppearancePreference = useSettingsStore(
+    (state) => state.setAppearancePreference,
+  )
   const [appearanceVisible, setAppearanceVisible] = useState(false)
   const [appearanceSaving, setAppearanceSaving] = useState(false)
   const [appearanceError, setAppearanceError] = useState<string | null>(null)
@@ -325,7 +349,9 @@ function PreferencesSection() {
       await setAppearancePreference(preference)
       setAppearanceVisible(false)
     } catch {
-      setAppearanceError('Nie udało się zapisać ustawienia. Przywrócono poprzedni wygląd.')
+      setAppearanceError(
+        'Nie udało się zapisać ustawienia. Przywrócono poprzedni wygląd.',
+      )
     } finally {
       appearanceSaveLock.current = false
       setAppearanceSaving(false)
@@ -343,19 +369,17 @@ function PreferencesSection() {
     title: string
     description: string
   }> = [
-    { value: 'system', title: 'System', description: 'Zgodny z ustawieniami urządzenia' },
+    {
+      value: 'system',
+      title: 'System',
+      description: 'Zgodny z ustawieniami urządzenia',
+    },
     { value: 'light', title: 'Jasny', description: 'Jasny wygląd aplikacji' },
     { value: 'dark', title: 'Ciemny', description: 'Ciemny wygląd aplikacji' },
   ]
 
   return (
-    <View style={styles.section}>
-      <Text
-        style={[styles.sectionTitle, { color: colors.ink }]}
-        accessibilityRole="header"
-      >
-        Wygląd i wprowadzenie
-      </Text>
+    <>
       <View
         style={[
           styles.preferenceCard,
@@ -402,10 +426,7 @@ function PreferencesSection() {
         onClose={() => setAppearanceVisible(false)}
         title="Wygląd"
       >
-        <View
-          accessibilityRole="radiogroup"
-          accessibilityLabel="Wybór wyglądu"
-        >
+        <View accessibilityRole="radiogroup" accessibilityLabel="Wybór wyglądu">
           {appearanceOptions.map((option, index) => {
             const selected = appearancePreference === option.value
             return (
@@ -413,7 +434,10 @@ function PreferencesSection() {
                 key={option.value}
                 accessibilityRole="radio"
                 accessibilityLabel={`${option.title}. ${option.description}`}
-                accessibilityState={{ checked: selected, disabled: appearanceSaving }}
+                accessibilityState={{
+                  checked: selected,
+                  disabled: appearanceSaving,
+                }}
                 disabled={appearanceSaving}
                 onPress={() => void chooseAppearance(option.value)}
                 style={[
@@ -460,7 +484,7 @@ function PreferencesSection() {
           </Text>
         )}
       </BottomSheet>
-    </View>
+    </>
   )
 }
 
@@ -523,7 +547,6 @@ export default function SettingsScreen() {
       <ModelSection />
       <PrivacySection />
       <DataSection />
-      <PreferencesSection />
       {__DEV__ && <DeveloperSection />}
     </ScrollView>
   )
@@ -569,6 +592,7 @@ const styles = StyleSheet.create({
   progressTrack: { height: 7, borderRadius: radius.pill, overflow: 'hidden' },
   progressFill: { height: '100%', borderRadius: radius.pill },
   progressHint: { ...type.meta },
+  modelHelper: { textAlign: 'center' },
   removeRow: {
     minHeight: 49,
     borderTopWidth: StyleSheet.hairlineWidth,
@@ -585,32 +609,36 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   privacyRow: {
-    minHeight: 68,
+    minHeight: 61,
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
   },
   privacyCopy: { flex: 1, gap: 2 },
   privacyTitle: { ...type.body, fontWeight: '500' },
-  privacyDetail: { ...type.meta },
   dataCard: {
-    padding: spacing.lg,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    gap: spacing.md,
-  },
-  dataDescription: { ...type.body, fontSize: 14 },
-  hint: { ...type.meta },
-  preferenceCard: {
+    minHeight: 76,
     paddingHorizontal: spacing.lg,
     borderRadius: radius.lg,
     borderWidth: 1,
+    overflow: 'hidden',
+  },
+  dataRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  dataCopy: { flex: 1, gap: 2 },
+  dataTitle: { ...type.body, fontWeight: '500' },
+  dataDescription: { ...type.body, fontSize: 14 },
+  hint: { ...type.meta, marginHorizontal: spacing.md },
+  preferenceCard: {
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    overflow: 'hidden',
   },
   preferenceRow: {
-    minHeight: 60,
+    minHeight: 66,
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
+    paddingHorizontal: spacing.lg,
   },
   preferenceLabel: { ...type.body, flex: 1, fontSize: 15 },
   preferenceValue: { ...type.meta },
