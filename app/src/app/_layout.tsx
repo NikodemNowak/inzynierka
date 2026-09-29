@@ -9,8 +9,10 @@ import { useSettingsStore } from '../state/settingsStore'
 import { useModelStore } from '../state/modelStore'
 import { useDraftStore } from '../state/draftStore'
 import { startModelMemoryGuard } from '../ai/modelMemory'
+import { useTheme } from '../ui/theme'
 
 export default function RootLayout() {
+  const { colors, isDark } = useTheme()
   const load = useNotesStore((state) => state.load)
   const loadTasks = useTasksStore((state) => state.load)
   const loadSettings = useSettingsStore((state) => state.load)
@@ -29,8 +31,13 @@ export default function RootLayout() {
 
   return (
     <SafeAreaProvider>
-      <StatusBar style="dark" />
-      <Stack screenOptions={{ header: (props) => <AppHeader {...props} /> }} />
+      <StatusBar style={isDark ? 'light' : 'dark'} />
+      <Stack
+        screenOptions={{
+          contentStyle: { backgroundColor: colors.canvas },
+          header: (props) => <AppHeader {...props} />,
+        }}
+      />
     </SafeAreaProvider>
   )
 }

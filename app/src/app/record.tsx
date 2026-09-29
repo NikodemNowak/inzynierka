@@ -1,22 +1,33 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Stack, useRouter } from 'expo-router'
+import { Stack, useNavigation, useRouter } from 'expo-router'
+import { usePreventRemove } from 'expo-router/react-navigation'
 import { ScrollView, StyleSheet, Text, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useNotesStore } from '../state/notesStore'
 import { useDraftStore } from '../state/draftStore'
-import { useSpeechRecorder, type RecordingResult } from '../stt/useSpeechRecorder'
+import {
+  useSpeechRecorder,
+  type RecordingResult,
+} from '../stt/useSpeechRecorder'
+import { LiveTranscript } from '../stt/LiveTranscript'
+import { BottomSheet } from '../ui/BottomSheet'
 import { Button } from '../ui/Button'
-import { colors, radius, spacing, type } from '../ui/theme'
+import { Icon } from '../ui/Icon'
+import { spacing, type, useTheme } from '../ui/theme'
 
 const formatDuration = (durationMs: number): string => {
   const totalSeconds = Math.floor(durationMs / 1000)
-  const minutes = Math.floor(totalSeconds / 60)
+  const hours = Math.floor(totalSeconds / 3600)
+  const minutes = Math.floor(totalSeconds / 60) % 60
   const seconds = totalSeconds % 60
-  return `${minutes}:${seconds.toString().padStart(2, '0')}`
+  const twoDigits = (value: number) => value.toString().padStart(2, '0')
+  return hours > 0
+    ? `${twoDigits(hours)}:${twoDigits(minutes)}:${twoDigits(seconds)}`
+    : `${twoDigits(Math.floor(totalSeconds / 60))}:${twoDigits(seconds)}`
 }
 
-const defaultTitle = (): string =>
-  `Nagranie ${new Date().toLocaleString('pl-PL', {
+const defaultTitle = (prefix = 'Nagranie'): string =>
+  `${prefix} ${new Date().toLocaleString('pl-PL', {
     day: '2-digit',
     month: '2-digit',
     year: 'numeric',
@@ -24,34 +35,64 @@ const defaultTitle = (): string =>
     minute: '2-digit',
   })}`
 
-const statusLabel = (status: string): string => {
-  if (status === 'starting') return 'Uruchamianie mikrofonu'
-  if (status === 'recording') return 'Nagrywam — mów'
-  if (status === 'stopping') return 'Kończę nagranie'
-  return 'Gotowe do nagrywania'
+const statusLabel = (status: string, requesting: boolean): string => {
+  if (requesting || status === 'starting') return 'Przygotowuję mikrofon'
+  if (status === 'recording') return 'Nagrywanie'
+  if (status === 'stopping') return 'Zapisuję nagranie'
+  return 'Gotowe do nagrania'
 }
 
 export default function RecordNoteScreen() {
   const router = useRouter()
+  const navigation = useNavigation()
+  const { colors } = useTheme()
   const add = useNotesStore((state) => state.add)
   const processWithLlm = useNotesStore((state) => state.processWithLlm)
+  const draft = useDraftStore((state) => state.draft)
+  const loadDraft = useDraftStore((state) => state.load)
   const saveDraft = useDraftStore((state) => state.save)
   const clearDraft = useDraftStore((state) => state.clear)
   const [saving, setSaving] = useState(false)
+  const [requesting, setRequesting] = useState(false)
+  const [draftReady, setDraftReady] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
+  const [showExitPrompt, setShowExitPrompt] = useState(false)
   const startedAtRef = useRef(0)
+  const startPromiseRef = useRef<Promise<void> | null>(null)
+  const pendingResultRef = useRef<RecordingResult | null>(null)
+  const pendingNavigationRef = useRef<(() => void) | null>(null)
+  const allowExitRef = useRef(false)
   const insets = useSafeAreaInsets()
 
-  const handleComplete = useCallback(
+  useEffect(() => {
+    let mounted = true
+    void loadDraft()
+      .then(() => {
+        if (mounted) setDraftReady(true)
+      })
+      .catch((e: unknown) => {
+        if (mounted) setSaveError(e instanceof Error ? e.message : String(e))
+      })
+    return () => {
+      mounted = false
+    }
+  }, [loadDraft])
+
+  const persistRecording = useCallback(
     async (result: RecordingResult) => {
-      if (result.transcript.trim().length === 0 && !result.audioUri) {
-        await clearDraft()
-        setSaveError('Nie rozpoznano mowy. Sprawdź mikrofon i spróbuj ponownie.')
+      const transcript = result.transcript.trim()
+      if (transcript.length === 0 && !result.audioUri) {
+        pendingResultRef.current = null
+        setSaveError(
+          'Nie rozpoznano mowy. Zachowany szkic nadal jest dostępny.',
+        )
+        setSaving(false)
         return
       }
+
       setSaving(true)
+      setSaveError(null)
       try {
-        const transcript = result.transcript.trim()
         const note = await add({
           title: defaultTitle(),
           content: transcript,
@@ -60,11 +101,13 @@ export default function RecordNoteScreen() {
           audioUri: result.audioUri,
           durationMs: result.durationMs,
         })
+        pendingResultRef.current = null
         // The recording made it into a note, so the recovery draft is obsolete.
         await clearDraft()
         // Generate title + summary in the background; the store keeps running it
         // after we navigate away, and the note/list update when it lands.
         if (transcript.length > 0) void processWithLlm(note.id)
+        allowExitRef.current = true
         router.replace(`/note/${note.id}`)
       } catch (e) {
         setSaveError(e instanceof Error ? e.message : String(e))
@@ -74,113 +117,383 @@ export default function RecordNoteScreen() {
     [add, clearDraft, processWithLlm, router],
   )
 
-  const recorder = useSpeechRecorder(handleComplete)
+  const handleComplete = useCallback(
+    async (result: RecordingResult) => {
+      pendingResultRef.current = result
+      await persistRecording(result)
+    },
+    [persistRecording],
+  )
 
-  // Persist each recognized utterance. finalTranscript changes once per
-  // utterance rather than on every interim word, so this is one small write per
-  // sentence instead of one per keystroke-sized update.
+  const recorder = useSpeechRecorder(handleComplete)
   const { finalTranscript, status } = recorder
+
+  // Persist only finalized speech, not the recognizer's frequently revised tail.
   useEffect(() => {
     if (status !== 'recording' || finalTranscript.length === 0) return
+    if (startedAtRef.current === 0) startedAtRef.current = Date.now()
     void saveDraft(finalTranscript, startedAtRef.current)
   }, [finalTranscript, status, saveDraft])
 
-  const onStart = () => {
+  const onStart = useCallback(async () => {
     setSaveError(null)
+    allowExitRef.current = false
     startedAtRef.current = Date.now()
-    void recorder.start()
+    setRequesting(true)
+    const startPromise = recorder.start()
+    startPromiseRef.current = startPromise
+    try {
+      await startPromise
+    } catch (e) {
+      setSaveError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setRequesting(false)
+      startPromiseRef.current = null
+    }
+  }, [recorder.start])
+
+  const saveRecoveredDraft = useCallback(
+    async (recordAgain: boolean) => {
+      const transcript = draft?.transcript.trim() ?? ''
+      if (transcript.length === 0) return
+      setSaving(true)
+      setSaveError(null)
+      try {
+        const note = await add({
+          title: defaultTitle('Odzyskana notatka'),
+          content: transcript,
+          summary: null,
+          tags: [],
+          audioUri: null,
+          durationMs: null,
+        })
+        await clearDraft()
+        if (transcript.length > 0) void processWithLlm(note.id)
+        if (recordAgain) {
+          setSaving(false)
+          await onStart()
+          return
+        }
+        allowExitRef.current = true
+        router.replace(`/note/${note.id}`)
+      } catch (e) {
+        setSaveError(e instanceof Error ? e.message : String(e))
+        setSaving(false)
+      }
+    },
+    [add, clearDraft, draft, onStart, processWithLlm, router],
+  )
+
+  const stopAndSave = useCallback(() => {
+    pendingNavigationRef.current = null
+    setShowExitPrompt(false)
+    if ((requesting || status === 'starting') && startPromiseRef.current) {
+      void startPromiseRef.current.then(
+        () => recorder.stop(),
+        () => undefined,
+      )
+      return
+    }
+    recorder.stop()
+  }, [recorder, requesting, status])
+
+  const live = status === 'recording'
+  const starting = requesting || status === 'starting'
+  const busy = status === 'stopping' || saving
+  const protectNavigation =
+    starting ||
+    live ||
+    status === 'stopping' ||
+    saving ||
+    pendingResultRef.current !== null
+  const error = saveError ?? recorder.error
+  const failedSave = pendingResultRef.current !== null && !saving
+  const showingRecoveredDraft =
+    draftReady &&
+    status === 'idle' &&
+    recorder.transcript.length === 0 &&
+    Boolean(draft?.transcript.trim())
+  const transcript =
+    recorder.transcript ||
+    (showingRecoveredDraft ? (draft?.transcript ?? '') : '')
+
+  usePreventRemove(protectNavigation, ({ data }) => {
+    if (allowExitRef.current) {
+      navigation.dispatch(data.action)
+      return
+    }
+    pendingNavigationRef.current = () => navigation.dispatch(data.action)
+    setShowExitPrompt(true)
+  })
+
+  const retrySave = () => {
+    if (pendingResultRef.current)
+      void persistRecording(pendingResultRef.current)
   }
 
-  const live = recorder.status === 'recording'
-  const active = live || recorder.status === 'starting'
-  const busy = recorder.status === 'stopping' || saving
-  const error = saveError ?? recorder.error
-
   return (
-    <View style={styles.screen}>
+    <View style={[styles.screen, { backgroundColor: colors.canvas }]}>
       <Stack.Screen options={{ title: 'Nagrywanie' }} />
 
       <View style={styles.counterBlock}>
-        {/* Amber appears here and nowhere else in the app: it means the
-            microphone is open. */}
-        <Text style={[styles.counter, live && styles.counterLive]}>
-          {formatDuration(recorder.durationMs)}
-        </Text>
-        <View style={styles.statusRow}>
-          {live && <View style={styles.liveDot} />}
-          <Text style={[styles.status, live && styles.statusLive]}>
-            {statusLabel(recorder.status)}
+        <View style={styles.statusRow} accessibilityLiveRegion="polite">
+          {live && (
+            <View style={[styles.liveDot, { backgroundColor: colors.ember }]} />
+          )}
+          {starting && (
+            <View
+              style={[styles.preparingDot, { borderColor: colors.accent }]}
+            />
+          )}
+          <Text
+            style={[
+              styles.status,
+              {
+                color: live
+                  ? colors.ember
+                  : starting
+                    ? colors.accent
+                    : colors.muted,
+              },
+            ]}
+          >
+            {statusLabel(status, requesting)}
           </Text>
         </View>
-        {recorder.info && <Text style={styles.info}>{recorder.info}</Text>}
-        {error && <Text style={styles.error}>{error}</Text>}
+        <Text
+          style={[styles.counter, { color: colors.ink }]}
+          accessibilityLabel={`Czas nagrania ${formatDuration(recorder.durationMs)}`}
+        >
+          {formatDuration(recorder.durationMs)}
+        </Text>
+        <View
+          style={styles.waveform}
+          accessibilityElementsHidden
+          importantForAccessibility="no-hide-descendants"
+        >
+          <Icon
+            name="waveform"
+            size={54}
+            color={live ? colors.accent : colors.faint}
+          />
+        </View>
       </View>
+
+      <View style={[styles.transcriptDivider, { borderColor: colors.line }]} />
 
       <ScrollView
         style={styles.transcriptArea}
         contentContainerStyle={styles.transcriptContent}
         keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
       >
-        <Text style={styles.transcriptLabel}>Transkrypcja na żywo</Text>
-        {recorder.transcript.length > 0 ? (
-          <Text style={styles.transcript}>{recorder.transcript}</Text>
+        {error && (
+          <View
+            style={[styles.errorNotice, { backgroundColor: colors.emberSoft }]}
+            accessibilityRole="alert"
+          >
+            <Icon name="alert" size={21} color={colors.ember} />
+            <Text style={[styles.error, { color: colors.ink }]}>{error}</Text>
+          </View>
+        )}
+        {recorder.info && (
+          <Text style={[styles.info, { color: colors.muted }]}>
+            {recorder.info}
+          </Text>
+        )}
+
+        {transcript.length > 0 ? (
+          <LiveTranscript
+            text={transcript}
+            finalizedText={showingRecoveredDraft ? transcript : finalTranscript}
+            animate={!showingRecoveredDraft}
+            style={[styles.transcript, { color: colors.ink }]}
+            interimStyle={{ color: colors.body }}
+          />
         ) : (
           <View style={styles.emptyTranscript}>
-            <Text style={styles.emptyTitle}>Mów naturalnie</Text>
-            <Text style={styles.placeholder}>
-              Rozpoznany tekst pojawi się tutaj podczas nagrywania.
+            <Text style={[styles.emptyTitle, { color: colors.ink }]}>
+              {live ? 'Mów naturalnie' : 'Twoje słowa, zapisane.'}
+            </Text>
+            <Text style={[styles.placeholder, { color: colors.muted }]}>
+              {live
+                ? 'Rozpoznany tekst pojawi się tutaj.'
+                : 'Naciśnij przycisk i zacznij mówić. Tekst pojawi się tutaj.'}
             </Text>
           </View>
         )}
       </ScrollView>
 
-      <View style={[styles.actionBar, { paddingBottom: spacing.lg + insets.bottom }]}>
-        <Button
-          label={active ? 'Zatrzymaj i zapisz' : 'Rozpocznij nagrywanie'}
-          variant="primary"
-          onPress={active ? recorder.stop : onStart}
-          disabled={busy}
-          busy={busy}
-        />
-        {saving && <Text style={styles.saving}>Zapisuję notatkę…</Text>}
+      <View
+        style={[
+          styles.actionBar,
+          {
+            backgroundColor: colors.canvas,
+            paddingBottom: Math.max(insets.bottom, spacing.lg),
+          },
+        ]}
+      >
+        {!draftReady ? (
+          <Button
+            label="Sprawdzam zachowany szkic…"
+            variant="primary"
+            disabled
+            busy
+            onPress={() => undefined}
+          />
+        ) : showingRecoveredDraft ? (
+          <>
+            <Button
+              label="Zapisz tekst jako notatkę"
+              variant="primary"
+              icon="check"
+              onPress={() => void saveRecoveredDraft(false)}
+              disabled={saving}
+              busy={saving}
+            />
+            <Button
+              label="Zapisz tekst i nagraj ponownie"
+              variant="quiet"
+              icon="mic"
+              onPress={() => void saveRecoveredDraft(true)}
+              disabled={saving}
+            />
+          </>
+        ) : pendingResultRef.current && !saving ? (
+          <Button
+            label="Ponów zapis notatki"
+            variant="primary"
+            icon="refresh"
+            onPress={retrySave}
+          />
+        ) : (
+          <Button
+            label={
+              saving
+                ? 'Zapisuję notatkę…'
+                : live
+                  ? 'Zatrzymaj i zapisz'
+                  : starting
+                    ? 'Przygotowuję mikrofon…'
+                    : status === 'stopping'
+                      ? 'Zapisuję nagranie…'
+                      : 'Rozpocznij nagrywanie'
+            }
+            variant="primary"
+            icon={live ? 'stop' : 'mic'}
+            onPress={live ? recorder.stop : () => void onStart()}
+            disabled={!draftReady || busy || starting}
+            busy={!draftReady || saving || starting || status === 'stopping'}
+          />
+        )}
       </View>
+
+      <BottomSheet
+        visible={showExitPrompt}
+        onClose={() => {
+          pendingNavigationRef.current = null
+          setShowExitPrompt(false)
+        }}
+        title={
+          failedSave
+            ? 'Notatka nie została zapisana'
+            : status === 'stopping' || saving
+              ? 'Zapisuję nagranie'
+              : 'Nagranie trwa'
+        }
+      >
+        <Text style={[styles.sheetCopy, { color: colors.body }]}>
+          {failedSave
+            ? 'Tekst nagrania został zachowany. Spróbuj ponownie zapisać notatkę albo zostań na ekranie.'
+            : status === 'stopping' || saving
+              ? 'Poczekaj na zapis notatki. Po zakończeniu możesz bezpiecznie wrócić.'
+              : 'Możesz zatrzymać nagranie i zapisać rozpoznany tekst albo wrócić do nagrywania.'}
+        </Text>
+        {failedSave ? (
+          <Button
+            label="Ponów zapis notatki"
+            variant="primary"
+            icon="refresh"
+            onPress={retrySave}
+          />
+        ) : status !== 'stopping' && !saving ? (
+          <Button
+            label="Zatrzymaj i zapisz"
+            variant="primary"
+            icon="stop"
+            onPress={stopAndSave}
+          />
+        ) : null}
+        <Button
+          label={
+            failedSave || status === 'stopping' || saving
+              ? 'Zostań na ekranie'
+              : 'Kontynuuj nagrywanie'
+          }
+          variant="quiet"
+          onPress={() => {
+            pendingNavigationRef.current = null
+            setShowExitPrompt(false)
+          }}
+        />
+      </BottomSheet>
     </View>
   )
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.canvas },
-  counterBlock: { alignItems: 'center', paddingTop: spacing.xl, paddingBottom: spacing.xl, gap: spacing.sm },
-  counter: { ...type.counter, color: colors.ink },
-  counterLive: { color: colors.ember },
-  statusRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  liveDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.ember },
-  status: { ...type.body, color: colors.muted },
-  statusLive: { color: colors.ember, fontWeight: '600' },
-  info: { ...type.body, color: colors.navy, textAlign: 'center', paddingHorizontal: spacing.lg },
-  error: { ...type.body, color: colors.danger, textAlign: 'center', paddingHorizontal: spacing.lg },
-  transcriptArea: {
-    flex: 1,
-    marginHorizontal: spacing.lg,
-    borderRadius: radius.lg,
-    backgroundColor: colors.paper,
-    borderWidth: 1,
-    borderColor: colors.line,
+  screen: { flex: 1 },
+  counterBlock: {
+    alignItems: 'center',
+    paddingTop: 20,
+    paddingBottom: 18,
+    gap: 3,
   },
-  transcriptContent: { padding: spacing.xl, flexGrow: 1 },
-  transcriptLabel: { ...type.label, color: colors.navy, letterSpacing: 0.2 },
-  transcript: { ...type.body, fontSize: 17, lineHeight: 27, color: colors.ink, marginTop: spacing.xl },
-  emptyTranscript: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: spacing.sm, paddingBottom: spacing.xxl },
-  emptyTitle: { ...type.title, color: colors.ink, textAlign: 'center' },
-  placeholder: { ...type.body, color: colors.muted, textAlign: 'center' },
+  statusRow: {
+    minHeight: 26,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  liveDot: { width: 9, height: 9, borderRadius: 5 },
+  preparingDot: { width: 13, height: 13, borderRadius: 7, borderWidth: 2 },
+  status: { ...type.label, fontWeight: '500' },
+  counter: { ...type.counter, fontVariant: ['tabular-nums'] },
+  waveform: {
+    height: 57,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 2,
+  },
+  transcriptDivider: {
+    marginHorizontal: spacing.lg,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  transcriptArea: { flex: 1 },
+  transcriptContent: {
+    flexGrow: 1,
+    paddingHorizontal: spacing.lg,
+    paddingTop: 22,
+    paddingBottom: spacing.xl,
+    gap: spacing.lg,
+  },
+  transcript: { fontSize: 19, lineHeight: 30, letterSpacing: -0.15 },
+  emptyTranscript: { gap: spacing.sm, paddingTop: 8 },
+  emptyTitle: { ...type.title, fontSize: 21, lineHeight: 28 },
+  placeholder: { ...type.body, lineHeight: 25 },
+  info: { ...type.meta, textAlign: 'center' },
+  errorNotice: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.sm,
+    padding: spacing.md,
+    borderRadius: 14,
+  },
+  error: { ...type.body, flex: 1, fontSize: 14, lineHeight: 21 },
   actionBar: {
     paddingHorizontal: spacing.lg,
-    paddingTop: spacing.lg,
-    paddingBottom: spacing.lg,
+    paddingTop: spacing.md,
     gap: spacing.sm,
-    backgroundColor: colors.paper,
-    borderTopWidth: 1,
-    borderTopColor: colors.line,
   },
-  saving: { ...type.meta, color: colors.muted, textAlign: 'center' },
+  sheetCopy: { ...type.body },
 })

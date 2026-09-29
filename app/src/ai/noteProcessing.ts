@@ -16,7 +16,7 @@ export type ProcessingPhase = 'loading' | 'title' | 'summary' | 'tags'
 // Thrown instead of silently fetching 1 GB or more: the model only ever arrives
 // through an explicit request from the user, on the welcome or settings screen.
 export const MODEL_MISSING_MESSAGE =
-  'Model językowy nie jest pobrany. Włącz go w Ustawieniach, aby korzystać z funkcji AI.'
+  'Pobierz model w Ustawieniach, aby tworzyć tytuły, podsumowania i zadania.'
 
 export interface ProcessingProgress {
   phase: ProcessingPhase
@@ -88,7 +88,9 @@ export const ensureModelReady = async (
   if (!(await isModelDownloaded())) throw new Error(MODEL_MISSING_MESSAGE)
   if (!isModelLoaded()) {
     onProgress({ phase: 'loading', percent: 0 })
-    await loadModel(getModelPath(), (percent) => onProgress({ phase: 'loading', percent }))
+    await loadModel(getModelPath(), (percent) =>
+      onProgress({ phase: 'loading', percent }),
+    )
   }
 }
 
@@ -105,22 +107,27 @@ export const processNoteWithLlm = async (
   let summary = ''
   if (wordCount >= 30) {
     onProgress({ phase: 'summary' })
-    const summaryResult = await generate(summaryPrompt(content), () => undefined, {
-      system: SUMMARY_SYSTEM,
-      nPredict: 256,
-    })
+    const summaryResult = await generate(
+      summaryPrompt(content),
+      () => undefined,
+      {
+        system: SUMMARY_SYSTEM,
+        nPredict: 256,
+      },
+    )
     recordGeneration('summary', content.length, summaryResult)
     summary = cleanSummary(summaryResult.text)
 
-    if (summary.length === 0) throw new Error('Model zwrócił puste streszczenie')
+    if (summary.length === 0)
+      throw new Error('Nie udało się utworzyć podsumowania. Spróbuj ponownie.')
     if (isCopy(summary, content)) {
       throw new Error(
-        'Model przepisał treść zamiast ją streścić (lokalny model jest za słaby na tym urządzeniu — na docelowym Qwen3-4B będzie poprawnie)',
+        'Podsumowanie zbyt mocno powtarzało treść. Notatka została zachowana. Możesz spróbować ponownie.',
       )
     }
     if (isUngrounded(summary, content)) {
       throw new Error(
-        'Model wygenerował streszczenie niezwiązane z treścią (lokalny model jest za słaby na tym urządzeniu — na docelowym Qwen3-4B będzie poprawnie)',
+        'Nie udało się utworzyć podsumowania zgodnego z treścią. Notatka została zachowana. Spróbuj ponownie.',
       )
     }
   }
@@ -130,17 +137,23 @@ export const processNoteWithLlm = async (
   // latches onto a side detail.
   const titleSource = content
   onProgress({ phase: 'title' })
-  const titleResult = await generate(titlePrompt(titleSource), () => undefined, {
-    system: TITLE_SYSTEM,
-    nPredict: 24,
-  })
+  const titleResult = await generate(
+    titlePrompt(titleSource),
+    () => undefined,
+    {
+      system: TITLE_SYSTEM,
+      nPredict: 24,
+    },
+  )
   recordGeneration('title', titleSource.length, titleResult)
   const generatedTitle = cleanTitle(titleResult.text)
   // No grounding check on the title: a good title generalises (e.g. "Zadania na
   // tydzień") with words that need not appear verbatim in the note. cleanTitle
   // already drops instruction echoes, so a non-empty result is usable.
   const title =
-    generatedTitle.length > 0 ? generatedTitle : fallbackTitle(summary.length > 0 ? summary : content)
+    generatedTitle.length > 0
+      ? generatedTitle
+      : fallbackTitle(summary.length > 0 ? summary : content)
 
   onProgress({ phase: 'tags' })
   const tagsResult = await generate(tagsPrompt(content), () => undefined, {

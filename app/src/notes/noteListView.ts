@@ -31,15 +31,52 @@ const matchesQuery = (note: Note, words: string[]): boolean => {
   return words.every((word) => haystack.includes(word))
 }
 
-const compare = (mode: NoteSortMode) => (a: Note, b: Note): number =>
-  mode === 'created' ? b.createdAt - a.createdAt : b.updatedAt - a.updatedAt
+const compare =
+  (mode: NoteSortMode) =>
+  (a: Note, b: Note): number =>
+    mode === 'created' ? b.createdAt - a.createdAt : b.updatedAt - a.updatedAt
 
 // The single place that turns "all notes" into "what the list shows". Pure, so
 // the search and sort rules can be tested without a database or a renderer.
-export const selectVisibleNotes = (notes: Note[], view: NoteListView): Note[] => {
+export const selectVisibleNotes = (
+  notes: Note[],
+  view: NoteListView,
+): Note[] => {
   const words = normalizeForSearch(view.query).split(/\s+/).filter(Boolean)
   return notes
-    .filter((note) => (view.category === null ? true : note.tags.includes(view.category)))
+    .filter((note) =>
+      view.category === null ? true : note.tags.includes(view.category),
+    )
     .filter((note) => matchesQuery(note, words))
     .sort(compare(view.sortMode))
+}
+
+export const groupNotesByDate = (
+  notes: Note[],
+  mode: NoteSortMode,
+  now = new Date(),
+): Array<{ title: string; data: Note[] }> => {
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  const yesterday = new Date(today)
+  yesterday.setDate(yesterday.getDate() - 1)
+  const groups = new Map<string, { title: string; data: Note[] }>()
+  for (const note of notes) {
+    const date = new Date(mode === 'created' ? note.createdAt : note.updatedAt)
+    const key = `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`
+    const title =
+      date >= today
+        ? 'Dzisiaj'
+        : date >= yesterday
+          ? 'Wczoraj'
+          : date.toLocaleDateString('pl-PL', {
+              day: 'numeric',
+              month: 'long',
+              ...(date.getFullYear() !== now.getFullYear()
+                ? { year: 'numeric' }
+                : {}),
+            })
+    if (!groups.has(key)) groups.set(key, { title, data: [] })
+    groups.get(key)?.data.push(note)
+  }
+  return [...groups.values()]
 }

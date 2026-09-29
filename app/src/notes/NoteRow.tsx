@@ -1,68 +1,105 @@
-import { Pressable, StyleSheet, Text, View } from 'react-native'
+import { Pressable, Text, View } from 'react-native'
 import type { Note } from '../domain/note'
 import { isCategory } from '../domain/categories'
-import { colors, spacing, type } from '../ui/theme'
+import { Icon } from '../ui/Icon'
+import { type, useTheme } from '../ui/theme'
+import { useNotesStore } from '../state/notesStore'
 
-const formatDate = (ms: number): string =>
-  new Date(ms).toLocaleDateString('pl-PL', {
-    day: '2-digit',
-    month: '2-digit',
+const formatDuration = (ms: number): string => {
+  const seconds = Math.round(ms / 1000)
+  return `${Math.floor(seconds / 60)}:${(seconds % 60).toString().padStart(2, '0')}`
+}
+export function NoteRow({
+  note,
+  timestamp,
+  onPress,
+}: {
+  note: Note
+  timestamp: number
+  onPress: () => void
+}) {
+  const { colors } = useTheme()
+  const processing = useNotesStore((s) => Boolean(s.processing[note.id]))
+  const categories = note.tags.filter(isCategory)
+  const preview = note.summary?.trim() || note.content.trim()
+  const time = new Date(timestamp).toLocaleTimeString('pl-PL', {
     hour: '2-digit',
     minute: '2-digit',
   })
-
-const formatDuration = (ms: number): string => {
-  const totalSeconds = Math.round(ms / 1000)
-  return `${Math.floor(totalSeconds / 60)}:${(totalSeconds % 60).toString().padStart(2, '0')}`
-}
-
-interface NoteRowProps {
-  note: Note
-  // Which date the row shows: the caller passes the one the list is sorted by,
-  // so a list ordered by recording date does not display modification dates.
-  timestamp: number
-  onPress: () => void
-}
-
-export function NoteRow({ note, timestamp, onPress }: NoteRowProps) {
-  const categories = note.tags.filter(isCategory)
-  const preview = note.summary?.trim() || note.content.trim()
-
   return (
     <Pressable
-      style={({ pressed }) => [styles.row, pressed && styles.pressed]}
-      onPress={onPress}
       accessibilityRole="button"
+      onPress={onPress}
+      style={({ pressed }) => ({
+        paddingVertical: 17,
+        paddingHorizontal: 16,
+        backgroundColor: pressed ? colors.surface : colors.paper,
+        borderRadius: 16,
+        marginBottom: 8,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 12,
+      })}
     >
-      <Text style={styles.title} numberOfLines={1}>
-        {note.title.trim().length > 0 ? note.title : 'Bez tytułu'}
-      </Text>
-
-      {preview.length > 0 && (
-        <Text style={styles.preview} numberOfLines={2}>
-          {preview}
+      <View style={{ flex: 1, gap: 5 }}>
+        <Text
+          style={{
+            ...type.title,
+            fontSize: 17,
+            lineHeight: 23,
+            color: colors.ink,
+          }}
+          numberOfLines={2}
+        >
+          {note.title.trim() || 'Bez tytułu'}
         </Text>
-      )}
-
-      <View style={styles.meta}>
-        <Text style={styles.time}>{formatDate(timestamp)}</Text>
-        {note.durationMs !== null && (
-          <Text style={styles.time}>· {formatDuration(note.durationMs)}</Text>
+        {!!preview && (
+          <Text
+            style={{
+              ...type.body,
+              fontSize: 14,
+              lineHeight: 21,
+              color: colors.body,
+            }}
+            numberOfLines={2}
+          >
+            {preview}
+          </Text>
         )}
-        {categories.length > 0 && <Text style={styles.categories}>· {categories.join(' · ')}</Text>}
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: 5,
+            marginTop: 3,
+          }}
+        >
+          <Icon
+            name={processing ? 'sparkles' : note.audioUri ? 'waveform' : 'note'}
+            size={13}
+            color={processing ? colors.accent : colors.muted}
+          />
+          <Text style={{ ...type.meta, color: colors.muted }}>
+            {processing
+              ? 'Opracowywanie'
+              : note.audioUri
+                ? `Nagranie${note.durationMs !== null ? ' · ' + formatDuration(note.durationMs) : ''}`
+                : 'Tekst'}
+          </Text>
+          <Text style={{ ...type.meta, color: colors.muted }}>· {time}</Text>
+          {!!categories.length && (
+            <Text
+              numberOfLines={1}
+              style={{ ...type.meta, color: colors.accent, flexShrink: 1 }}
+            >
+              · {categories.slice(0, 2).join(' · ')}
+              {categories.length > 2 ? ` +${categories.length - 2}` : ''}
+            </Text>
+          )}
+        </View>
       </View>
+      <Icon name="chevron-right" color={colors.faint} size={17} />
     </Pressable>
   )
 }
-
-const styles = StyleSheet.create({
-  row: { paddingHorizontal: spacing.lg, paddingVertical: spacing.lg, gap: spacing.xs },
-  pressed: { backgroundColor: colors.surface },
-  title: { ...type.title, color: colors.ink, fontSize: 17, lineHeight: 23 },
-  preview: { ...type.body, color: colors.body },
-  // Time, length and categories read as one line of record metadata rather than
-  // three competing decorations.
-  meta: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, marginTop: spacing.xs },
-  time: { ...type.meta, color: colors.muted },
-  categories: { ...type.label, color: colors.navy, fontSize: 12 },
-})

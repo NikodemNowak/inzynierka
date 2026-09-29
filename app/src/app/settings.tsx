@@ -1,30 +1,45 @@
 import { useState } from 'react'
-import { Stack } from 'expo-router'
-import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native'
-import { Button } from '../ui/Button'
-import { colors, radius, spacing, type } from '../ui/theme'
+import {
+  Alert,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native'
+import { Stack, useRouter } from 'expo-router'
 import { useNotesStore } from '../state/notesStore'
 import { useTasksStore } from '../state/tasksStore'
 import { useModelStore } from '../state/modelStore'
 import { shareNotesExport } from '../export/exportNotes'
 import { MODEL_CONFIG } from '../ai/modelConfig'
+import { Button } from '../ui/Button'
+import { Icon } from '../ui/Icon'
+import { radius, spacing, type, useTheme } from '../ui/theme'
 
-const formatGb = (bytes: number): string => `${(bytes / 1024 ** 3).toFixed(2)} GB`
+const formatGb = (bytes: number): string =>
+  `${(bytes / 1024 ** 3).toLocaleString('pl-PL', { maximumFractionDigits: 1 })} GB`
 
-const approxGb = (megabytes: number): string => `${(megabytes / 1024).toFixed(1)} GB`
+const approximateModelBytes = MODEL_CONFIG.approxSizeMb * 1024 ** 2
+
+const approximateModelSize = (): string =>
+  `Około ${formatGb(approximateModelBytes)}`
 
 function ModelSection() {
   const status = useModelStore((state) => state.status)
   const progress = useModelStore((state) => state.progress)
+  const isCancelling = useModelStore((state) => state.isCancelling)
   const sizeBytes = useModelStore((state) => state.sizeBytes)
   const error = useModelStore((state) => state.error)
   const download = useModelStore((state) => state.download)
+  const cancelDownload = useModelStore((state) => state.cancelDownload)
   const remove = useModelStore((state) => state.remove)
+  const { colors } = useTheme()
 
   const confirmRemove = () => {
     Alert.alert(
       'Usunąć model?',
-      'Zwolni to miejsce na urządzeniu. Funkcje AI przestaną działać, dopóki nie pobierzesz modelu ponownie. Notatki zostaną nienaruszone.',
+      'Zwolni to miejsce na urządzeniu. Tytuły i podsumowania AI będą niedostępne, dopóki nie pobierzesz modelu ponownie. Notatki i nagrania zostaną nienaruszone.',
       [
         { text: 'Anuluj', style: 'cancel' },
         { text: 'Usuń', style: 'destructive', onPress: () => void remove() },
@@ -32,77 +47,196 @@ function ModelSection() {
     )
   }
 
+  const statusLabel = {
+    checking: 'Sprawdzanie',
+    absent: 'Niepobrany',
+    downloading: `Pobieranie · ${progress.toFixed(0)}%`,
+    ready: 'Gotowy',
+  }[status]
+
+  const statusIcon = {
+    checking: 'refresh',
+    absent: 'download',
+    downloading: 'waveform',
+    ready: 'check',
+  }[status] as 'refresh' | 'download' | 'waveform' | 'check'
+
   return (
     <View style={styles.section}>
-      <Text style={styles.heading} accessibilityRole="header">
-        Model AI
+      <Text
+        style={[styles.sectionTitle, { color: colors.ink }]}
+        accessibilityRole="header"
+      >
+        Model lokalny
       </Text>
-      <Text style={styles.description}>
-        Tworzy tytuły, streszczenia, kategorie i zadania bez wysyłania treści notatek.
-      </Text>
-
-      <View style={styles.statusPanel}>
-        <Text style={styles.value}>
-          {status === 'checking' && 'Sprawdzanie modelu…'}
-          {status === 'absent' && 'Model nie jest pobrany'}
-          {status === 'downloading' && `Pobieranie · ${progress.toFixed(0)}%`}
-          {status === 'ready' && 'Gotowy do pracy offline'}
-        </Text>
-        <Text style={styles.detail}>
-          {MODEL_CONFIG.displayName}
-          {status === 'ready'
-            ? ` · ${formatGb(sizeBytes)} na urządzeniu`
-            : ` · około ${approxGb(MODEL_CONFIG.approxSizeMb)}`}
-        </Text>
-        {status === 'downloading' && (
+      <View
+        style={[
+          styles.modelCard,
+          { backgroundColor: colors.paper, borderColor: colors.line },
+        ]}
+      >
+        <View style={styles.modelHeader}>
           <View
-            style={styles.progressTrack}
-            accessibilityRole="progressbar"
-            accessibilityLabel="Pobieranie modelu"
-            accessibilityValue={{ min: 0, max: 100, now: Math.round(progress) }}
+            style={[styles.modelIcon, { backgroundColor: colors.accentSoft }]}
           >
+            <Icon name="sparkles" color={colors.accent} size={25} />
+          </View>
+          <View style={styles.modelIdentity}>
+            <Text style={[styles.modelName, { color: colors.ink }]}>
+              {MODEL_CONFIG.displayName}
+            </Text>
+            <Text style={[styles.modelPurpose, { color: colors.muted }]}>
+              Tytuły i podsumowania
+            </Text>
+          </View>
+          <View
+            style={[styles.statusBadge, { backgroundColor: colors.accentSoft }]}
+          >
+            <Icon name={statusIcon} color={colors.accent} size={15} />
+            <Text style={[styles.statusLabel, { color: colors.accent }]}>
+              {statusLabel}
+            </Text>
+          </View>
+        </View>
+
+        <Text style={[styles.modelSize, { color: colors.muted }]}>
+          {status === 'ready' && sizeBytes > 0
+            ? `${formatGb(sizeBytes)} na urządzeniu`
+            : `${approximateModelSize()} do pobrania`}
+        </Text>
+
+        {status === 'downloading' && (
+          <View style={styles.progressSection}>
             <View
-              style={[styles.progressFill, { width: `${Math.min(100, Math.max(0, progress))}%` }]}
-            />
+              style={[styles.progressTrack, { backgroundColor: colors.line }]}
+              accessibilityRole="progressbar"
+              accessibilityLabel="Pobieranie modelu AI"
+              accessibilityValue={{
+                min: 0,
+                max: 100,
+                now: Math.round(progress),
+              }}
+            >
+              <View
+                style={[
+                  styles.progressFill,
+                  {
+                    backgroundColor: colors.accent,
+                    width: `${Math.min(100, Math.max(0, progress))}%`,
+                  },
+                ]}
+              />
+            </View>
+            <Text style={[styles.progressHint, { color: colors.muted }]}>
+              Możesz przejść do notatek. Postęp zobaczysz także nad listą.
+            </Text>
           </View>
         )}
+
+        {status === 'absent' && (
+          <Button
+            label={`Pobierz model · ${formatGb(approximateModelBytes)}`}
+            variant="primary"
+            icon="download"
+            onPress={() => void download()}
+          />
+        )}
+
+        {status === 'downloading' && (
+          <Button
+            label={isCancelling ? 'Anulowanie…' : 'Anuluj pobieranie'}
+            variant="secondary"
+            icon="close"
+            disabled={isCancelling}
+            busy={isCancelling}
+            onPress={() => void cancelDownload()}
+          />
+        )}
+
+        {status === 'ready' && (
+          <Pressable
+            onPress={confirmRemove}
+            accessibilityRole="button"
+            style={[styles.removeRow, { borderTopColor: colors.line }]}
+          >
+            <Icon name="trash" color={colors.danger} size={21} />
+            <Text style={[styles.removeLabel, { color: colors.danger }]}>
+              Usuń model
+            </Text>
+            <Icon name="chevron-right" color={colors.muted} size={20} />
+          </Pressable>
+        )}
+
+        {error && (
+          <Text
+            style={[styles.error, { color: colors.danger }]}
+            accessibilityRole="alert"
+          >
+            {error}
+          </Text>
+        )}
       </View>
-
-      {status === 'absent' && (
-        <Button
-          label={`Pobierz model · ${approxGb(MODEL_CONFIG.approxSizeMb)}`}
-          variant="primary"
-          onPress={() => void download()}
-        />
-      )}
-
-      {status === 'ready' && (
-        <Button
-          label="Usuń pobrany model"
-          variant="danger"
-          onPress={confirmRemove}
-          style={styles.removeButton}
-        />
-      )}
-
-      {error && <Text style={styles.error}>{error}</Text>}
     </View>
   )
 }
 
+const PRIVACY_POINTS = [
+  {
+    icon: 'phone' as const,
+    title: 'Notatki zostają na telefonie',
+    detail: 'Tu zapisują się nagrania i tekst.',
+  },
+  {
+    icon: 'sparkles' as const,
+    title: 'Analiza na urządzeniu',
+    detail: 'Po pobraniu model tworzy podsumowania lokalnie.',
+  },
+  {
+    icon: 'lock' as const,
+    title: 'Bez konta i synchronizacji',
+    detail: 'Nie musisz się logować ani zakładać konta.',
+  },
+]
+
 function PrivacySection() {
+  const { colors } = useTheme()
   return (
-    <View style={styles.privacySection}>
-      <Text style={styles.privacyHeading} accessibilityRole="header">
+    <View style={styles.section}>
+      <Text
+        style={[styles.sectionTitle, { color: colors.ink }]}
+        accessibilityRole="header"
+      >
         Prywatność
       </Text>
-      <Text style={styles.privacyLead}>
-        Twoje nagrania i notatki zostają na telefonie.
-      </Text>
-      <Text style={styles.privacyBody}>
-        Bez konta i synchronizacji. Transkrypcja działa lokalnie, gdy system ma odpowiedni model
-        języka. Model AI pobierasz tylko po własnej decyzji; później działa offline.
-      </Text>
+      <View
+        style={[
+          styles.privacyCard,
+          { backgroundColor: colors.paper, borderColor: colors.line },
+        ]}
+      >
+        {PRIVACY_POINTS.map((point, index) => (
+          <View
+            key={point.title}
+            style={[
+              styles.privacyRow,
+              index < PRIVACY_POINTS.length - 1 && {
+                borderBottomColor: colors.line,
+                borderBottomWidth: StyleSheet.hairlineWidth,
+              },
+            ]}
+          >
+            <Icon name={point.icon} color={colors.accent} size={22} />
+            <View style={styles.privacyCopy}>
+              <Text style={[styles.privacyTitle, { color: colors.ink }]}>
+                {point.title}
+              </Text>
+              <Text style={[styles.privacyDetail, { color: colors.muted }]}>
+                {point.detail}
+              </Text>
+            </View>
+          </View>
+        ))}
+      </View>
     </View>
   )
 }
@@ -112,102 +246,259 @@ function DataSection() {
   const tasks = useTasksStore((state) => state.tasks)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const { colors } = useTheme()
 
   const exportAll = async () => {
     setError(null)
     setBusy(true)
     try {
       await shareNotesExport(notes, tasks)
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+    } catch (exportError) {
+      setError(
+        exportError instanceof Error
+          ? exportError.message
+          : String(exportError),
+      )
     } finally {
       setBusy(false)
     }
   }
 
   return (
-    <View style={styles.lastSection}>
-      <Text style={styles.heading} accessibilityRole="header">
+    <View style={styles.section}>
+      <Text
+        style={[styles.sectionTitle, { color: colors.ink }]}
+        accessibilityRole="header"
+      >
         Twoje dane
       </Text>
-      <Text style={styles.description}>
-        Wyeksportuj notatki do pliku JSON. Nagrania audio pozostają na urządzeniu.
+      <View
+        style={[
+          styles.dataCard,
+          { backgroundColor: colors.paper, borderColor: colors.line },
+        ]}
+      >
+        <Text style={[styles.dataDescription, { color: colors.muted }]}>
+          Eksportuj notatki i zadania do pliku JSON. Nagrania audio nie są
+          dołączane.
+        </Text>
+        <Button
+          label={`Eksportuj notatki · ${notes.length}`}
+          variant="secondary"
+          icon="share"
+          onPress={() => void exportAll()}
+          disabled={busy || notes.length === 0}
+          busy={busy}
+        />
+        {notes.length === 0 && (
+          <Text style={[styles.hint, { color: colors.muted }]}>
+            Brak notatek do wyeksportowania.
+          </Text>
+        )}
+        {error && (
+          <Text style={[styles.error, { color: colors.danger }]}>{error}</Text>
+        )}
+      </View>
+    </View>
+  )
+}
+
+function PreferencesSection() {
+  const router = useRouter()
+  const { colors } = useTheme()
+  return (
+    <View style={styles.section}>
+      <Text
+        style={[styles.sectionTitle, { color: colors.ink }]}
+        accessibilityRole="header"
+      >
+        Wygląd i wprowadzenie
       </Text>
-      <Button
-        label={`Eksportuj notatki (${notes.length})`}
-        onPress={exportAll}
-        disabled={busy || notes.length === 0}
-        busy={busy}
-      />
-      {notes.length === 0 && <Text style={styles.hint}>Brak notatek do wyeksportowania.</Text>}
-      {error && <Text style={styles.error}>{error}</Text>}
+      <View
+        style={[
+          styles.preferenceCard,
+          { backgroundColor: colors.paper, borderColor: colors.line },
+        ]}
+      >
+        <View style={styles.preferenceRow}>
+          <Icon name="phone" color={colors.accent} size={21} />
+          <Text style={[styles.preferenceLabel, { color: colors.ink }]}>
+            Wygląd
+          </Text>
+          <Text style={[styles.preferenceValue, { color: colors.muted }]}>
+            Zgodny z systemem
+          </Text>
+        </View>
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => router.push('/welcome')}
+          style={[
+            styles.preferenceRow,
+            styles.preferenceAction,
+            { borderTopColor: colors.line },
+          ]}
+        >
+          <Icon name="refresh" color={colors.accent} size={21} />
+          <Text style={[styles.preferenceLabel, { color: colors.ink }]}>
+            Pokaż wprowadzenie ponownie
+          </Text>
+          <Icon name="chevron-right" color={colors.muted} size={20} />
+        </Pressable>
+      </View>
+    </View>
+  )
+}
+
+const DEV_ROUTES = [
+  { href: '/dev/poc' as const, title: 'POC modelu językowego' },
+  { href: '/dev/stt-probe' as const, title: 'Diagnostyka mowy' },
+  { href: '/dev/metrics' as const, title: 'Metryki wydajności' },
+]
+
+function DeveloperSection() {
+  const router = useRouter()
+  const { colors } = useTheme()
+  return (
+    <View style={styles.section}>
+      <Text
+        style={[styles.sectionTitle, { color: colors.muted }]}
+        accessibilityRole="header"
+      >
+        Narzędzia deweloperskie
+      </Text>
+      <View
+        style={[
+          styles.preferenceCard,
+          { backgroundColor: colors.paper, borderColor: colors.line },
+        ]}
+      >
+        {DEV_ROUTES.map((route, index) => (
+          <Pressable
+            key={route.href}
+            accessibilityRole="button"
+            onPress={() => router.push(route.href)}
+            style={[
+              styles.devRow,
+              index > 0 && {
+                borderTopColor: colors.line,
+                borderTopWidth: StyleSheet.hairlineWidth,
+              },
+            ]}
+          >
+            <Text style={[styles.preferenceLabel, { color: colors.ink }]}>
+              {route.title}
+            </Text>
+            <Icon name="chevron-right" color={colors.muted} size={20} />
+          </Pressable>
+        ))}
+      </View>
     </View>
   )
 }
 
 export default function SettingsScreen() {
+  const { colors } = useTheme()
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={styles.container}>
+    <ScrollView
+      style={{ backgroundColor: colors.canvas }}
+      contentContainerStyle={styles.container}
+      showsVerticalScrollIndicator={false}
+    >
       <Stack.Screen options={{ title: 'Ustawienia' }} />
       <ModelSection />
       <PrivacySection />
       <DataSection />
+      <PreferencesSection />
+      {__DEV__ && <DeveloperSection />}
     </ScrollView>
   )
 }
 
 const styles = StyleSheet.create({
-  screen: { backgroundColor: colors.canvas },
   container: {
     paddingHorizontal: spacing.lg,
-    paddingTop: spacing.xl,
+    paddingTop: spacing.lg,
     paddingBottom: spacing.xxl,
-    gap: spacing.lg,
+    gap: spacing.xl,
   },
-  section: {
-    gap: spacing.md,
+  section: { gap: spacing.sm },
+  sectionTitle: { ...type.label, fontSize: 16 },
+  modelCard: {
     padding: spacing.lg,
     borderRadius: radius.lg,
-    backgroundColor: colors.paper,
     borderWidth: 1,
-    borderColor: colors.line,
-  },
-  lastSection: {
     gap: spacing.md,
-    padding: spacing.lg,
-    borderRadius: radius.lg,
-    backgroundColor: colors.paper,
-    borderWidth: 1,
-    borderColor: colors.line,
   },
-  heading: { ...type.title, color: colors.ink, fontSize: 19, lineHeight: 25 },
-  description: { ...type.body, color: colors.body },
-  statusPanel: {
-    backgroundColor: colors.surface,
+  modelHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  modelIcon: {
+    width: 48,
+    height: 48,
     borderRadius: radius.md,
-    padding: spacing.lg,
-    gap: spacing.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  value: { ...type.body, color: colors.ink, fontWeight: '600' },
-  detail: { ...type.label, color: colors.muted, fontWeight: '400' },
-  progressTrack: {
-    height: 6,
+  modelIdentity: { flex: 1, gap: 2, minWidth: 0 },
+  modelName: { ...type.title, fontSize: 16 },
+  modelPurpose: { ...type.meta },
+  statusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
     borderRadius: radius.pill,
-    backgroundColor: colors.line,
-    overflow: 'hidden',
-    marginTop: spacing.sm,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
   },
-  progressFill: { height: '100%', backgroundColor: colors.navy },
-  removeButton: { alignSelf: 'flex-start' },
-  privacySection: {
-    gap: spacing.md,
-    padding: spacing.xl,
+  statusLabel: { ...type.meta, fontWeight: '600' },
+  modelSize: { ...type.body, fontSize: 14 },
+  progressSection: { gap: spacing.sm },
+  progressTrack: { height: 7, borderRadius: radius.pill, overflow: 'hidden' },
+  progressFill: { height: '100%', borderRadius: radius.pill },
+  progressHint: { ...type.meta },
+  removeRow: {
+    minHeight: 49,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingTop: spacing.sm,
+  },
+  removeLabel: { ...type.body, flex: 1, fontWeight: '600' },
+  error: { ...type.body, fontSize: 14 },
+  privacyCard: {
+    paddingHorizontal: spacing.lg,
     borderRadius: radius.lg,
-    backgroundColor: colors.navy,
+    borderWidth: 1,
   },
-  privacyHeading: { ...type.label, color: '#DCEAF6', letterSpacing: 0.5 },
-  privacyLead: { ...type.title, color: colors.paper, fontSize: 20, lineHeight: 27 },
-  privacyBody: { ...type.body, color: '#EAF0F6' },
-  hint: { ...type.meta, color: colors.muted },
-  error: { ...type.body, color: colors.danger },
+  privacyRow: {
+    minHeight: 68,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+  privacyCopy: { flex: 1, gap: 2 },
+  privacyTitle: { ...type.body, fontWeight: '500' },
+  privacyDetail: { ...type.meta },
+  dataCard: {
+    padding: spacing.lg,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    gap: spacing.md,
+  },
+  dataDescription: { ...type.body, fontSize: 14 },
+  hint: { ...type.meta },
+  preferenceCard: {
+    paddingHorizontal: spacing.lg,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+  },
+  preferenceRow: {
+    minHeight: 60,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+  preferenceLabel: { ...type.body, flex: 1, fontSize: 15 },
+  preferenceValue: { ...type.meta },
+  preferenceAction: { borderTopWidth: StyleSheet.hairlineWidth },
+  devRow: { minHeight: 52, flexDirection: 'row', alignItems: 'center' },
 })

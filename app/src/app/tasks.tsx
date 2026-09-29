@@ -1,125 +1,175 @@
+import { useState } from 'react'
 import { Stack, useRouter } from 'expo-router'
-import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native'
+import { Alert, FlatList, Pressable, Text, View } from 'react-native'
 import { useTasksStore } from '../state/tasksStore'
 import { useNotesStore } from '../state/notesStore'
-import { Button } from '../ui/Button'
-import { colors, radius, spacing, type } from '../ui/theme'
+import { HomeHeader, HomeNavigation } from '../ui/HomeNavigation'
+import { EmptyState } from '../ui/EmptyState'
+import { Icon } from '../ui/Icon'
+import { type, useTheme } from '../ui/theme'
 
 export default function TasksScreen() {
+  const { colors } = useTheme()
   const tasks = useTasksStore((s) => s.tasks)
   const toggle = useTasksStore((s) => s.toggle)
   const notes = useNotesStore((s) => s.notes)
   const router = useRouter()
+  const [completed, setCompleted] = useState(false)
   const pending = tasks.filter((task) => !task.done).length
-
-  const titleFor = (noteId: string): string => {
-    const note = notes.find((n) => n.id === noteId)
-    return note?.title?.trim() || 'Bez tytułu'
+  const titleFor = (id: string) =>
+    notes.find((note) => note.id === id)?.title.trim() || 'Bez tytułu'
+  const visible = tasks.filter((task) => task.done === completed)
+  const onToggle = async (id: string) => {
+    try {
+      await toggle(id)
+    } catch {
+      Alert.alert('Nie zapisano zmiany', 'Spróbuj ponownie.')
+    }
   }
-
   return (
-    <View style={styles.screen}>
-      <Stack.Screen options={{ title: 'Zadania' }} />
-      {tasks.length === 0 ? (
-        <View style={styles.empty}>
-          <Text style={styles.emptyTitle}>Brak zadań</Text>
-          <Text style={styles.emptyBody}>
-            Otwórz notatkę i wybierz „Zaproponuj zadania”, aby wyciągnąć z niej listę do zrobienia.
-          </Text>
-          <Button label="Wróć do notatek" onPress={() => router.replace('/')} style={styles.emptyAction} />
+    <View style={{ flex: 1, backgroundColor: colors.canvas }}>
+      <Stack.Screen options={{ headerShown: false }} />
+      <HomeHeader title="Zadania" />
+      {!!tasks.length && (
+        <View
+          style={{
+            flexDirection: 'row',
+            margin: 24,
+            marginTop: 8,
+            marginBottom: 16,
+            padding: 4,
+            backgroundColor: colors.surface,
+            borderRadius: 13,
+          }}
+        >
+          {[false, true].map((done) => (
+            <Pressable
+              key={String(done)}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: done === completed }}
+              onPress={() => setCompleted(done)}
+              style={{
+                flex: 1,
+                minHeight: 42,
+                backgroundColor:
+                  done === completed ? colors.paper : 'transparent',
+                borderRadius: 10,
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <Text
+                style={{
+                  ...type.label,
+                  color: done === completed ? colors.accent : colors.muted,
+                }}
+              >
+                {done
+                  ? `Ukończone · ${tasks.length - pending}`
+                  : `Do zrobienia · ${pending}`}
+              </Text>
+            </Pressable>
+          ))}
         </View>
+      )}
+      {!visible.length ? (
+        <EmptyState
+          icon="tasks"
+          title={
+            completed
+              ? 'Brak ukończonych zadań'
+              : tasks.length
+                ? 'Wszystko zrobione'
+                : 'Od myśli do działania'
+          }
+          description={
+            completed
+              ? 'Zaznaczone zadania będą widoczne tutaj.'
+              : tasks.length
+                ? 'Możesz wrócić do notatek lub przejrzeć ukończone zadania.'
+                : 'W notatce wybierz „Zaproponuj zadania” i dodaj te, które chcesz wykonać.'
+          }
+          action={{
+            label: 'Przejdź do notatek',
+            onPress: () => router.replace('/'),
+          }}
+        />
       ) : (
         <FlatList
-          style={styles.list}
-          data={tasks}
-          keyExtractor={(t) => t.id}
-          ItemSeparatorComponent={() => <View style={styles.separator} />}
-          contentContainerStyle={styles.listContent}
-          ListHeaderComponent={
-            <View style={styles.listHeader}>
-              <Text style={styles.listTitle}>Do zrobienia</Text>
-              <Text style={styles.count}>{pending} z {tasks.length}</Text>
-            </View>
-          }
+          data={visible}
+          keyExtractor={(task) => task.id}
+          contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: 24 }}
           renderItem={({ item }) => (
-            <View style={styles.row}>
+            <View
+              style={{
+                flexDirection: 'row',
+                padding: 12,
+                paddingVertical: 15,
+                borderRadius: 16,
+                marginBottom: 8,
+                backgroundColor: colors.paper,
+                gap: 8,
+                alignItems: 'flex-start',
+              }}
+            >
               <Pressable
-                onPress={() => toggle(item.id)}
-                style={styles.checkboxButton}
                 accessibilityRole="checkbox"
-                accessibilityLabel={item.text}
                 accessibilityState={{ checked: item.done }}
+                accessibilityLabel={item.text}
+                onPress={() => void onToggle(item.id)}
+                style={{
+                  width: 44,
+                  height: 44,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
               >
-                <View style={[styles.checkbox, item.done && styles.checkboxDone]}>
-                  {item.done && <Text style={styles.checkmark}>✓</Text>}
+                <View
+                  style={{
+                    width: 23,
+                    height: 23,
+                    borderRadius: 7,
+                    borderWidth: 1.5,
+                    borderColor: item.done ? colors.accent : colors.faint,
+                    backgroundColor: item.done ? colors.accent : 'transparent',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  {item.done && (
+                    <Icon name="check" color={colors.onAccent} size={16} />
+                  )}
                 </View>
               </Pressable>
-              <View style={styles.body}>
-                <Text style={[styles.text, item.done && styles.done]}>{item.text}</Text>
+              <View style={{ flex: 1, paddingTop: 8, gap: 2 }}>
+                <Text
+                  style={{
+                    ...type.body,
+                    color: item.done ? colors.muted : colors.ink,
+                    textDecorationLine: item.done ? 'line-through' : 'none',
+                  }}
+                >
+                  {item.text}
+                </Text>
                 <Pressable
                   onPress={() => router.push(`/note/${item.noteId}`)}
-                  hitSlop={6}
                   accessibilityRole="button"
                   accessibilityLabel={`Otwórz notatkę ${titleFor(item.noteId)}`}
+                  style={{ minHeight: 38, justifyContent: 'center' }}
                 >
-                  <Text style={styles.link}>{titleFor(item.noteId)}</Text>
+                  <Text
+                    numberOfLines={2}
+                    style={{ ...type.meta, color: colors.accent }}
+                  >
+                    {titleFor(item.noteId)}
+                  </Text>
                 </Pressable>
               </View>
             </View>
           )}
         />
       )}
+      <HomeNavigation active="tasks" />
     </View>
   )
 }
-
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.canvas },
-  list: {
-    flexGrow: 0,
-    margin: spacing.lg,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: colors.line,
-    backgroundColor: colors.paper,
-  },
-  listContent: { paddingBottom: spacing.sm },
-  listHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.lg,
-    paddingBottom: spacing.sm,
-  },
-  listTitle: { ...type.title, color: colors.ink },
-  count: { ...type.label, color: colors.navy },
-  empty: { paddingHorizontal: spacing.xl, paddingTop: spacing.xxl, gap: spacing.sm },
-  emptyTitle: { ...type.title, color: colors.ink },
-  emptyBody: { ...type.body, color: colors.muted },
-  emptyAction: { alignSelf: 'flex-start', marginTop: spacing.sm },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: spacing.md,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.lg,
-  },
-  checkboxButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
-  checkbox: {
-    width: 20,
-    height: 20,
-    borderRadius: radius.sm,
-    borderWidth: 1.5,
-    borderColor: colors.navy,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  checkboxDone: { backgroundColor: colors.navy },
-  checkmark: { color: colors.paper, fontSize: 14, lineHeight: 18, fontWeight: '700' },
-  body: { flex: 1, gap: spacing.xs },
-  text: { ...type.body, color: colors.ink },
-  done: { textDecorationLine: 'line-through', color: colors.faint },
-  link: { ...type.label, color: colors.navy, fontWeight: '500' },
-  separator: { height: 1, backgroundColor: colors.line, marginLeft: 68 },
-})

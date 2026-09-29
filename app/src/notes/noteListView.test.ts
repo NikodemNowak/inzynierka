@@ -1,5 +1,10 @@
 import type { Note } from '../domain/note'
-import { normalizeForSearch, selectVisibleNotes, type NoteListView } from './noteListView'
+import {
+  groupNotesByDate,
+  normalizeForSearch,
+  selectVisibleNotes,
+  type NoteListView,
+} from './noteListView'
 
 const note = (overrides: Partial<Note> & Pick<Note, 'id'>): Note => ({
   title: '',
@@ -18,6 +23,36 @@ const view = (overrides: Partial<NoteListView> = {}): NoteListView => ({
   category: null,
   sortMode: 'updated',
   ...overrides,
+})
+
+describe('groupNotesByDate', () => {
+  it('uses local calendar days at the month boundary, and the selected sort date', () => {
+    const now = new Date(2026, 9, 1, 8)
+    const notes = [
+      note({
+        id: 'a',
+        createdAt: new Date(2026, 8, 30, 23, 59).getTime(),
+        updatedAt: new Date(2026, 9, 1, 0, 1).getTime(),
+      }),
+      note({
+        id: 'b',
+        createdAt: new Date(2026, 8, 30, 12).getTime(),
+        updatedAt: new Date(2026, 8, 30, 12).getTime(),
+      }),
+    ]
+    expect(
+      groupNotesByDate(notes, 'updated', now).map((group) => [
+        group.title,
+        group.data.map((n) => n.id),
+      ]),
+    ).toEqual([
+      ['Dzisiaj', ['a']],
+      ['Wczoraj', ['b']],
+    ])
+    expect(groupNotesByDate(notes, 'created', now)).toEqual([
+      { title: 'Wczoraj', data: notes },
+    ])
+  })
 })
 
 describe('normalizeForSearch', () => {
@@ -56,55 +91,73 @@ describe('selectVisibleNotes', () => {
   const notes = [meeting, shopping, idea]
 
   it('returns everything when nothing is filtered', () => {
-    expect(selectVisibleNotes(notes, view()).map((n) => n.id)).toEqual(['c', 'b', 'a'])
+    expect(selectVisibleNotes(notes, view()).map((n) => n.id)).toEqual([
+      'c',
+      'b',
+      'a',
+    ])
   })
 
   it('sorts by modification date by default and by creation date on request', () => {
-    expect(selectVisibleNotes(notes, view({ sortMode: 'updated' })).map((n) => n.id)).toEqual([
-      'c',
-      'b',
-      'a',
-    ])
-    expect(selectVisibleNotes(notes, view({ sortMode: 'created' })).map((n) => n.id)).toEqual([
-      'a',
-      'b',
-      'c',
-    ])
+    expect(
+      selectVisibleNotes(notes, view({ sortMode: 'updated' })).map((n) => n.id),
+    ).toEqual(['c', 'b', 'a'])
+    expect(
+      selectVisibleNotes(notes, view({ sortMode: 'created' })).map((n) => n.id),
+    ).toEqual(['a', 'b', 'c'])
   })
 
   it('matches a query typed without Polish diacritics', () => {
     // "księgowości" appears only in the summary, and only with diacritics.
-    expect(selectVisibleNotes(notes, view({ query: 'ksiegowosc' })).map((n) => n.id)).toEqual(['a'])
+    expect(
+      selectVisibleNotes(notes, view({ query: 'ksiegowosc' })).map((n) => n.id),
+    ).toEqual(['a'])
   })
 
   it('matches inside a word, which is what carries Polish inflection', () => {
     // "najm" finds "najmu" — the reason a prefix-only FTS index was rejected.
-    expect(selectVisibleNotes(notes, view({ query: 'najm' })).map((n) => n.id)).toEqual(['a'])
+    expect(
+      selectVisibleNotes(notes, view({ query: 'najm' })).map((n) => n.id),
+    ).toEqual(['a'])
   })
 
   it('requires every word of the query, in any order', () => {
-    expect(selectVisibleNotes(notes, view({ query: 'aneks magazynu' })).map((n) => n.id)).toEqual([
-      'a',
-    ])
-    expect(selectVisibleNotes(notes, view({ query: 'magazynu aneks' })).map((n) => n.id)).toEqual([
-      'a',
-    ])
-    expect(selectVisibleNotes(notes, view({ query: 'aneks mleko' }))).toEqual([])
-  })
-
-  it('searches the title as well as the content', () => {
-    expect(selectVisibleNotes(notes, view({ query: 'tydzien' })).map((n) => n.id)).toEqual(['a'])
-  })
-
-  it('ignores surrounding and repeated whitespace in the query', () => {
-    expect(selectVisibleNotes(notes, view({ query: '  aneks   magazynu ' })).map((n) => n.id)).toEqual(
-      ['a'],
+    expect(
+      selectVisibleNotes(notes, view({ query: 'aneks magazynu' })).map(
+        (n) => n.id,
+      ),
+    ).toEqual(['a'])
+    expect(
+      selectVisibleNotes(notes, view({ query: 'magazynu aneks' })).map(
+        (n) => n.id,
+      ),
+    ).toEqual(['a'])
+    expect(selectVisibleNotes(notes, view({ query: 'aneks mleko' }))).toEqual(
+      [],
     )
   })
 
+  it('searches the title as well as the content', () => {
+    expect(
+      selectVisibleNotes(notes, view({ query: 'tydzien' })).map((n) => n.id),
+    ).toEqual(['a'])
+  })
+
+  it('ignores surrounding and repeated whitespace in the query', () => {
+    expect(
+      selectVisibleNotes(notes, view({ query: '  aneks   magazynu ' })).map(
+        (n) => n.id,
+      ),
+    ).toEqual(['a'])
+  })
+
   it('combines the category filter with the query', () => {
-    expect(selectVisibleNotes(notes, view({ category: 'Praca' })).map((n) => n.id)).toEqual(['a'])
-    expect(selectVisibleNotes(notes, view({ category: 'Praca', query: 'mleko' }))).toEqual([])
+    expect(
+      selectVisibleNotes(notes, view({ category: 'Praca' })).map((n) => n.id),
+    ).toEqual(['a'])
+    expect(
+      selectVisibleNotes(notes, view({ category: 'Praca', query: 'mleko' })),
+    ).toEqual([])
   })
 
   it('does not mutate the array it was given', () => {
