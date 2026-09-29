@@ -52,8 +52,7 @@ export function AudioNotePlayer({ uri, durationMs }: Props) {
     }
     setPlaybackError(null)
     try {
-      // Speech recognition leaves the shared iOS audio session in recording mode.
-      // Restore speaker playback before starting the player.
+      // Restore speaker playback after speech recognition used the shared session.
       if (Platform.OS === 'ios') {
         await setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true })
       }

@@ -1,4 +1,4 @@
-import { buildWavHeader, wavDurationMs } from './wavConcat'
+import { buildWavHeader, findWavData, wavDurationMs } from './wavConcat'
 
 const ascii = (header: Uint8Array, offset: number, length: number): string =>
   String.fromCharCode(...header.subarray(offset, offset + length))
@@ -59,5 +59,22 @@ describe('wavDurationMs', () => {
 
   it('reports zero for an empty recording', () => {
     expect(wavDurationMs(0)).toBe(0)
+  })
+})
+
+describe('findWavData', () => {
+  it('finds audio after the 4 KiB filler used by iOS recordings', () => {
+    const header = new Uint8Array(4096)
+    header.set(buildWavHeader(4).subarray(0, 36))
+    header.set([70, 76, 76, 82], 36) // FLLR
+    new DataView(header.buffer).setUint32(40, 4044, true)
+    header.set([100, 97, 116, 97], 4088) // data
+    new DataView(header.buffer).setUint32(4092, 4, true)
+
+    expect(findWavData(header)).toEqual({ offset: 4096, size: 4 })
+  })
+
+  it('finds audio in a standard 44-byte WAV header', () => {
+    expect(findWavData(buildWavHeader(32000))).toEqual({ offset: 44, size: 32000 })
   })
 })
