@@ -72,9 +72,6 @@ export const radius = {
   pill: 999,
 } as const
 
-// Kept for development screens; recording timers use tabular system numerals.
-export const mono = undefined
-
 export const type = {
   display: {
     fontSize: 28,

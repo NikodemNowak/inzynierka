@@ -29,6 +29,9 @@ ios/build/
 android/.gradle/
 android/build/
 android/app/build/
+*.apk
+*.aab
+*.ipa
 *.keystore
 !debug.keystore
 
