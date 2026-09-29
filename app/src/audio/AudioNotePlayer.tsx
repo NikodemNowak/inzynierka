@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import { Platform, Pressable, StyleSheet, Text, View } from 'react-native'
 import { setAudioModeAsync, useAudioPlayer, useAudioPlayerStatus } from 'expo-audio'
 import { colors, radius, spacing, type } from '../ui/theme'
@@ -9,7 +9,6 @@ type Props = {
 }
 
 const playbackRates = [0.75, 1, 1.25, 1.5, 2] as const
-const waveformBarCount = 42
 
 export const formatAudioTime = (seconds: number): string => {
   const safeSeconds = Number.isFinite(seconds) ? Math.max(0, Math.floor(seconds)) : 0
@@ -18,28 +17,12 @@ export const formatAudioTime = (seconds: number): string => {
   return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`
 }
 
-const createWaveformBars = (uri: string): number[] => {
-  let seed = 0
-  for (let i = 0; i < uri.length; i += 1) {
-    seed = (seed + uri.charCodeAt(i) * (i + 1)) % 997
-  }
-
-  return Array.from({ length: waveformBarCount }, (_, index) => {
-    const value =
-      Math.sin((index + 1) * 0.85 + seed) * 0.28 +
-      Math.sin((index + 1) * 0.31 + seed * 0.17) * 0.22 +
-      0.5
-    return Math.max(0.18, Math.min(1, value))
-  })
-}
-
 export function AudioNotePlayer({ uri, durationMs }: Props) {
   const player = useAudioPlayer({ uri }, { updateInterval: 250 })
   const status = useAudioPlayerStatus(player)
   const [scrubberWidth, setScrubberWidth] = useState(0)
   const [playbackError, setPlaybackError] = useState<string | null>(null)
 
-  const bars = useMemo(() => createWaveformBars(uri), [uri])
   const durationSeconds = status.duration > 0 ? status.duration : (durationMs ?? 0) / 1000
   const currentSeconds = Math.min(status.currentTime, durationSeconds || status.currentTime)
   const progress = durationSeconds > 0 ? currentSeconds / durationSeconds : 0
@@ -69,6 +52,11 @@ export function AudioNotePlayer({ uri, durationMs }: Props) {
     void player.seekTo(durationSeconds * ratio)
   }
 
+  const seekBy = (seconds: number) => {
+    if (durationSeconds <= 0) return
+    void player.seekTo(Math.max(0, Math.min(durationSeconds, currentSeconds + seconds)))
+  }
+
   const setRate = (rate: number) => {
     player.setPlaybackRate(rate)
   }
@@ -82,7 +70,7 @@ export function AudioNotePlayer({ uri, durationMs }: Props) {
           onPress={() => void togglePlayback()}
           style={({ pressed }) => [styles.playButton, pressed && styles.pressed]}
         >
-          <Text style={styles.playButtonText}>{status.playing ? 'Pauza' : 'Play'}</Text>
+          <Text style={styles.playButtonText}>{status.playing ? 'Pauza' : 'Odtwórz'}</Text>
         </Pressable>
         <Text style={styles.timeText}>
           {formatAudioTime(currentSeconds)} / {formatAudioTime(durationSeconds)}
@@ -95,24 +83,26 @@ export function AudioNotePlayer({ uri, durationMs }: Props) {
       <Pressable
         accessibilityRole="adjustable"
         accessibilityLabel="Pozycja nagrania"
+        accessibilityValue={{
+          min: 0,
+          max: Math.max(1, Math.floor(durationSeconds)),
+          now: Math.floor(currentSeconds),
+        }}
+        accessibilityActions={[
+          { name: 'increment', label: 'Przewiń o 10 sekund' },
+          { name: 'decrement', label: 'Cofnij o 10 sekund' },
+        ]}
+        onAccessibilityAction={(event) => {
+          if (event.nativeEvent.actionName === 'increment') seekBy(10)
+          if (event.nativeEvent.actionName === 'decrement') seekBy(-10)
+        }}
         onLayout={(event) => setScrubberWidth(event.nativeEvent.layout.width)}
         onPress={(event) => seekToPosition(event.nativeEvent.locationX)}
-        style={styles.waveform}
+        style={styles.scrubber}
       >
-        {bars.map((height, index) => {
-          const barProgress = (index + 1) / bars.length
-          const active = barProgress <= progress
-          return (
-            <View
-              key={`${uri}-${index}`}
-              style={[
-                styles.waveformBar,
-                { height: 10 + height * 34 },
-                active ? styles.waveformBarActive : styles.waveformBarInactive,
-              ]}
-            />
-          )
-        })}
+        <View style={styles.track}>
+          <View style={[styles.trackFill, { width: `${Math.min(100, Math.max(0, progress * 100))}%` }]} />
+        </View>
       </Pressable>
 
       <View style={styles.rateRow}>
@@ -123,6 +113,7 @@ export function AudioNotePlayer({ uri, durationMs }: Props) {
               key={rate}
               accessibilityRole="button"
               accessibilityLabel={`Prędkość ${rate}x`}
+              accessibilityState={{ selected: active }}
               onPress={() => setRate(rate)}
               style={({ pressed }) => [
                 styles.rateButton,
@@ -158,32 +149,25 @@ const styles = StyleSheet.create({
     backgroundColor: colors.navy,
     borderRadius: radius.sm,
     paddingHorizontal: spacing.lg,
-    paddingVertical: 9,
-    minWidth: 76,
+    minHeight: 44,
+    minWidth: 92,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   playButtonText: { ...type.label, color: colors.paper },
   timeText: { ...type.meta, color: colors.body, fontSize: 13 },
   error: { ...type.meta, color: colors.danger },
-  waveform: {
-    height: 48,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
-  },
-  waveformBar: {
-    flex: 1,
-    borderRadius: 1,
-  },
-  waveformBarActive: { backgroundColor: colors.navy },
-  waveformBarInactive: { backgroundColor: '#D5DBE3' },
+  scrubber: { height: 44, justifyContent: 'center' },
+  track: { height: 6, backgroundColor: colors.line, borderRadius: radius.pill, overflow: 'hidden' },
+  trackFill: { height: '100%', backgroundColor: colors.navy },
   rateRow: { flexDirection: 'row', gap: spacing.sm },
   rateButton: {
     flex: 1,
     borderWidth: 1,
     borderColor: colors.line,
     borderRadius: radius.sm,
-    paddingVertical: 7,
+    minHeight: 44,
+    justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: colors.paper,
   },

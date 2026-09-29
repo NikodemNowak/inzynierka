@@ -34,7 +34,8 @@ export function NotesToolbar({
           value={query}
           onChangeText={onQueryChange}
           placeholder="Szukaj w notatkach"
-          placeholderTextColor={colors.faint}
+          placeholderTextColor={colors.muted}
+          accessibilityLabel="Szukaj w notatkach"
           style={styles.search}
           autoCorrect={false}
           returnKeyType="search"
@@ -46,6 +47,7 @@ export function NotesToolbar({
             onPress={() => onQueryChange('')}
             hitSlop={10}
             style={styles.clear}
+            accessibilityRole="button"
             accessibilityLabel="Wyczyść wyszukiwanie"
           >
             <Text style={styles.clearMark}>✕</Text>
@@ -57,7 +59,13 @@ export function NotesToolbar({
           — underlined text — while filters stay as chips. */}
       <View style={styles.sortRow}>
         {SORT_OPTIONS.map(({ mode, label }) => (
-          <Pressable key={mode} onPress={() => onSortModeChange(mode)} hitSlop={6}>
+          <Pressable
+            key={mode}
+            onPress={() => onSortModeChange(mode)}
+            style={styles.sortAction}
+            accessibilityRole="button"
+            accessibilityState={{ selected: sortMode === mode }}
+          >
             <Text style={[styles.sort, sortMode === mode && styles.sortActive]}>{label}</Text>
           </Pressable>
         ))}
@@ -70,13 +78,24 @@ export function NotesToolbar({
           style={styles.filterScroll}
           contentContainerStyle={styles.filterBar}
         >
-          <Pressable onPress={() => onSelectCategory(null)}>
+          <Pressable
+            onPress={() => onSelectCategory(null)}
+            style={styles.filterAction}
+            accessibilityRole="button"
+            accessibilityState={{ selected: selectedCategory === null }}
+          >
             <Text style={[styles.chip, selectedCategory === null && styles.chipActive]}>
               Wszystkie
             </Text>
           </Pressable>
           {categories.map((category) => (
-            <Pressable key={category} onPress={() => onSelectCategory(category)}>
+            <Pressable
+              key={category}
+              onPress={() => onSelectCategory(category)}
+              style={styles.filterAction}
+              accessibilityRole="button"
+              accessibilityState={{ selected: selectedCategory === category }}
+            >
               <Text style={[styles.chip, selectedCategory === category && styles.chipActive]}>
                 {category}
               </Text>
@@ -100,10 +119,18 @@ const styles = StyleSheet.create({
     paddingVertical: 11,
     paddingRight: 40,
   },
-  clear: { position: 'absolute', right: spacing.lg + spacing.md },
+  clear: {
+    position: 'absolute',
+    right: spacing.lg + spacing.md,
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   clearMark: { fontSize: 15, color: colors.muted },
   sortRow: { flexDirection: 'row', gap: spacing.lg, paddingHorizontal: spacing.lg },
-  sort: { ...type.label, color: colors.faint, paddingBottom: 2 },
+  sortAction: { minHeight: 44, justifyContent: 'center' },
+  sort: { ...type.label, color: colors.muted, paddingBottom: 2 },
   sortActive: {
     color: colors.ink,
     borderBottomWidth: 2,
@@ -111,6 +138,7 @@ const styles = StyleSheet.create({
   },
   filterScroll: { flexGrow: 0 },
   filterBar: { gap: spacing.sm, paddingHorizontal: spacing.lg, alignItems: 'center' },
+  filterAction: { minHeight: 44, justifyContent: 'center' },
   chip: {
     ...type.label,
     color: colors.body,

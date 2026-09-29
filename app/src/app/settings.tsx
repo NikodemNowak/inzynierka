@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Stack } from 'expo-router'
 import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { Button } from '../ui/Button'
-import { colors, spacing, type } from '../ui/theme'
+import { colors, radius, spacing, type } from '../ui/theme'
 import { useNotesStore } from '../state/notesStore'
 import { useTasksStore } from '../state/tasksStore'
 import { useModelStore } from '../state/modelStore'
@@ -34,34 +34,55 @@ function ModelSection() {
 
   return (
     <View style={styles.section}>
-      <Text style={styles.heading}>Model językowy</Text>
+      <Text style={styles.heading} accessibilityRole="header">
+        Model AI
+      </Text>
       <Text style={styles.description}>
-        {MODEL_CONFIG.displayName} — odpowiada za tytuły, streszczenia, kategorie i zadania.
-        Pobranie go to jedyny moment, w którym aplikacja łączy się z siecią.
+        Tworzy tytuły, streszczenia, kategorie i zadania bez wysyłania treści notatek.
       </Text>
 
-      {status === 'checking' && <Text style={styles.value}>Sprawdzanie…</Text>}
+      <View style={styles.statusPanel}>
+        <Text style={styles.value}>
+          {status === 'checking' && 'Sprawdzanie modelu…'}
+          {status === 'absent' && 'Model nie jest pobrany'}
+          {status === 'downloading' && `Pobieranie · ${progress.toFixed(0)}%`}
+          {status === 'ready' && 'Gotowy do pracy offline'}
+        </Text>
+        <Text style={styles.detail}>
+          {MODEL_CONFIG.displayName}
+          {status === 'ready'
+            ? ` · ${formatGb(sizeBytes)} na urządzeniu`
+            : ` · około ${approxGb(MODEL_CONFIG.approxSizeMb)}`}
+        </Text>
+        {status === 'downloading' && (
+          <View
+            style={styles.progressTrack}
+            accessibilityRole="progressbar"
+            accessibilityLabel="Pobieranie modelu"
+            accessibilityValue={{ min: 0, max: 100, now: Math.round(progress) }}
+          >
+            <View
+              style={[styles.progressFill, { width: `${Math.min(100, Math.max(0, progress))}%` }]}
+            />
+          </View>
+        )}
+      </View>
 
       {status === 'absent' && (
-        <>
-          <Text style={styles.value}>Nie pobrany</Text>
-          <Button
-            label={`Pobierz model (~${approxGb(MODEL_CONFIG.approxSizeMb)})`}
-            variant="primary"
-            onPress={() => void download()}
-          />
-        </>
-      )}
-
-      {status === 'downloading' && (
-        <Text style={styles.value}>Pobieranie: {progress.toFixed(0)}%</Text>
+        <Button
+          label={`Pobierz model · ${approxGb(MODEL_CONFIG.approxSizeMb)}`}
+          variant="primary"
+          onPress={() => void download()}
+        />
       )}
 
       {status === 'ready' && (
-        <>
-          <Text style={styles.value}>Pobrany — {formatGb(sizeBytes)} na urządzeniu</Text>
-          <Button label="Usuń model" variant="danger" onPress={confirmRemove} />
-        </>
+        <Button
+          label="Usuń pobrany model"
+          variant="danger"
+          onPress={confirmRemove}
+          style={styles.removeButton}
+        />
       )}
 
       {error && <Text style={styles.error}>{error}</Text>}
@@ -72,23 +93,25 @@ function ModelSection() {
 function PrivacySection() {
   return (
     <View style={styles.section}>
-      <Text style={styles.heading}>Prywatność</Text>
-      <Text style={styles.description}>
-        Nagrania, transkrypty i notatki zostają w pamięci tego urządzenia. Aplikacja nie ma konta,
-        nie synchronizuje się z chmurą i nie wysyła żadnych danych o użytkowaniu.
-      </Text>
-      <Text style={styles.listItem}>
-        • Rozpoznawanie mowy wykonuje silnik wbudowany w system — nie wymaga pobierania ani sieci.
-      </Text>
-      <Text style={styles.listItem}>
-        • Streszczenia tworzy model uruchamiany lokalnie, na procesorze tego telefonu.
-      </Text>
-      <Text style={styles.listItem}>
-        • Jedyne połączenie sieciowe to jednorazowe pobranie modelu, na Twoje wyraźne żądanie.
+      <Text style={styles.heading} accessibilityRole="header">
+        Prywatność
       </Text>
       <Text style={styles.description}>
-        Po pobraniu modelu możesz wyłączyć internet — wszystkie funkcje działają dalej.
+        Nagrania i notatki są zapisane tylko na tym urządzeniu. Aplikacja nie wymaga konta ani nie
+        synchronizuje danych.
       </Text>
+      <View style={styles.privacyRow}>
+        <Text style={styles.privacyLabel}>Transkrypcja</Text>
+        <Text style={styles.privacyDetail}>Lokalnie, gdy systemowy model języka jest dostępny.</Text>
+      </View>
+      <View style={styles.privacyRow}>
+        <Text style={styles.privacyLabel}>Podsumowania</Text>
+        <Text style={styles.privacyDetail}>Model uruchamia się na tym telefonie.</Text>
+      </View>
+      <View style={styles.privacyRow}>
+        <Text style={styles.privacyLabel}>Internet</Text>
+        <Text style={styles.privacyDetail}>Model AI pobiera się tylko po Twojej decyzji.</Text>
+      </View>
     </View>
   )
 }
@@ -112,11 +135,12 @@ function DataSection() {
   }
 
   return (
-    <View style={styles.section}>
-      <Text style={styles.heading}>Twoje dane</Text>
+    <View style={styles.lastSection}>
+      <Text style={styles.heading} accessibilityRole="header">
+        Twoje dane
+      </Text>
       <Text style={styles.description}>
-        Eksport zapisuje notatki do pliku JSON, który możesz przenieść, gdzie chcesz — bez nagrań
-        audio, które zostają na urządzeniu.
+        Wyeksportuj notatki do pliku JSON. Nagrania audio pozostają na urządzeniu.
       </Text>
       <Button
         label={`Eksportuj notatki (${notes.length})`}
@@ -142,18 +166,42 @@ export default function SettingsScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { padding: spacing.lg, gap: spacing.xl, backgroundColor: colors.paper },
-  section: { gap: spacing.md },
-  heading: {
-    ...type.label,
-    color: colors.muted,
-    textTransform: 'uppercase',
-    letterSpacing: 0.6,
-    fontSize: 11,
+  container: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.xl,
+    paddingBottom: spacing.xxl,
+    backgroundColor: colors.paper,
   },
+  section: {
+    gap: spacing.md,
+    paddingBottom: spacing.xl,
+    marginBottom: spacing.xl,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.line,
+  },
+  lastSection: { gap: spacing.md },
+  heading: { ...type.title, color: colors.ink },
   description: { ...type.body, color: colors.body },
-  listItem: { ...type.body, color: colors.body, paddingLeft: spacing.xs },
+  statusPanel: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+    padding: spacing.lg,
+    gap: spacing.xs,
+  },
   value: { ...type.body, color: colors.ink, fontWeight: '600' },
+  detail: { ...type.label, color: colors.muted, fontWeight: '400' },
+  progressTrack: {
+    height: 6,
+    borderRadius: radius.pill,
+    backgroundColor: colors.line,
+    overflow: 'hidden',
+    marginTop: spacing.sm,
+  },
+  progressFill: { height: '100%', backgroundColor: colors.navy },
+  removeButton: { alignSelf: 'flex-start' },
+  privacyRow: { flexDirection: 'row', gap: spacing.md },
+  privacyDetail: { ...type.body, color: colors.body, flex: 1 },
+  privacyLabel: { ...type.label, color: colors.ink, width: 110, paddingTop: 2 },
   hint: { ...type.meta, color: colors.muted },
   error: { ...type.body, color: colors.danger },
 })

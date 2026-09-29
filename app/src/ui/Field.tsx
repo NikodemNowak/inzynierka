@@ -30,8 +30,9 @@ export function Field({
       <TextInput
         value={value}
         onChangeText={onChangeText}
+        accessibilityLabel={label}
         placeholder={placeholder}
-        placeholderTextColor={colors.faint}
+        placeholderTextColor={colors.muted}
         multiline={multiline}
         editable={editable}
         style={[
@@ -53,7 +54,7 @@ const styles = StyleSheet.create({
     color: colors.muted,
     textTransform: 'uppercase',
     letterSpacing: 0.6,
-    fontSize: 11,
+    fontSize: 12,
   },
   input: {
     ...type.body,

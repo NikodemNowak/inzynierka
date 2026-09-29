@@ -26,6 +26,8 @@ export function NoteTags({
               disabled={!editable}
               onPress={() => toggle(category)}
               style={[styles.chip, active ? styles.chipActive : styles.chipInactive]}
+              accessibilityRole="checkbox"
+              accessibilityState={{ checked: active, disabled: !editable }}
             >
               <Text style={active ? styles.textActive : styles.textInactive}>{category}</Text>
             </Pressable>
@@ -48,7 +50,8 @@ const styles = StyleSheet.create({
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   chip: {
     borderRadius: radius.pill,
-    paddingVertical: 6,
+    minHeight: 44,
+    justifyContent: 'center',
     paddingHorizontal: spacing.md,
     borderWidth: 1,
   },

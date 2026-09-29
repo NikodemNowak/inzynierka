@@ -1,23 +1,19 @@
 import { Stack, useRouter } from 'expo-router'
 import { ScrollView, StyleSheet, Text, View } from 'react-native'
 import { Button } from '../ui/Button'
-import { colors, spacing, type } from '../ui/theme'
+import { colors, radius, spacing, type } from '../ui/theme'
 import { useModelStore } from '../state/modelStore'
 import { useSettingsStore } from '../state/settingsStore'
 import { MODEL_CONFIG } from '../ai/modelConfig'
 
 const POINTS: ReadonlyArray<{ title: string; body: string }> = [
   {
-    title: 'Nagrywanie i transkrypcja działają bez sieci',
-    body: 'Zamianę mowy na tekst wykonuje silnik wbudowany w system telefonu. Nagranie ani transkrypt nigdy nie opuszczają urządzenia.',
+    title: 'Nagraj i zobacz tekst na żywo',
+    body: 'Mowa jest przetwarzana na urządzeniu, gdy systemowy model języka jest dostępny.',
   },
   {
-    title: 'Streszczenia powstają na telefonie',
-    body: 'Tytuły, streszczenia, kategorie i zadania tworzy model językowy uruchamiany lokalnie — nie ma tu żadnej usługi w chmurze.',
-  },
-  {
-    title: 'Jedyne połączenie z siecią to pobranie modelu',
-    body: `Model ${MODEL_CONFIG.displayName} zajmuje około ${Math.round(MODEL_CONFIG.approxSizeMb / 10) / 100} GB i pobiera się raz. Potem możesz wyłączyć internet i korzystać ze wszystkiego.`,
+    title: 'Dodaj podsumowanie na telefonie',
+    body: 'Lokalny model AI tworzy tytuły, streszczenia, kategorie i zadania. Możesz pobrać go teraz lub później.',
   },
 ]
 
@@ -47,7 +43,9 @@ export default function WelcomeScreen() {
     <ScrollView contentContainerStyle={styles.container}>
       <Stack.Screen options={{ title: 'Witaj', headerBackVisible: false }} />
 
-      <Text style={styles.heading}>Notatki głosowe, które zostają u Ciebie</Text>
+      <Text style={styles.heading} accessibilityRole="header">
+        Notatki głosowe, które zostają u Ciebie
+      </Text>
 
       {POINTS.map((point) => (
         <View key={point.title} style={styles.point}>
@@ -56,33 +54,40 @@ export default function WelcomeScreen() {
         </View>
       ))}
 
-      {status === 'ready' ? (
-        <Text style={styles.ready}>Model jest już pobrany — wszystko gotowe.</Text>
-      ) : (
-        <View style={styles.actions}>
+      <View style={styles.modelSection}>
+        <Text style={styles.modelTitle}>Model do podsumowań</Text>
+        <Text style={styles.modelDetail}>
+          {MODEL_CONFIG.displayName} · około {Math.round(MODEL_CONFIG.approxSizeMb / 10) / 100} GB.
+          Pobiera się tylko na Twoje żądanie.
+        </Text>
+        {status === 'ready' ? (
+          <Text style={styles.ready}>Model jest pobrany i gotowy do pracy offline.</Text>
+        ) : (
           <Button
             label={
               downloading
                 ? `Pobieram… ${progress.toFixed(0)}%`
-                : `Pobierz model (~${Math.round(MODEL_CONFIG.approxSizeMb / 10) / 100} GB)`
+                : 'Pobierz model'
             }
             variant="primary"
             onPress={startDownload}
-            disabled={downloading}
+            disabled={downloading || status === 'checking'}
             busy={downloading}
           />
-          <Text style={styles.hint}>
-            Możesz też zacząć bez modelu — nagrywanie, transkrypcja i notatki działają od razu, a
-            streszczenia włączysz później w Ustawieniach.
-          </Text>
-        </View>
-      )}
+        )}
+      </View>
 
       {error && <Text style={styles.error}>{error}</Text>}
 
       <Button
-        label={downloading ? 'Przejdź do notatek — pobieranie trwa w tle' : 'Przejdź do notatek'}
-        variant={downloading ? 'secondary' : 'primary'}
+        label={
+          status === 'ready'
+            ? 'Przejdź do notatek'
+            : downloading
+              ? 'Przejdź do notatek · pobieranie trwa'
+              : 'Zacznij bez pobierania'
+        }
+        variant={status === 'ready' ? 'primary' : 'secondary'}
         onPress={finish}
       />
     </ScrollView>
@@ -95,8 +100,14 @@ const styles = StyleSheet.create({
   point: { gap: spacing.xs },
   pointTitle: { ...type.label, color: colors.navy, fontSize: 14 },
   pointBody: { ...type.body, color: colors.body },
-  actions: { gap: spacing.md },
-  hint: { ...type.meta, color: colors.muted, lineHeight: 18 },
+  modelSection: {
+    gap: spacing.md,
+    padding: spacing.lg,
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+  },
+  modelTitle: { ...type.title, color: colors.ink },
+  modelDetail: { ...type.body, color: colors.body },
   ready: { ...type.body, color: colors.success, fontWeight: '600' },
   error: { ...type.body, color: colors.danger },
 })

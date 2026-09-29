@@ -1,6 +1,8 @@
 import { useEffect } from 'react'
 import { Stack } from 'expo-router'
+import { StatusBar } from 'expo-status-bar'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
+import { AppHeader } from '../ui/AppHeader'
 import { useNotesStore } from '../state/notesStore'
 import { useTasksStore } from '../state/tasksStore'
 import { useSettingsStore } from '../state/settingsStore'
@@ -27,7 +29,8 @@ export default function RootLayout() {
 
   return (
     <SafeAreaProvider>
-      <Stack />
+      <StatusBar style="dark" />
+      <Stack screenOptions={{ header: (props) => <AppHeader {...props} /> }} />
     </SafeAreaProvider>
   )
 }

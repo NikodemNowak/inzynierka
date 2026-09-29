@@ -157,7 +157,13 @@ export default function EditNoteScreen() {
         options={{
           title: 'Edycja notatki',
           headerRight: () => (
-            <Pressable onPress={shareNote} hitSlop={8} disabled={processing}>
+            <Pressable
+              onPress={shareNote}
+              style={styles.headerButton}
+              disabled={processing}
+              accessibilityRole="button"
+              accessibilityState={{ disabled: processing }}
+            >
               <Text style={[styles.headerAction, processing && styles.headerActionDisabled]}>
                 Udostępnij
               </Text>
@@ -230,6 +236,7 @@ const styles = StyleSheet.create({
   status: { ...type.meta, color: colors.navy },
   error: { ...type.body, color: colors.danger },
   hint: { ...type.meta, color: colors.muted },
+  headerButton: { minHeight: 44, justifyContent: 'center' },
   headerAction: { ...type.label, color: colors.navy },
   headerActionDisabled: { color: colors.faint },
 })

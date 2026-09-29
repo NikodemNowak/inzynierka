@@ -47,10 +47,18 @@ export default function NotesListScreen() {
           title: 'Notatki',
           headerRight: () => (
             <View style={styles.headerLinks}>
-              <Pressable onPress={() => router.push('/tasks')} hitSlop={8}>
+              <Pressable
+                onPress={() => router.push('/tasks')}
+                style={styles.headerAction}
+                accessibilityRole="button"
+              >
                 <Text style={styles.headerLink}>Zadania</Text>
               </Pressable>
-              <Pressable onPress={() => router.push('/settings')} hitSlop={8}>
+              <Pressable
+                onPress={() => router.push('/settings')}
+                style={styles.headerAction}
+                accessibilityRole="button"
+              >
                 <Text style={styles.headerLink}>Ustawienia</Text>
               </Pressable>
             </View>
@@ -83,7 +91,7 @@ export default function NotesListScreen() {
               <Text style={styles.emptyTitle}>Brak wyników</Text>
               <Text style={styles.emptyBody}>
                 {query.trim().length > 0
-                  ? `Żadna notatka nie zawiera „${query.trim()}".`
+                  ? `Żadna notatka nie zawiera „${query.trim()}”.`
                   : 'Żadna notatka nie należy do tej kategorii.'}
               </Text>
               <Button label="Wyczyść filtry" onPress={clearFilters} style={styles.emptyAction} />
@@ -139,7 +147,8 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.paper },
   listContent: { paddingBottom: spacing.sm },
   separator: { height: 1, backgroundColor: colors.line, marginLeft: spacing.lg },
-  headerLinks: { flexDirection: 'row', gap: spacing.lg },
+  headerLinks: { flexDirection: 'row', gap: spacing.md },
+  headerAction: { minHeight: 44, justifyContent: 'center' },
   headerLink: { ...type.label, color: colors.navy },
   empty: { flex: 1, paddingHorizontal: spacing.lg, paddingTop: spacing.xxl, gap: spacing.sm },
   emptyTitle: { ...type.title, color: colors.ink },
