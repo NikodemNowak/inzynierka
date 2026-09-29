@@ -2,7 +2,9 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Stack, useNavigation, useRouter } from 'expo-router'
 import { usePreventRemove } from 'expo-router/react-navigation'
 import {
+  Animated,
   ActivityIndicator,
+  Easing,
   ScrollView,
   StyleSheet,
   Text,
@@ -16,9 +18,11 @@ import {
   type RecordingResult,
 } from '../stt/useSpeechRecorder'
 import { LiveTranscript } from '../stt/LiveTranscript'
+import { waveformScaleForVolume } from '../stt/microphoneMeter'
 import { BottomSheet } from '../ui/BottomSheet'
 import { Button } from '../ui/Button'
 import { Icon } from '../ui/Icon'
+import { useReducedMotion } from '../ui/Motion'
 import { spacing, type, useTheme } from '../ui/theme'
 
 const formatDuration = (durationMs: number): string => {
@@ -60,11 +64,35 @@ const WAVEFORM_HEIGHTS = [
 
 function RecordingWaveform({
   status,
+  volumeLevel,
 }: {
   status: 'idle' | 'starting' | 'recording' | 'stopping'
+  volumeLevel: number
 }) {
   const { colors } = useTheme()
+  const reducedMotion = useReducedMotion()
+  const amplitude = useRef(
+    new Animated.Value(waveformScaleForVolume(volumeLevel)),
+  ).current
   const color = status === 'recording' ? colors.accent : colors.faint
+
+  useEffect(() => {
+    const target = waveformScaleForVolume(
+      status === 'recording' ? volumeLevel : 0,
+    )
+    if (reducedMotion) {
+      amplitude.setValue(target)
+      return
+    }
+    const animation = Animated.timing(amplitude, {
+      toValue: target,
+      duration: 90,
+      easing: Easing.out(Easing.quad),
+      useNativeDriver: true,
+    })
+    animation.start()
+    return () => animation.stop()
+  }, [amplitude, reducedMotion, status, volumeLevel])
 
   return (
     <View
@@ -73,9 +101,13 @@ function RecordingWaveform({
       importantForAccessibility="no-hide-descendants"
     >
       {WAVEFORM_HEIGHTS.map((height, index) => (
-        <View
+        <Animated.View
           key={index}
-          style={[styles.waveformBar, { height, backgroundColor: color }]}
+          style={[
+            styles.waveformBar,
+            { height, backgroundColor: color },
+            { transform: [{ scaleY: amplitude }] },
+          ]}
         />
       ))}
     </View>
@@ -166,7 +198,7 @@ export default function RecordNoteScreen() {
   )
 
   const recorder = useSpeechRecorder(handleComplete)
-  const { finalTranscript, status } = recorder
+  const { finalTranscript, status, volumeLevel } = recorder
 
   // Persist only finalized speech, not the recognizer's frequently revised tail.
   useEffect(() => {
@@ -305,7 +337,7 @@ export default function RecordNoteScreen() {
         >
           {formatDuration(recorder.durationMs)}
         </Text>
-        <RecordingWaveform status={status} />
+        <RecordingWaveform status={status} volumeLevel={volumeLevel} />
       </View>
 
       <View style={[styles.transcriptDivider, { borderColor: colors.line }]} />

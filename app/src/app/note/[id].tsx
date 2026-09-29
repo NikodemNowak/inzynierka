@@ -121,8 +121,8 @@ export default function NoteDetailScreen() {
     state.notes.find((item) => item.id === id),
   )
   const loaded = useNotesStore((state) => state.loaded)
-  const progress = useNotesStore((state) =>
-    id ? state.processing[id] : undefined,
+  const processingPhase = useNotesStore((state) =>
+    id ? state.processing[id]?.phase : undefined,
   )
   const processError = useNotesStore((state) =>
     id ? state.processingError[id] : undefined,
@@ -149,7 +149,9 @@ export default function NoteDetailScreen() {
   const [appliedNotice, setAppliedNotice] = useState(false)
   const [revealTitle, setRevealTitle] = useState(false)
   const [revealSummary, setRevealSummary] = useState(false)
-  const processing = progress !== undefined
+  const processing = processingPhase !== undefined
+  const preparingModel =
+    processingPhase === 'queued' || processingPhase === 'loading'
   const wasProcessing = useRef(false)
   const processingSource = useRef({
     title: note?.title ?? '',
@@ -293,7 +295,17 @@ export default function NoteDetailScreen() {
   const currentDuration = formatDuration(note.durationMs)
   const proposalChangeCount = Object.values(selection).filter(Boolean).length
   const headerTitle = processing
-    ? () => <ProcessingIndicator label="Opracowuję notatkę…" />
+    ? () => (
+        <ProcessingIndicator
+          label={
+            processingPhase === 'queued'
+              ? 'Czekam na model…'
+              : processingPhase === 'loading'
+                ? 'Wczytuję model…'
+                : 'Opracowuję notatkę…'
+          }
+        />
+      )
     : 'Notatka'
 
   return (
@@ -343,7 +355,7 @@ export default function NoteDetailScreen() {
           <Text style={[styles.error, { color: colors.danger }]}>{error}</Text>
         )}
         {processing ? (
-          <SkeletonText title lines={1} />
+          <SkeletonText title lines={1} animate={!preparingModel} />
         ) : (
           <Text
             accessibilityRole="header"
@@ -425,7 +437,7 @@ export default function NoteDetailScreen() {
             )}
           </View>
           {processing ? (
-            <SkeletonText lines={3} />
+            <SkeletonText lines={3} animate={!preparingModel} />
           ) : (
             <Text
               style={[

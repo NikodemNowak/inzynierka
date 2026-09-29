@@ -12,6 +12,9 @@ jest.mock('../data/notesRepository', () => ({
 }))
 
 jest.mock('../ai/noteProcessing', () => ({ processNoteWithLlm: jest.fn() }))
+jest.mock('../ai/generationMetrics', () => ({
+  recordOperationTiming: jest.fn(),
+}))
 jest.mock('../ai/llmQueue', () => ({
   enqueueLlm: (job: () => Promise<void>) => job(),
 }))
@@ -106,6 +109,22 @@ describe('notesStore background processing safeguards', () => {
       title: 'Mój tytuł',
       content: `${note.content} Nowy termin.`,
     })
+  })
+
+  it('shows that processing is queued before the shared LLM job starts', async () => {
+    const note = makeNote()
+    const generation = deferred<NoteProcessingResult>()
+    mockedProcessNoteWithLlm.mockReturnValue(generation.promise)
+    useNotesStore.setState({ notes: [note] })
+
+    const processing = useNotesStore.getState().processWithLlm(note.id)
+
+    expect(useNotesStore.getState().processing[note.id]).toEqual({
+      phase: 'queued',
+    })
+
+    generation.resolve(generated)
+    await processing
   })
 
   it('keeps reprocessing output as a proposal until the user applies selected fields', async () => {

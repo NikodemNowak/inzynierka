@@ -1,6 +1,9 @@
 export const MAX_ANIMATED_TAIL = 32
 export const LETTER_DELAY_MS = 12
 export const LETTER_FADE_MS = 170
+export const LETTER_BLUE_HOLD_MS = 400
+export const LETTER_COLOR_FADE_MS = 500
+export const LETTER_COLOR_SETTLE_MS = LETTER_BLUE_HOLD_MS + LETTER_COLOR_FADE_MS
 
 export interface TranscriptLetter {
   index: number
@@ -59,6 +62,44 @@ export function getTranscriptLetterAlpha(
   now: number,
 ): number {
   if (letter.startedAt === null) return 1
-  const progress = (now - letter.startedAt) / LETTER_FADE_MS
+  const progress = Math.max(
+    0,
+    Math.min(1, (now - letter.startedAt) / LETTER_FADE_MS),
+  )
   return 0.12 + 0.88 * Math.max(0, Math.min(1, progress))
+}
+
+export function getTranscriptColorProgress(
+  letter: TranscriptLetter,
+  now: number,
+): number {
+  if (letter.startedAt === null) return 1
+  const elapsed = now - letter.startedAt - LETTER_BLUE_HOLD_MS
+  return Math.max(0, Math.min(1, elapsed / LETTER_COLOR_FADE_MS))
+}
+
+const parseHexColor = (color: string): [number, number, number] | null => {
+  const match = /^#?([\da-f]{6})$/i.exec(color)
+  if (!match) return null
+  return [
+    Number.parseInt(match[1].slice(0, 2), 16),
+    Number.parseInt(match[1].slice(2, 4), 16),
+    Number.parseInt(match[1].slice(4, 6), 16),
+  ]
+}
+
+export function interpolateTranscriptColor(
+  fromColor: string,
+  toColor: string,
+  progress: number,
+): string {
+  const destination = parseHexColor(toColor) ?? [73, 87, 106]
+  const source = parseHexColor(fromColor) ?? destination
+  const amount = Number.isFinite(progress)
+    ? Math.max(0, Math.min(1, progress))
+    : 1
+  const channels = source.map((channel, index) =>
+    Math.round(channel + (destination[index] - channel) * amount),
+  )
+  return `#${channels.map((channel) => channel.toString(16).padStart(2, '0')).join('')}`
 }

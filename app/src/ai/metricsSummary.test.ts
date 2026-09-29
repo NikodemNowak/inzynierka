@@ -12,6 +12,11 @@ const metric = (
   inputChars: 300,
   ttftMs,
   tokensPerSecond,
+  wallMs: null,
+  promptMs: null,
+  predictedMs: null,
+  promptTokens: null,
+  predictedTokens: null,
   createdAt: 0,
 })
 
@@ -43,7 +48,10 @@ describe('summarizeByPhase', () => {
   })
 
   it('averages the two middle values for an even number of runs', () => {
-    const summary = summarizeByPhase([metric('tags', 100, 10), metric('tags', 200, 20)])[0]
+    const summary = summarizeByPhase([
+      metric('tags', 100, 10),
+      metric('tags', 200, 20),
+    ])[0]
     expect(summary?.medianTtftMs).toBe(150)
     expect(summary?.medianTokensPerSecond).toBe(15)
   })

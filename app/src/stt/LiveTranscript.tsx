@@ -5,7 +5,9 @@ import { useTheme } from '../ui/theme'
 import {
   buildTranscriptFrame,
   getTranscriptLetterAlpha,
-  LETTER_FADE_MS,
+  getTranscriptColorProgress,
+  interpolateTranscriptColor,
+  LETTER_COLOR_SETTLE_MS,
   type TranscriptFrame,
   type TranscriptLetter,
 } from './liveTranscriptAnimation'
@@ -74,7 +76,8 @@ export function LiveTranscript({
       setClockNow(now)
       const stillRevealing = frame.tail.some(
         (letter) =>
-          letter.startedAt !== null && now < letter.startedAt + LETTER_FADE_MS,
+          letter.startedAt !== null &&
+          now < letter.startedAt + LETTER_COLOR_SETTLE_MS,
       )
       if (stillRevealing) animationFrame = requestAnimationFrame(tick)
     }
@@ -110,6 +113,7 @@ export function LiveTranscript({
       {frame.tail.map((letter) => {
         const isInterim = letter.index >= finalizedLength
         const color = isInterim ? interimColor : textColor
+        const progress = getTranscriptColorProgress(letter, clockNow)
         return (
           <Text
             key={`${letter.index}:${letter.character}`}
@@ -117,7 +121,7 @@ export function LiveTranscript({
               isInterim ? interimStyle : undefined,
               {
                 color: fadedTextColor(
-                  color,
+                  interpolateTranscriptColor(colors.accent, color, progress),
                   getTranscriptLetterAlpha(letter, clockNow),
                 ),
               },

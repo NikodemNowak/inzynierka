@@ -1,6 +1,11 @@
 import {
   buildTranscriptFrame,
+  getTranscriptColorProgress,
   getTranscriptLetterAlpha,
+  interpolateTranscriptColor,
+  LETTER_BLUE_HOLD_MS,
+  LETTER_COLOR_FADE_MS,
+  LETTER_COLOR_SETTLE_MS,
   type TranscriptLetter,
 } from './liveTranscriptAnimation'
 
@@ -60,6 +65,42 @@ describe('live transcript reveal timing', () => {
     ).toBeLessThan(1)
     expect(
       getTranscriptLetterAlpha(lastLetter, lastLetter.startedAt! + 170),
+    ).toBe(1)
+  })
+})
+
+describe('live transcript color transition', () => {
+  it('blends fresh blue letters smoothly into their normal text color', () => {
+    expect(interpolateTranscriptColor('#286BC2', '#172131', 0)).toBe('#286bc2')
+    expect(interpolateTranscriptColor('#286BC2', '#172131', 0.5)).toBe(
+      '#20467a',
+    )
+    expect(interpolateTranscriptColor('#286BC2', '#172131', 1)).toBe('#172131')
+  })
+
+  it('clamps progress and falls back to the normal color for invalid input', () => {
+    expect(interpolateTranscriptColor('#286BC2', '#172131', -1)).toBe('#286bc2')
+    expect(interpolateTranscriptColor('#286BC2', '#172131', 2)).toBe('#172131')
+    expect(interpolateTranscriptColor('invalid', '#172131', 0)).toBe('#172131')
+  })
+
+  it('holds new letters blue before fading independently of opacity reveal', () => {
+    const letter: TranscriptLetter = {
+      index: 0,
+      character: 'ą',
+      startedAt: 100,
+    }
+
+    expect(LETTER_BLUE_HOLD_MS).toBe(400)
+    expect(LETTER_COLOR_FADE_MS).toBe(500)
+    expect(LETTER_COLOR_SETTLE_MS).toBe(900)
+    expect(getTranscriptLetterAlpha(letter, 270)).toBe(1)
+    expect(getTranscriptColorProgress(letter, 499)).toBe(0)
+    expect(getTranscriptColorProgress(letter, 500)).toBe(0)
+    expect(getTranscriptColorProgress(letter, 750)).toBe(0.5)
+    expect(getTranscriptColorProgress(letter, 1000)).toBe(1)
+    expect(
+      getTranscriptColorProgress({ ...letter, startedAt: null }, 100),
     ).toBe(1)
   })
 })

@@ -1,17 +1,21 @@
 import { generate, isModelLoaded, loadModel } from './llm'
 import { getModelPath, isModelDownloaded } from './modelDownload'
+import { classifyNoteCategories } from './noteCategories'
 import {
   cleanSummary,
   cleanTitle,
   fallbackTitle,
   isCopy,
   isUngrounded,
-  parseTags,
 } from './noteOutput'
 import { recordGeneration } from './generationMetrics'
-import { NOTE_CATEGORIES } from '../domain/categories'
 
-export type ProcessingPhase = 'loading' | 'title' | 'summary' | 'tags'
+export type ProcessingPhase =
+  | 'queued'
+  | 'loading'
+  | 'title'
+  | 'summary'
+  | 'tags'
 
 // Thrown instead of silently fetching 1 GB or more: the model only ever arrives
 // through an explicit request from the user, on the welcome or settings screen.
@@ -34,9 +38,6 @@ const TITLE_SYSTEM =
 
 const SUMMARY_SYSTEM =
   'Streszczasz polskie notatki głosowe zwięźle i rzeczowo. Odpowiadasz wyłącznie po polsku.'
-
-const TAGS_SYSTEM =
-  'Nadajesz krótkie tagi tematyczne polskim notatkom. Odpowiadasz wyłącznie po polsku.'
 
 const titlePrompt = (content: string): string =>
   `/no_think
@@ -68,37 +69,32 @@ Notatka:
 ${content}
 """`
 
-const tagsPrompt = (content: string): string =>
-  `/no_think
-Przypisz poniższą notatkę do pasujących kategorii z listy.
-Lista kategorii: ${NOTE_CATEGORIES.join(', ')}.
-Zasady:
-- Wybierz 1-2 kategorie, które najlepiej pasują. Jeśli żadna nie pasuje, napisz "brak".
-- Użyj WYŁĄCZNIE nazw z listy, oddzielonych przecinkiem.
-- Zwróć tylko nazwy kategorii, nic więcej.
-
-Notatka:
-"""
-${content}
-"""`
-
 export const ensureModelReady = async (
   onProgress: (progress: ProcessingProgress) => void,
-): Promise<void> => {
+  onModelLoad?: (durationMs: number) => void,
+): Promise<number | null> => {
   if (!(await isModelDownloaded())) throw new Error(MODEL_MISSING_MESSAGE)
   if (!isModelLoaded()) {
+    const startedAt = Date.now()
     onProgress({ phase: 'loading', percent: 0 })
-    await loadModel(getModelPath(), (percent) =>
-      onProgress({ phase: 'loading', percent }),
-    )
+    try {
+      await loadModel(getModelPath(), (percent) =>
+        onProgress({ phase: 'loading', percent }),
+      )
+    } finally {
+      onModelLoad?.(Date.now() - startedAt)
+    }
+    return Date.now() - startedAt
   }
+  return null
 }
 
 export const processNoteWithLlm = async (
   content: string,
   onProgress: (progress: ProcessingProgress) => void,
+  onModelLoad?: (durationMs: number) => void,
 ): Promise<NoteProcessingResult> => {
-  await ensureModelReady(onProgress)
+  await ensureModelReady(onProgress, onModelLoad)
 
   const wordCount = content.trim().split(/\s+/).filter(Boolean).length
 
@@ -156,12 +152,7 @@ export const processNoteWithLlm = async (
       : fallbackTitle(summary.length > 0 ? summary : content)
 
   onProgress({ phase: 'tags' })
-  const tagsResult = await generate(tagsPrompt(content), () => undefined, {
-    system: TAGS_SYSTEM,
-    nPredict: 40,
-  })
-  recordGeneration('tags', content.length, tagsResult)
-  const tags = parseTags(tagsResult.text)
+  const tags = await classifyNoteCategories(content)
 
   return { title, summary, tags }
 }

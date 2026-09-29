@@ -39,6 +39,34 @@ export function ProcessingIndicator({
   const { colors } = useTheme()
   const reduced = useReducedMotion()
   const opacity = useRef(new Animated.Value(1)).current
+  const labelOpacity = useRef(new Animated.Value(1)).current
+  const [displayLabel, setDisplayLabel] = useState(label)
+  useEffect(() => {
+    if (displayLabel === label) return
+    if (reduced) {
+      setDisplayLabel(label)
+      labelOpacity.setValue(1)
+      return
+    }
+    const fadeOut = Animated.timing(labelOpacity, {
+      toValue: 0,
+      duration: 110,
+      useNativeDriver: true,
+    })
+    fadeOut.start(({ finished }) => {
+      if (finished) setDisplayLabel(label)
+    })
+    return () => fadeOut.stop()
+  }, [label, displayLabel, reduced, labelOpacity])
+  useEffect(() => {
+    const fadeIn = Animated.timing(labelOpacity, {
+      toValue: 1,
+      duration: reduced ? 0 : 180,
+      useNativeDriver: true,
+    })
+    fadeIn.start()
+    return () => fadeIn.stop()
+  }, [displayLabel, reduced, labelOpacity])
   useEffect(() => {
     if (reduced) {
       opacity.setValue(1)
@@ -76,9 +104,10 @@ export function ProcessingIndicator({
       <Animated.View style={{ opacity }}>
         <Icon name="sparkles" size={22} color={colors.accent} />
       </Animated.View>
-      <Text
+      <Animated.Text
         numberOfLines={2}
         style={{
+          opacity: labelOpacity,
           fontSize: 13,
           lineHeight: 18,
           fontWeight: '500',
@@ -86,24 +115,26 @@ export function ProcessingIndicator({
           flexShrink: 1,
         }}
       >
-        {label}
-      </Text>
+        {displayLabel}
+      </Animated.Text>
     </View>
   )
 }
 export function SkeletonText({
   lines = 3,
   title = false,
+  animate = true,
 }: {
   lines?: number
   title?: boolean
+  animate?: boolean
 }) {
   const { colors, isDark } = useTheme()
   const reduced = useReducedMotion()
   const progress = useRef(new Animated.Value(0)).current
   const [width, setWidth] = useState(300)
   useEffect(() => {
-    if (reduced) return
+    if (reduced || !animate) return
     const loop = Animated.loop(
       Animated.timing(progress, {
         toValue: 1,
@@ -117,7 +148,7 @@ export function SkeletonText({
       loop.stop()
       progress.setValue(0)
     }
-  }, [progress, reduced])
+  }, [progress, reduced, animate])
   return (
     <View
       accessibilityElementsHidden
@@ -136,7 +167,7 @@ export function SkeletonText({
             overflow: 'hidden',
           }}
         >
-          {!reduced && (
+          {!reduced && animate && (
             <Animated.View
               style={{
                 position: 'absolute',

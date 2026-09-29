@@ -1,4 +1,8 @@
-import { recordMetric } from '../data/metricsRepository'
+import {
+  recordLlmOperation,
+  recordMetric,
+  type LlmOperationMetricInput,
+} from '../data/metricsRepository'
 import { MODEL_CONFIG } from './modelConfig'
 import type { GenerationResult } from './llm'
 
@@ -15,5 +19,19 @@ export const recordGeneration = (
     inputChars,
     ttftMs: result.ttftMs,
     tokensPerSecond: result.tokensPerSecond,
+    wallMs: result.wallMs,
+    promptMs: result.promptMs,
+    predictedMs: result.predictedMs,
+    promptTokens: result.promptTokens,
+    predictedTokens: result.predictedTokens,
+  }).catch(() => undefined)
+}
+
+export const recordOperationTiming = (
+  input: Omit<LlmOperationMetricInput, 'model'>,
+): void => {
+  void recordLlmOperation({
+    ...input,
+    model: MODEL_CONFIG.displayName,
   }).catch(() => undefined)
 }

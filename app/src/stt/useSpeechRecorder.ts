@@ -6,6 +6,7 @@ import {
 } from 'expo-speech-recognition'
 import { RECORDINGS_DIR, ensureRecordingsDir } from '../audio/audioFiles'
 import { concatWavFiles } from '../audio/wavConcat'
+import { normalizeRecognitionVolume } from './microphoneMeter'
 
 const LOCALE = 'pl-PL'
 // On-device recognizer package that exposes installed offline language models.
@@ -47,6 +48,7 @@ export interface SpeechRecorder {
   // than on every interim update — the right cadence for saving a draft.
   finalTranscript: string
   durationMs: number
+  volumeLevel: number
   error: string | null
   info: string | null
   start: (source?: AudioFileSource) => Promise<void>
@@ -60,6 +62,7 @@ export const useSpeechRecorder = (
   const [transcript, setTranscript] = useState('')
   const [finalTranscript, setFinalTranscript] = useState('')
   const [durationMs, setDurationMs] = useState(0)
+  const [volumeLevel, setVolumeLevel] = useState(0)
   const [error, setError] = useState<string | null>(null)
   const [info, setInfo] = useState<string | null>(null)
 
@@ -116,6 +119,16 @@ export const useSpeechRecorder = (
     }, 250)
   })
 
+  useSpeechRecognitionEvent('volumechange', (event) => {
+    if (
+      sourceRef.current !== undefined ||
+      statusRef.current !== 'recording' ||
+      stopRequestedRef.current
+    )
+      return
+    setVolumeLevel(normalizeRecognitionVolume(event.value))
+  })
+
   useSpeechRecognitionEvent('result', (event) => {
     const text = event.results[0]?.transcript ?? ''
     if (event.isFinal) {
@@ -151,7 +164,10 @@ export const useSpeechRecorder = (
             // recognizer's default "measurement" mode on iOS.
             iosCategory: {
               category: 'playAndRecord' as const,
-              categoryOptions: ['defaultToSpeaker' as const, 'allowBluetooth' as const],
+              categoryOptions: [
+                'defaultToSpeaker' as const,
+                'allowBluetooth' as const,
+              ],
               mode: 'default' as const,
             },
           }
@@ -164,6 +180,10 @@ export const useSpeechRecorder = (
               outputDirectory: RECORDINGS_DIR,
               outputSampleRate: 16000,
               outputEncoding: 'pcmFormatInt16',
+            },
+            volumeChangeEventOptions: {
+              enabled: true,
+              intervalMillis: 100,
             },
           }),
     })
@@ -188,10 +208,16 @@ export const useSpeechRecorder = (
     if (finalizedRef.current) return
     finalizedRef.current = true
     stopTimer()
+    setVolumeLevel(0)
     setBoth('idle')
-    const elapsed = startTimeRef.current > 0 ? Date.now() - startTimeRef.current : 0
+    const elapsed =
+      startTimeRef.current > 0 ? Date.now() - startTimeRef.current : 0
     void resolveAudio().then((audioUri) => {
-      onCompleteRef.current({ transcript: composeTranscript(), audioUri, durationMs: elapsed })
+      onCompleteRef.current({
+        transcript: composeTranscript(),
+        audioUri,
+        durationMs: elapsed,
+      })
     })
   }
 
@@ -228,8 +254,13 @@ export const useSpeechRecorder = (
       }
     }
 
-    if (!stopRequestedRef.current && restartsRef.current >= MAX_CONSECUTIVE_RESTARTS) {
-      setError('Rozpoznawanie mowy przerwane. Zapisano to, co udało się rozpoznać.')
+    if (
+      !stopRequestedRef.current &&
+      restartsRef.current >= MAX_CONSECUTIVE_RESTARTS
+    ) {
+      setError(
+        'Rozpoznawanie mowy przerwane. Zapisano to, co udało się rozpoznać.',
+      )
     }
     finalize()
   })
@@ -268,6 +299,7 @@ export const useSpeechRecorder = (
 
   const start = async (source?: AudioFileSource): Promise<void> => {
     setError(null)
+    setVolumeLevel(0)
     finalizedRef.current = false
     stopRequestedRef.current = false
     restartsRef.current = 0
@@ -278,7 +310,8 @@ export const useSpeechRecorder = (
       return
     }
 
-    const permission = await ExpoSpeechRecognitionModule.requestPermissionsAsync()
+    const permission =
+      await ExpoSpeechRecognitionModule.requestPermissionsAsync()
     if (!permission.granted) {
       setError('Brak zgody na mikrofon lub rozpoznawanie mowy')
       return
@@ -310,11 +343,23 @@ export const useSpeechRecorder = (
   }
 
   const stop = (): void => {
-    if (statusRef.current !== 'recording' && statusRef.current !== 'starting') return
+    if (statusRef.current !== 'recording' && statusRef.current !== 'starting')
+      return
     stopRequestedRef.current = true
+    setVolumeLevel(0)
     setBoth('stopping')
     ExpoSpeechRecognitionModule.stop()
   }
 
-  return { status, transcript, finalTranscript, durationMs, error, info, start, stop }
+  return {
+    status,
+    transcript,
+    finalTranscript,
+    durationMs,
+    volumeLevel,
+    error,
+    info,
+    start,
+    stop,
+  }
 }

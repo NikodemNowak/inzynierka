@@ -6,6 +6,7 @@ import {
   type ProcessingProgress,
 } from '../ai/noteProcessing'
 import { enqueueLlm } from '../ai/llmQueue'
+import { recordOperationTiming } from '../ai/generationMetrics'
 import { deleteRecordingFile } from '../audio/audioFiles'
 import { useTasksStore } from './tasksStore'
 import { useModelStore } from './modelStore'
@@ -153,6 +154,10 @@ export const useNotesStore = create<NotesState>((set, get) => ({
 
     const revision = revisionFor(id)
     const runId = ++runSequence
+    const requestedAt = Date.now()
+    let queueMs = 0
+    let modelLoadMs: number | null = null
+    let succeeded = false
     activeRuns.set(id, runId)
 
     const setProgress = (progress: ProcessingProgress) => {
@@ -174,16 +179,21 @@ export const useNotesStore = create<NotesState>((set, get) => ({
       return {
         processingError,
         proposals,
-        processing: { ...state.processing, [id]: { phase: 'loading' } },
+        processing: { ...state.processing, [id]: { phase: 'queued' } },
       }
     })
 
     const job = async () => {
+      queueMs = Date.now() - requestedAt
       try {
         const result = await processNoteWithLlm(
           note.content.trim(),
           setProgress,
+          (durationMs) => {
+            modelLoadMs = durationMs
+          },
         )
+        succeeded = true
         await withNoteLock(id, async () => {
           const current = get().notes.find((item) => item.id === id)
           if (
@@ -227,6 +237,14 @@ export const useNotesStore = create<NotesState>((set, get) => ({
           }))
         }
       } finally {
+        recordOperationTiming({
+          operation: 'note',
+          inputChars: note.content.trim().length,
+          queueMs,
+          modelLoadMs,
+          totalMs: Date.now() - requestedAt,
+          succeeded,
+        })
         clear()
       }
     }
@@ -241,6 +259,10 @@ export const useNotesStore = create<NotesState>((set, get) => ({
 
     const revision = revisionFor(id)
     const runId = ++runSequence
+    const requestedAt = Date.now()
+    let queueMs = 0
+    let modelLoadMs: number | null = null
+    let succeeded = false
     activeRuns.set(id, runId)
     const setProgress = (progress: ProcessingProgress) => {
       if (activeRuns.get(id) !== runId || revision !== revisionFor(id)) return
@@ -261,17 +283,22 @@ export const useNotesStore = create<NotesState>((set, get) => ({
       return {
         processingError,
         proposals,
-        processing: { ...state.processing, [id]: { phase: 'loading' } },
+        processing: { ...state.processing, [id]: { phase: 'queued' } },
       }
     })
 
     let proposed = false
     const job = async () => {
+      queueMs = Date.now() - requestedAt
       try {
         const generated = await processNoteWithLlm(
           note.content.trim(),
           setProgress,
+          (durationMs) => {
+            modelLoadMs = durationMs
+          },
         )
+        succeeded = true
         await withNoteLock(id, async () => {
           const current = get().notes.find((item) => item.id === id)
           if (
@@ -310,6 +337,14 @@ export const useNotesStore = create<NotesState>((set, get) => ({
           }))
         }
       } finally {
+        recordOperationTiming({
+          operation: 'proposal',
+          inputChars: note.content.trim().length,
+          queueMs,
+          modelLoadMs,
+          totalMs: Date.now() - requestedAt,
+          succeeded,
+        })
         clear()
       }
     }

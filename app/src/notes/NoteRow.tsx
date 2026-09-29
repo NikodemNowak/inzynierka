@@ -21,7 +21,8 @@ export function NoteRow({
   onPress: () => void
 }) {
   const { colors } = useTheme()
-  const processing = useNotesStore((s) => Boolean(s.processing[note.id]))
+  const processingPhase = useNotesStore((s) => s.processing[note.id]?.phase)
+  const processing = processingPhase !== undefined
   const categories = note.tags.filter(isCategory)
   const preview = note.summary?.trim() || note.content.trim()
   const time = new Date(timestamp).toLocaleTimeString('pl-PL', {
@@ -79,7 +80,11 @@ export function NoteRow({
           />
           <Text style={{ ...type.meta, color: colors.muted }}>
             {processing
-              ? 'Opracowywanie'
+              ? processingPhase === 'loading'
+                ? 'Wczytywanie modelu'
+                : processingPhase === 'queued'
+                  ? 'Oczekiwanie na model'
+                  : 'Opracowywanie'
               : note.audioUri && note.durationMs !== null
                 ? formatDuration(note.durationMs)
                 : note.audioUri

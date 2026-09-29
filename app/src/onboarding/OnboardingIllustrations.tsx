@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useRef } from 'react'
 import { Animated, Easing, StyleSheet, Text, View } from 'react-native'
 import Svg, {
   Circle,
@@ -13,8 +13,9 @@ import Svg, {
   Text as SvgText,
 } from 'react-native-svg'
 import { Icon } from '../ui/Icon'
-import { RevealText, useReducedMotion } from '../ui/Motion'
+import { useReducedMotion } from '../ui/Motion'
 import { useTheme } from '../ui/theme'
+import { DictationDemo } from './DictationDemo'
 
 const WAVE = [12, 21, 34, 48, 63, 48, 34, 20, 15, 29, 17, 9]
 const SMALL_WAVE = [
@@ -174,14 +175,6 @@ function VoiceNoteArt() {
 function DictationArt({ animate }: { animate: boolean }) {
   const { colors, isDark } = useTheme()
   const wave = useRef(new Animated.Value(0)).current
-  const hasRevealed = useRef(false)
-  const [revealTail, setRevealTail] = useState(false)
-  useLayoutEffect(() => {
-    if (animate && !hasRevealed.current) {
-      hasRevealed.current = true
-      setRevealTail(true)
-    } else if (!animate) setRevealTail(false)
-  }, [animate])
   useEffect(() => {
     if (!animate) {
       wave.setValue(0)
@@ -233,17 +226,10 @@ function DictationArt({ animate }: { animate: boolean }) {
           00:12
         </Text>
       </View>
-      <Text
-        maxFontSizeMultiplier={1.15}
+      <DictationDemo
+        animate={animate}
         style={[styles.transcript, { color: colors.body }]}
-      >
-        Spotkanie z promotorem dotyczyło kolejnych kroków w projekcie.{' '}
-        <RevealText
-          text="Omówiliśmy plan na najbliższe tygodnie"
-          animate={revealTail}
-          style={{ color: colors.accent }}
-        />
-      </Text>
+      />
       <View style={styles.wave}>
         {SMALL_WAVE.map((height, i) => (
           <Animated.View

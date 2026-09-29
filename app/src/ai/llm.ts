@@ -1,4 +1,9 @@
-import { initLlama, releaseAllLlama, type LlamaContext, type TokenData } from 'llama.rn'
+import {
+  initLlama,
+  releaseAllLlama,
+  type LlamaContext,
+  type TokenData,
+} from 'llama.rn'
 import { enqueueLlm } from './llmQueue'
 import { MODEL_CONFIG } from './modelConfig'
 
@@ -51,6 +56,11 @@ export interface GenerationResult {
   text: string
   ttftMs: number
   tokensPerSecond: number
+  wallMs: number
+  promptMs: number
+  predictedMs: number
+  promptTokens: number
+  predictedTokens: number
 }
 
 const STOP = ['<|im_end|>', '<|endoftext|>', '</s>']
@@ -102,6 +112,11 @@ export const generate = async (
       text: result.text,
       ttftMs: (firstTokenAt ?? Date.now()) - startedAt,
       tokensPerSecond: result.timings?.predicted_per_second ?? 0,
+      wallMs: Date.now() - startedAt,
+      promptMs: result.timings?.prompt_ms ?? 0,
+      predictedMs: result.timings?.predicted_ms ?? 0,
+      promptTokens: result.timings?.prompt_n ?? 0,
+      predictedTokens: result.timings?.predicted_n ?? 0,
     }
   } finally {
     // Re-arm on failure too, so a crashed generation does not pin the weights.

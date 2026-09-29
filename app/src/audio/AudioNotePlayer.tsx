@@ -7,9 +7,9 @@ import {
 } from 'expo-audio'
 import { Icon } from '../ui/Icon'
 import { useTheme } from '../ui/theme'
+import { nextPlaybackRate, type PlaybackRate } from './playbackRate'
 
 type Props = { uri: string; durationMs: number | null }
-const playbackRates = [0.75, 1, 1.25, 1.5, 2] as const
 export const formatAudioTime = (seconds: number): string => {
   const safe = Number.isFinite(seconds) ? Math.max(0, Math.floor(seconds)) : 0
   return `${Math.floor(safe / 60)}:${(safe % 60).toString().padStart(2, '0')}`
@@ -18,6 +18,7 @@ export function AudioNotePlayer({ uri, durationMs }: Props) {
   const { colors } = useTheme()
   const player = useAudioPlayer({ uri }, { updateInterval: 250 })
   const status = useAudioPlayerStatus(player)
+  const [selectedRate, setSelectedRate] = useState<PlaybackRate>(1)
   const [scrubberWidth, setScrubberWidth] = useState(0)
   const [playbackError, setPlaybackError] = useState<string | null>(null)
   const durationSeconds =
@@ -30,7 +31,7 @@ export function AudioNotePlayer({ uri, durationMs }: Props) {
     durationSeconds > 0
       ? Math.min(1, Math.max(0, currentSeconds / durationSeconds))
       : 0
-  const activeRate = status.playbackRate || 1
+  const activeRate = selectedRate
   const handleError = (error: unknown) =>
     setPlaybackError(error instanceof Error ? error.message : String(error))
   const togglePlayback = async () => {
@@ -47,6 +48,7 @@ export function AudioNotePlayer({ uri, durationMs }: Props) {
           playsInSilentMode: true,
         })
       if (status.didJustFinish) await player.seekTo(0)
+      player.setPlaybackRate(selectedRate)
       player.play()
     } catch (error) {
       handleError(error)
@@ -61,11 +63,10 @@ export function AudioNotePlayer({ uri, durationMs }: Props) {
     }
   }
   const cycleRate = () => {
-    const index = playbackRates.findIndex(
-      (rate) => Math.abs(rate - activeRate) < 0.01,
-    )
     try {
-      player.setPlaybackRate(playbackRates[(index + 1) % playbackRates.length])
+      const nextRate = nextPlaybackRate(selectedRate)
+      player.setPlaybackRate(nextRate)
+      setSelectedRate(nextRate)
     } catch (error) {
       handleError(error)
     }
