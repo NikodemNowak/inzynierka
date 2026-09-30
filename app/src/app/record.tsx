@@ -18,6 +18,7 @@ import {
   type RecordingResult,
 } from '../stt/useSpeechRecorder'
 import { LiveTranscript } from '../stt/LiveTranscript'
+import { PermissionSettingsButton } from '../stt/PermissionSettingsButton'
 import { waveformScaleForVolume } from '../stt/microphoneMeter'
 import { BottomSheet } from '../ui/BottomSheet'
 import { Button } from '../ui/Button'
@@ -180,7 +181,13 @@ export default function RecordNoteScreen() {
         // after we navigate away, and the note/list update when it lands.
         if (transcript.length > 0) void processWithLlm(note.id)
         allowExitRef.current = true
-        router.replace(`/note/${note.id}`)
+        router.replace({
+          pathname: '/note/[id]',
+          params: {
+            id: note.id,
+            ...(result.notice ? { recordingNotice: result.notice } : {}),
+          },
+        })
       } catch (e) {
         setSaveError(e instanceof Error ? e.message : String(e))
         setSaving(false)
@@ -356,6 +363,13 @@ export default function RecordNoteScreen() {
             <Icon name="alert" size={21} color={colors.ember} />
             <Text style={[styles.error, { color: colors.ink }]}>{error}</Text>
           </View>
+        )}
+        {recorder.permissionDenied && <PermissionSettingsButton />}
+        {!live && !busy && !starting && !error && (
+          <Text style={[styles.info, { color: colors.muted }]}>
+            Pozostań w aplikacji podczas nagrywania. Schowanie aplikacji lub
+            zablokowanie telefonu zakończy i zapisze nagranie.
+          </Text>
         )}
         {recorder.info && (
           <Text style={[styles.info, { color: colors.muted }]}>

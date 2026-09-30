@@ -8,6 +8,7 @@ import {
 } from '../ai/modelDownload'
 import { unloadModel } from '../ai/llm'
 import { enqueueLlm } from '../ai/llmQueue'
+import { modelDownloadErrorMessage } from '../ai/modelDownloadError'
 
 export type ModelStatus = 'checking' | 'absent' | 'downloading' | 'ready'
 
@@ -81,11 +82,7 @@ export const useModelStore = create<ModelState>((set, get) => ({
           status: 'absent',
           progress: 0,
           sizeBytes: 0,
-          error: cancelled
-            ? null
-            : error instanceof Error
-              ? error.message
-              : String(error),
+          error: cancelled ? null : modelDownloadErrorMessage(error),
         })
       } finally {
         if (activeDownloadController === controller)
@@ -122,8 +119,8 @@ export const useModelStore = create<ModelState>((set, get) => ({
       await enqueueLlm(unloadModel)
       await deleteModel()
       set({ status: 'absent', progress: 0, sizeBytes: 0 })
-    } catch (e) {
-      set({ error: e instanceof Error ? e.message : String(e) })
+    } catch {
+      set({ error: 'Nie udało się usunąć modelu. Spróbuj ponownie.' })
     }
   },
 }))

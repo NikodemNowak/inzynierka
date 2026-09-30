@@ -1,0 +1,96 @@
+diff --git a/node_modules/expo-speech-recognition/android/src/main/java/expo/modules/speechrecognition/ExpoAudioRecorder.kt b/node_modules/expo-speech-recognition/android/src/main/java/expo/modules/speechrecognition/ExpoAudioRecorder.kt
+index aaa462a..73cebe5 100644
+--- a/node_modules/expo-speech-recognition/android/src/main/java/expo/modules/speechrecognition/ExpoAudioRecorder.kt
++++ b/node_modules/expo-speech-recognition/android/src/main/java/expo/modules/speechrecognition/ExpoAudioRecorder.kt
+@@ -8,6 +8,7 @@ import android.media.MediaRecorder
+ import android.os.ParcelFileDescriptor
+ import android.os.ParcelFileDescriptor.AutoCloseOutputStream
+ import android.os.Build
++import android.os.SystemClock
+ import android.util.Log
+ import androidx.annotation.RequiresApi
+ import java.io.DataOutputStream
+@@ -16,6 +17,8 @@ import java.io.FileOutputStream
+ import java.io.IOException
+ import java.util.UUID
+ import kotlin.concurrent.thread
++import kotlin.math.log10
++import kotlin.math.sqrt
+ 
+ interface AudioRecorder {
+     fun start()
+@@ -63,7 +66,33 @@ class ExpoAudioRecorder(
+     private val bufferSizeInBytes = AudioRecord.getMinBufferSize(sampleRateInHz, channelConfig, audioFormat)
+ 
+     private var recordingThread: Thread? = null
++    @Volatile
+     private var isRecordingAudio = false
++    var onVolumeChange: ((Float) -> Unit)? = null
++    var volumeChangeIntervalMillis: Long = 100L
++    private var lastVolumeTime = 0L
++
++    // SpeechRecognizer.onRmsChanged is not guaranteed for EXTRA_AUDIO_SOURCE.
++    // Meter the same PCM16 samples that are saved and sent to recognition.
++    private fun reportVolume(data: ByteArray, size: Int) {
++        val callback = onVolumeChange ?: return
++        val now = SystemClock.elapsedRealtime()
++        if (now - lastVolumeTime < volumeChangeIntervalMillis) return
++        lastVolumeTime = now
++        val samples = size / 2
++        if (samples == 0) return
++        var sumSquares = 0.0
++        for (index in 0 until samples) {
++            val offset = index * 2
++            val sample = ((data[offset].toInt() and 0xff) or
++                (data[offset + 1].toInt() shl 8)).toShort().toDouble() / 32768.0
++            sumSquares += sample * sample
++        }
++        val rms = sqrt(sumSquares / samples)
++        val db = 20.0 * log10(rms.coerceAtLeast(0.000001))
++        // Match the public volumechange range used by the iOS implementation.
++        callback((((db + 60.0) / 60.0).coerceIn(0.0, 1.0) * 12.0 - 2.0).toFloat())
++    }
+ 
+     companion object {
+         private const val TAG = "ExpoAudioRecorder"
+@@ -212,6 +241,7 @@ class ExpoAudioRecorder(
+ 
+             when {
+                 read > 0 -> {
++                    reportVolume(data, read)
+                     try {
+                         outputStream?.write(data, 0, read)
+                         outputStream?.flush()
+diff --git a/node_modules/expo-speech-recognition/android/src/main/java/expo/modules/speechrecognition/ExpoSpeechService.kt b/node_modules/expo-speech-recognition/android/src/main/java/expo/modules/speechrecognition/ExpoSpeechService.kt
+index 0e6b676..a5fe36a 100644
+--- a/node_modules/expo-speech-recognition/android/src/main/java/expo/modules/speechrecognition/ExpoSpeechService.kt
++++ b/node_modules/expo-speech-recognition/android/src/main/java/expo/modules/speechrecognition/ExpoSpeechService.kt
+@@ -281,6 +281,19 @@ class ExpoSpeechService(
+ 
+             // Set common intent extras if audioRecorder is initialized
+             audioRecorder?.let {
++                val recorder = it
++                if (options.volumeChangeEventOptions?.enabled == true) {
++                    recorder.volumeChangeIntervalMillis =
++                        (options.volumeChangeEventOptions?.intervalMillis ?: 100).toLong().coerceAtLeast(16L)
++                    recorder.onVolumeChange = { volume ->
++                        mainHandler.post {
++                            // Ignore already queued readings from a stopped/replaced session.
++                            if (audioRecorder === recorder && recognitionState == RecognitionState.ACTIVE) {
++                                sendEvent("volumechange", mapOf("value" to volume))
++                            }
++                        }
++                    }
++                }
+                 intent.putExtra(RecognizerIntent.EXTRA_AUDIO_SOURCE, it.recordingParcel)
+                 intent.putExtra(RecognizerIntent.EXTRA_AUDIO_SOURCE_CHANNEL_COUNT, 1)
+                 intent.putExtra(RecognizerIntent.EXTRA_AUDIO_SOURCE_ENCODING, it.audioFormat)
+@@ -467,6 +480,8 @@ class ExpoSpeechService(
+     }
+ 
+     override fun onRmsChanged(rmsdB: Float) {
++        // The PCM recorder is authoritative when we supply EXTRA_AUDIO_SOURCE.
++        if (audioRecorder != null) return
+         if (options.volumeChangeEventOptions?.enabled != true) {
+             return
+         }

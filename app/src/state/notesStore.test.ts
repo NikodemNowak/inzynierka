@@ -1,4 +1,6 @@
 import type { Note, NoteInput } from '../domain/note'
+import { AppState } from 'react-native'
+import { waitForForeground } from '../ai/foreground'
 import type { NoteProcessingResult } from '../ai/noteProcessing'
 import * as repository from '../data/notesRepository'
 import { processNoteWithLlm } from '../ai/noteProcessing'
@@ -12,6 +14,7 @@ jest.mock('../data/notesRepository', () => ({
 }))
 
 jest.mock('../ai/noteProcessing', () => ({ processNoteWithLlm: jest.fn() }))
+jest.mock('../ai/foreground', () => ({ waitForForeground: jest.fn() }))
 jest.mock('../ai/generationMetrics', () => ({
   recordOperationTiming: jest.fn(),
 }))
@@ -66,6 +69,7 @@ const generated: NoteProcessingResult = {
 
 describe('notesStore background processing safeguards', () => {
   beforeEach(() => {
+    AppState.currentState = 'active'
     jest.clearAllMocks()
     mockedProcessNoteWithLlm.mockReset()
     mockedRepository.updateNote.mockImplementation(async (id, input) => ({
@@ -82,6 +86,40 @@ describe('notesStore background processing safeguards', () => {
       processingError: {},
       proposals: {},
     })
+  })
+
+  afterEach(() => {
+    AppState.currentState = 'active'
+  })
+
+  it('defers automatic processing in the background and rechecks whether the note still exists', async () => {
+    const note = makeNote('background-save')
+    useNotesStore.setState({ notes: [note] })
+    AppState.currentState = 'background'
+    const foreground = deferred<void>()
+    jest.mocked(waitForForeground).mockReturnValueOnce(foreground.promise)
+    const processing = useNotesStore.getState().processWithLlm(note.id)
+    expect(mockedProcessNoteWithLlm).not.toHaveBeenCalled()
+    useNotesStore.setState({ notes: [] })
+    AppState.currentState = 'active'
+    foreground.resolve()
+    await processing
+    expect(mockedProcessNoteWithLlm).not.toHaveBeenCalled()
+  })
+
+  it('preserves the note and audio when generated text fails validation', async () => {
+    const note = makeNote('invalid-summary')
+    useNotesStore.setState({ notes: [note] })
+    mockedProcessNoteWithLlm.mockRejectedValueOnce(
+      new Error('Podsumowanie zbyt mocno powtarzało treść.'),
+    )
+    await useNotesStore.getState().processWithLlm(note.id)
+    expect(mockedRepository.updateNote).not.toHaveBeenCalled()
+    expect(useNotesStore.getState().notes).toEqual([note])
+    expect(useNotesStore.getState().processing[note.id]).toBeUndefined()
+    expect(useNotesStore.getState().processingError[note.id]).toContain(
+      'powtarzało treść',
+    )
   })
 
   it('does not apply initial generation after a user edit changes the source note', async () => {

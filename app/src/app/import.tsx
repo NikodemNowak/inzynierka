@@ -11,6 +11,7 @@ import {
   type RecordingResult,
 } from '../stt/useSpeechRecorder'
 import { LiveTranscript } from '../stt/LiveTranscript'
+import { PermissionSettingsButton } from '../stt/PermissionSettingsButton'
 import { deleteRecordingFile, saveRecordingFile } from '../audio/audioFiles'
 import { BottomSheet } from '../ui/BottomSheet'
 import { Button } from '../ui/Button'
@@ -154,7 +155,8 @@ export default function ImportAudioScreen() {
       if (result.transcript.trim().length === 0) {
         pendingResultRef.current = null
         setSaveError(
-          'Nie rozpoznano mowy w pliku. Możesz ponowić próbę dla tego nagrania albo wybrać inny plik.',
+          result.notice ??
+            'Nie rozpoznano mowy w pliku. Możesz ponowić próbę dla tego nagrania albo wybrać inny plik.',
         )
         setSaving(false)
         return
@@ -404,6 +406,7 @@ export default function ImportAudioScreen() {
             <Text style={[styles.error, { color: colors.ink }]}>{error}</Text>
           </View>
         )}
+        {recorder.permissionDenied && <PermissionSettingsButton />}
 
         {selectedAudio && (
           <View

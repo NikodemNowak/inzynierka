@@ -69,3 +69,25 @@ test('repeated download requests share one active transfer', async () => {
   await Promise.all([first, second])
   expect(useModelStore.getState().status).toBe('ready')
 })
+
+test('a native download failure is readable and allows a successful retry', async () => {
+  mockDownloadModel.mockRejectedValueOnce(
+    new Error(
+      'Unable to resolve host "huggingface.co": No address associated with hostname',
+    ),
+  )
+  await useModelStore.getState().download()
+  expect(useModelStore.getState()).toMatchObject({
+    status: 'absent',
+    progress: 0,
+    isCancelling: false,
+    error:
+      'Nie można połączyć się z serwerem modelu. Sprawdź połączenie z internetem i spróbuj ponownie.',
+  })
+  mockDownloadModel.mockResolvedValueOnce('file:///model.gguf')
+  await useModelStore.getState().download()
+  expect(useModelStore.getState()).toMatchObject({
+    status: 'ready',
+    error: null,
+  })
+})

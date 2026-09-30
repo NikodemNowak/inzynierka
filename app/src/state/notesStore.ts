@@ -1,4 +1,6 @@
 import { create } from 'zustand'
+import { AppState } from 'react-native'
+import { waitForForeground } from '../ai/foreground'
 import type { Note, NoteInput } from '../domain/note'
 import * as repository from '../data/notesRepository'
 import {
@@ -144,6 +146,14 @@ export const useNotesStore = create<NotesState>((set, get) => ({
     })
   },
   processWithLlm: async (id) => {
+    if (
+      AppState.currentState === 'background' ||
+      AppState.currentState === 'inactive'
+    ) {
+      await waitForForeground()
+      // Re-read the note/model after waiting: they may have changed or been removed.
+      return get().processWithLlm(id)
+    }
     const note = get().notes.find((n) => n.id === id)
     if (!note) return
     if (note.content.trim().length === 0) return

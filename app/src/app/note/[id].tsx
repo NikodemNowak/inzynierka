@@ -113,7 +113,10 @@ function ProposalChoice({
 }
 
 export default function NoteDetailScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>()
+  const { id, recordingNotice } = useLocalSearchParams<{
+    id: string
+    recordingNotice?: string
+  }>()
   const { colors } = useTheme()
   const insets = useSafeAreaInsets()
   const reducedMotion = useReducedMotion()
@@ -351,6 +354,25 @@ export default function NoteDetailScreen() {
         ]}
         keyboardShouldPersistTaps="handled"
       >
+        {recordingNotice && (
+          <View
+            style={[
+              styles.processingError,
+              { backgroundColor: colors.accentSoft },
+            ]}
+            accessibilityRole="alert"
+          >
+            <Icon name="alert" size={20} color={colors.accent} />
+            <Text style={[styles.processingErrorText, { color: colors.body }]}>
+              {recordingNotice}
+            </Text>
+            <IconButton
+              name="close"
+              label="Zamknij informację"
+              onPress={() => router.setParams({ recordingNotice: undefined })}
+            />
+          </View>
+        )}
         {error && (
           <Text style={[styles.error, { color: colors.danger }]}>{error}</Text>
         )}

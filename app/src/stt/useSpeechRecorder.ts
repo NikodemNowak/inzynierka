@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Platform } from 'react-native'
+import { AppState, Platform } from 'react-native'
 import {
   ExpoSpeechRecognitionModule,
   useSpeechRecognitionEvent,
@@ -15,13 +15,26 @@ const ANDROID_ONDEVICE_PACKAGE = 'com.google.android.as'
 // The recognizer tears down its session on any error, including ones that mean
 // nothing more than "you went quiet". Those are resumed rather than treated as
 // the end of the recording; the rest genuinely cannot be recovered from.
-const PERMANENT_ERRORS = new Set([
-  'not-allowed',
-  'service-not-allowed',
-  'language-not-supported',
-  'audio-capture',
-  'aborted',
-])
+const RECOVERABLE_ERRORS = new Set(['no-speech', 'speech-timeout'])
+
+const recognitionErrorMessage = (code: string, importing: boolean): string => {
+  switch (code) {
+    case 'not-allowed':
+      return 'Brak zgody na mikrofon lub rozpoznawanie mowy. Włącz dostęp w ustawieniach telefonu.'
+    case 'interrupted':
+      return 'Nagrywanie zostało przerwane przez system. Zachowano dotychczasowy materiał.'
+    case 'language-not-supported':
+      return 'Polski model rozpoznawania mowy jest niedostępny. Sprawdź ustawienia języka i dyktowania w telefonie.'
+    case 'service-not-allowed':
+      return 'Rozpoznawanie mowy jest niedostępne. Sprawdź jego uprawnienia i ustawienia w telefonie.'
+    case 'audio-capture':
+      return importing
+        ? 'Nie udało się odczytać nagrania. Sprawdź, czy plik audio jest poprawny i daje się odtworzyć.'
+        : 'Utracono dostęp do mikrofonu. Zachowano dotychczasowy materiał.'
+    default:
+      return 'Rozpoznawanie mowy zostało przerwane. Zachowano dotychczasowy materiał. Możesz spróbować ponownie.'
+  }
+}
 
 // A recognizer that fails instantly and repeatedly would otherwise be restarted
 // forever. Consecutive failures without any speech in between are capped.
@@ -39,6 +52,7 @@ export interface RecordingResult {
   transcript: string
   audioUri: string | null
   durationMs: number
+  notice?: string
 }
 
 export interface SpeechRecorder {
@@ -50,6 +64,7 @@ export interface SpeechRecorder {
   durationMs: number
   volumeLevel: number
   error: string | null
+  permissionDenied: boolean
   info: string | null
   start: (source?: AudioFileSource) => Promise<void>
   stop: () => void
@@ -64,6 +79,7 @@ export const useSpeechRecorder = (
   const [durationMs, setDurationMs] = useState(0)
   const [volumeLevel, setVolumeLevel] = useState(0)
   const [error, setError] = useState<string | null>(null)
+  const [permissionDenied, setPermissionDenied] = useState(false)
   const [info, setInfo] = useState<string | null>(null)
 
   const statusRef = useRef<RecorderStatus>('idle')
@@ -71,7 +87,12 @@ export const useSpeechRecorder = (
   const interimRef = useRef('')
   const audioPartsRef = useRef<string[]>([])
   const startTimeRef = useRef(0)
-  const finalizedRef = useRef(false)
+  const finalizedRef = useRef(true)
+  const nativeActiveRef = useRef(false)
+  const mountedRef = useRef(true)
+  const generationRef = useRef(0)
+  const noticeRef = useRef<string | undefined>(undefined)
+  const elapsedRef = useRef(0)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const onCompleteRef = useRef(onComplete)
 
@@ -96,7 +117,26 @@ export const useSpeechRecorder = (
     }
   }
 
-  useEffect(() => stopTimer, [])
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+      generationRef.current += 1
+      finalizedRef.current = true
+      stopTimer()
+      if (nativeActiveRef.current) ExpoSpeechRecognitionModule.abort()
+      nativeActiveRef.current = false
+    }
+  }, [])
+
+  const freezeClock = () => {
+    if (startTimeRef.current > 0) {
+      elapsedRef.current += Date.now() - startTimeRef.current
+      startTimeRef.current = 0
+    }
+    stopTimer()
+    setDurationMs(elapsedRef.current)
+  }
 
   const composeTranscript = (): string =>
     [...segmentsRef.current, interimRef.current]
@@ -111,11 +151,16 @@ export const useSpeechRecorder = (
       .join(' ')
 
   useSpeechRecognitionEvent('start', () => {
+    if (!nativeActiveRef.current || finalizedRef.current) return
+    if (stopRequestedRef.current) {
+      ExpoSpeechRecognitionModule.stop()
+      return
+    }
     setBoth('recording')
     if (startTimeRef.current === 0) startTimeRef.current = Date.now()
     stopTimer()
     timerRef.current = setInterval(() => {
-      setDurationMs(Date.now() - startTimeRef.current)
+      setDurationMs(elapsedRef.current + Date.now() - startTimeRef.current)
     }, 250)
   })
 
@@ -130,6 +175,7 @@ export const useSpeechRecorder = (
   })
 
   useSpeechRecognitionEvent('result', (event) => {
+    if (!nativeActiveRef.current || finalizedRef.current) return
     const text = event.results[0]?.transcript ?? ''
     if (event.isFinal) {
       if (text.trim().length > 0) segmentsRef.current.push(text)
@@ -144,6 +190,8 @@ export const useSpeechRecorder = (
   })
 
   useSpeechRecognitionEvent('audioend', (event) => {
+    if (!nativeActiveRef.current || finalizedRef.current) return
+    freezeClock()
     // Transcribing a file: its audio is already the note's, nothing is recorded.
     if (sourceRef.current !== undefined) return
     // Each session writes its own file; a resumed recording therefore produces
@@ -152,6 +200,7 @@ export const useSpeechRecorder = (
   })
 
   const startSession = (source?: AudioFileSource): void => {
+    nativeActiveRef.current = true
     ExpoSpeechRecognitionModule.start({
       lang: LOCALE,
       interimResults: true,
@@ -191,53 +240,78 @@ export const useSpeechRecorder = (
 
   // Ignore zero-frame sessions and join the parts that actually contain audio.
   // A missing or invalid recording must not be attached to an otherwise valid note.
-  const resolveAudio = async (): Promise<string | null> => {
-    if (sourceRef.current) return sourceRef.current.uri
+  const resolveAudio = async (): Promise<{
+    audioUri: string | null
+    durationMs: number
+  }> => {
+    if (sourceRef.current)
+      return { audioUri: sourceRef.current.uri, durationMs: elapsedRef.current }
     const parts = audioPartsRef.current
-    if (parts.length === 0) return null
+    if (parts.length === 0)
+      return { audioUri: null, durationMs: elapsedRef.current }
     try {
       const target = `${RECORDINGS_DIR}${Date.now().toString(36)}-full.wav`
-      const { uri } = await concatWavFiles(parts, target)
-      return uri
+      const { uri, durationMs: recordedDuration } = await concatWavFiles(
+        parts,
+        target,
+      )
+      return { audioUri: uri, durationMs: recordedDuration }
     } catch {
-      return null
+      noticeRef.current =
+        'Zachowano tekst, ale nie udało się przygotować pliku nagrania.'
+      return { audioUri: null, durationMs: elapsedRef.current }
     }
   }
 
   const finalize = (): void => {
     if (finalizedRef.current) return
     finalizedRef.current = true
-    stopTimer()
+    nativeActiveRef.current = false
+    freezeClock()
     setVolumeLevel(0)
-    setBoth('idle')
-    const elapsed =
-      startTimeRef.current > 0 ? Date.now() - startTimeRef.current : 0
-    void resolveAudio().then((audioUri) => {
+    setBoth('stopping')
+    const text = composeTranscript()
+    void resolveAudio().then((audio) => {
+      if (!mountedRef.current) return
+      setBoth('idle')
       onCompleteRef.current({
-        transcript: composeTranscript(),
-        audioUri,
-        durationMs: elapsed,
+        transcript: text,
+        ...audio,
+        ...(noticeRef.current ? { notice: noticeRef.current } : {}),
       })
     })
   }
 
   useSpeechRecognitionEvent('error', (event) => {
+    if (!nativeActiveRef.current || finalizedRef.current) return
     // Teardown after the user asked to stop reports an error that means nothing.
     if (statusRef.current === 'stopping' || statusRef.current === 'idle') return
-    if (!PERMANENT_ERRORS.has(event.error)) {
+    if (RECOVERABLE_ERRORS.has(event.error)) {
       // Transient: the session ends, and the 'end' handler resumes it.
       return
     }
     // Permanent failures end the recording — but never discard what was said.
     stopRequestedRef.current = true
-    setError(event.message || event.error)
+    freezeClock()
+    setVolumeLevel(0)
+    const message = recognitionErrorMessage(
+      event.error,
+      sourceRef.current !== undefined,
+    )
+    noticeRef.current = message
+    setPermissionDenied(event.error === 'not-allowed')
+    setError(message)
+    setBoth('stopping')
   })
 
   useSpeechRecognitionEvent('end', () => {
-    if (finalizedRef.current) return
+    if (!nativeActiveRef.current || finalizedRef.current) return
+    freezeClock()
+    nativeActiveRef.current = false
 
     const shouldResume =
       !stopRequestedRef.current &&
+      AppState.currentState !== 'background' &&
       sourceRef.current === undefined &&
       restartsRef.current < MAX_CONSECUTIVE_RESTARTS
 
@@ -247,10 +321,12 @@ export const useSpeechRecorder = (
       // transcript keeps growing across sessions.
       restartsRef.current += 1
       try {
+        setBoth('starting')
         startSession(undefined)
         return
-      } catch (e) {
-        setError(e instanceof Error ? e.message : String(e))
+      } catch {
+        noticeRef.current = recognitionErrorMessage('audio-capture', false)
+        setError(noticeRef.current)
       }
     }
 
@@ -258,9 +334,9 @@ export const useSpeechRecorder = (
       !stopRequestedRef.current &&
       restartsRef.current >= MAX_CONSECUTIVE_RESTARTS
     ) {
-      setError(
-        'Rozpoznawanie mowy przerwane. Zapisano to, co udało się rozpoznać.',
-      )
+      noticeRef.current =
+        'Rozpoznawanie mowy przerwane. Zapisano to, co udało się rozpoznać.'
+      setError(noticeRef.current)
     }
     finalize()
   })
@@ -289,8 +365,10 @@ export const useSpeechRecorder = (
         locale: LOCALE,
       })
       return true
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+    } catch {
+      setError(
+        'Nie udało się przygotować polskiego modelu mowy. Sprawdź połączenie z internetem i spróbuj ponownie.',
+      )
       return false
     } finally {
       setInfo(null)
@@ -298,46 +376,75 @@ export const useSpeechRecorder = (
   }
 
   const start = async (source?: AudioFileSource): Promise<void> => {
+    if (statusRef.current !== 'idle') return
+    const generation = ++generationRef.current
+    const cancelled = () =>
+      !mountedRef.current ||
+      generation !== generationRef.current ||
+      stopRequestedRef.current
     setError(null)
+    setInfo(null)
+    setPermissionDenied(false)
     setVolumeLevel(0)
     finalizedRef.current = false
     stopRequestedRef.current = false
     restartsRef.current = 0
     sourceRef.current = source
-
-    if (!ExpoSpeechRecognitionModule.supportsOnDeviceRecognition()) {
-      setError('Rozpoznawanie on-device jest niedostępne na tym urządzeniu')
-      return
-    }
-
-    const permission =
-      await ExpoSpeechRecognitionModule.requestPermissionsAsync()
-    if (!permission.granted) {
-      setError('Brak zgody na mikrofon lub rozpoznawanie mowy')
-      return
-    }
-
-    setBoth('starting')
-    if (!(await ensureOfflineModel())) {
-      setBoth('idle')
-      return
-    }
-
+    noticeRef.current = undefined
     segmentsRef.current = []
     interimRef.current = ''
-    // An imported file is the note's audio from the start; a live recording
-    // collects the parts its sessions produce.
-    audioPartsRef.current = source ? [source.uri] : []
+    audioPartsRef.current = []
     startTimeRef.current = 0
+    elapsedRef.current = 0
     setTranscript('')
     setFinalTranscript('')
     setDurationMs(0)
+    setBoth('starting')
 
     try {
+      if (!ExpoSpeechRecognitionModule.supportsOnDeviceRecognition()) {
+        setError('Rozpoznawanie on-device jest niedostępne na tym urządzeniu')
+        finalizedRef.current = true
+        setBoth('idle')
+        return
+      }
+
+      const permission =
+        await ExpoSpeechRecognitionModule.requestPermissionsAsync()
+      if (cancelled()) return
+      if (!permission.granted) {
+        setPermissionDenied(true)
+        setError(recognitionErrorMessage('not-allowed', Boolean(source)))
+        finalizedRef.current = true
+        setBoth('idle')
+        return
+      }
+
+      if (!(await ensureOfflineModel())) {
+        if (cancelled()) return
+        finalizedRef.current = true
+        setBoth('idle')
+        return
+      }
+
+      if (cancelled()) return
       await ensureRecordingsDir()
+      if (cancelled()) return
+      if (AppState.currentState === 'background') {
+        stopRequestedRef.current = true
+        finalizedRef.current = true
+        setBoth('idle')
+        setInfo('Wróć do aplikacji, aby rozpocząć nagrywanie.')
+        return
+      }
       startSession(source)
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+    } catch {
+      if (cancelled()) return
+      nativeActiveRef.current = false
+      finalizedRef.current = true
+      setError(
+        'Nie udało się rozpocząć rozpoznawania mowy. Sprawdź uprawnienia i spróbuj ponownie.',
+      )
       setBoth('idle')
     }
   }
@@ -346,10 +453,33 @@ export const useSpeechRecorder = (
     if (statusRef.current !== 'recording' && statusRef.current !== 'starting')
       return
     stopRequestedRef.current = true
+    freezeClock()
     setVolumeLevel(0)
     setBoth('stopping')
-    ExpoSpeechRecognitionModule.stop()
+    if (nativeActiveRef.current) ExpoSpeechRecognitionModule.stop()
+    else finalize()
   }
+
+  // This release records in the foreground. Do not leave a running timer over
+  // a system-muted microphone, or blindly restart an interrupted iOS session.
+  const stopRef = useRef(stop)
+  stopRef.current = stop
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state !== 'background' || sourceRef.current !== undefined) return
+      // A permission/model-download dialog can temporarily cover the app.
+      // There is nothing to save before capture; start() checks app state again
+      // after those asynchronous steps, before opening the microphone.
+      if (!nativeActiveRef.current) return
+      if (statusRef.current !== 'recording' && statusRef.current !== 'starting')
+        return
+      noticeRef.current =
+        'Nagrywanie zakończono po schowaniu aplikacji lub zablokowaniu telefonu. Zachowano dotychczasowy materiał.'
+      setInfo(noticeRef.current)
+      stopRef.current()
+    })
+    return () => subscription.remove()
+  }, [])
 
   return {
     status,
@@ -358,6 +488,7 @@ export const useSpeechRecorder = (
     durationMs,
     volumeLevel,
     error,
+    permissionDenied,
     info,
     start,
     stop,
