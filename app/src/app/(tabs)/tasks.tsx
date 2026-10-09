@@ -1,5 +1,7 @@
-import { useMemo } from 'react'
+import { useI18n } from '../../i18n/useI18n'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'expo-router'
+import { useIsFocused } from 'expo-router/react-navigation'
 import {
   Alert,
   Pressable,
@@ -13,44 +15,81 @@ import { useNotesStore } from '../../state/notesStore'
 import { ModelDownloadBanner } from '../../notes/ModelDownloadBanner'
 import { TasksEmptyState } from '../../tasks/TasksEmptyState'
 import { Icon } from '../../ui/Icon'
+import { useReducedMotion } from '../../ui/Motion'
+import { TaskArrival, TaskCheck, TaskText, subscribePersistedTaskText, useTaskMotionActive, useTaskTextReveal } from '../../tasks/TaskMotion'
 import { radius, spacing, type, useTheme } from '../../ui/theme'
 
 export default function TasksScreen() {
   const { colors } = useTheme()
+  const { t } = useI18n()
   const tasks = useTasksStore((state) => state.tasks)
   const toggle = useTasksStore((state) => state.toggle)
   const notes = useNotesStore((state) => state.notes)
   const router = useRouter()
+  const reducedMotion = useReducedMotion()
+  const motionActive = useTaskMotionActive(useIsFocused())
+  const textReveal = useTaskTextReveal(motionActive, reducedMotion, 'tasks-list')
+  useEffect(() => subscribePersistedTaskText((ids) => { textReveal.prepare()(ids) }), [textReveal.prepare])
+  const [lastToggled, setLastToggled] = useState<{ id: string } | null>(null)
+  const motionActiveRef = useRef(motionActive)
+  const visibilityEpoch = useRef(0)
+  motionActiveRef.current = motionActive
+  useEffect(() => {
+    if (!motionActive) {
+      visibilityEpoch.current += 1
+      setLastToggled(null)
+    }
+  }, [motionActive])
+  useEffect(() => () => {
+    motionActiveRef.current = false
+    visibilityEpoch.current += 1
+  }, [])
   const pending = useMemo(() => tasks.filter((task) => !task.done), [tasks])
   const completed = useMemo(() => tasks.filter((task) => task.done), [tasks])
   const noteTitles = useMemo(
     () =>
       new Map(
-        notes.map((note) => [note.id, note.title.trim() || 'Bez tytułu']),
+        notes.map((note) => [
+          note.id,
+          note.title.trim() || t('Bez tytułu', 'Untitled'),
+        ]),
       ),
-    [notes],
+    [notes, t],
   )
   const sections = useMemo(
     () => [
       {
         key: 'pending' as const,
-        title: `Do zrobienia (${pending.length})`,
+        title: t(
+          `Do zrobienia (${pending.length})`,
+          `To do (${pending.length})`,
+        ),
         data: pending,
       },
       {
         key: 'completed' as const,
-        title: `Ukończone · ${completed.length}`,
+        title: t(
+          `Ukończone · ${completed.length}`,
+          `Completed · ${completed.length}`,
+        ),
         data: completed,
       },
     ],
-    [pending, completed],
+    [pending, completed, t],
   )
 
   const onToggle = async (id: string) => {
+    const epoch = visibilityEpoch.current
+    const startedVisible = motionActiveRef.current
     try {
       await toggle(id)
+      if (startedVisible && motionActiveRef.current && visibilityEpoch.current === epoch)
+        setLastToggled({ id })
     } catch {
-      Alert.alert('Nie zapisano zmiany', 'Spróbuj ponownie.')
+      Alert.alert(
+        t('Nie zapisano zmiany', 'Change not saved'),
+        t('Spróbuj ponownie.', 'Try again.'),
+      )
     }
   }
 
@@ -59,7 +98,7 @@ export default function TasksScreen() {
       <View style={styles.summary}>
         {tasks.length > 0 && (
           <Text style={[styles.summaryLabel, { color: colors.muted }]}>
-            {pending.length} do zrobienia
+            {t(`${pending.length} do zrobienia`, `${pending.length} to do`)}
           </Text>
         )}
         <View style={[styles.summaryRule, { backgroundColor: colors.line }]} />
@@ -85,7 +124,12 @@ export default function TasksScreen() {
             </Text>
           )}
           renderItem={({ item, index, section }) => (
-            <View style={styles.taskRow}>
+            <TaskArrival
+              index={index + (section.key === 'completed' ? pending.length : 0)}
+              active={motionActive}
+              reducedMotion={reducedMotion}
+              style={styles.taskRow}
+            >
               <Pressable
                 accessibilityRole="checkbox"
                 accessibilityState={{ checked: item.done }}
@@ -93,7 +137,16 @@ export default function TasksScreen() {
                 onPress={() => void onToggle(item.id)}
                 style={styles.checkboxHitArea}
               >
-                <View
+                <TaskCheck
+                  checked={item.done}
+                  active={motionActive}
+                  reducedMotion={reducedMotion}
+                  feedback={lastToggled?.id === item.id}
+                  onFeedbackComplete={() => {
+                    if (motionActiveRef.current)
+                      setLastToggled((current) => current === lastToggled ? null : current)
+                  }}
+                  size={17}
                   style={[
                     styles.checkbox,
                     {
@@ -103,14 +156,15 @@ export default function TasksScreen() {
                         : 'transparent',
                     },
                   ]}
-                >
-                  {item.done && (
-                    <Icon name="check" color={colors.onAction} size={17} />
-                  )}
-                </View>
+                />
               </Pressable>
               <View style={styles.taskCopy}>
-                <Text
+                <TaskText
+                  text={item.text}
+                  reveal={textReveal.ids.has(item.id)}
+                  active={motionActive}
+                  reducedMotion={reducedMotion}
+                  onRevealConsumed={() => textReveal.consume(item.id)}
                   numberOfLines={2}
                   style={[
                     styles.taskLabel,
@@ -119,20 +173,24 @@ export default function TasksScreen() {
                       textDecorationLine: item.done ? 'line-through' : 'none',
                     },
                   ]}
-                >
-                  {item.text}
-                </Text>
+                />
                 <Pressable
                   onPress={() => router.push(`/note/${item.noteId}`)}
                   accessibilityRole="button"
-                  accessibilityLabel={`Otwórz notatkę ${noteTitles.get(item.noteId) ?? 'Bez tytułu'}`}
+                  accessibilityLabel={t(
+                    `Otwórz notatkę ${noteTitles.get(item.noteId) ?? t('Bez tytułu', 'Untitled')}`,
+                    `Open note ${noteTitles.get(item.noteId) ?? t('Bez tytułu', 'Untitled')}`,
+                  )}
                   style={styles.sourceLink}
                 >
                   <Text
                     numberOfLines={1}
                     style={[styles.sourceLabel, { color: colors.muted }]}
                   >
-                    {`Z notatki „${noteTitles.get(item.noteId) ?? 'Bez tytułu'}”`}
+                    {t(
+                      `Z notatki „${noteTitles.get(item.noteId) ?? t('Bez tytułu', 'Untitled')}”`,
+                      `From note “${noteTitles.get(item.noteId) ?? t('Bez tytułu', 'Untitled')}”`,
+                    )}
                   </Text>
                   <Icon name="chevron-right" color={colors.faint} size={17} />
                 </Pressable>
@@ -143,7 +201,7 @@ export default function TasksScreen() {
                   style={[styles.separator, { backgroundColor: colors.line }]}
                 />
               )}
-            </View>
+            </TaskArrival>
           )}
         />
       )}

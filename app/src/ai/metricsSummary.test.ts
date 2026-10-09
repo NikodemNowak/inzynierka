@@ -21,6 +21,54 @@ const metric = (
 })
 
 describe('summarizeByPhase', () => {
+  it('keeps models, backends, MTP and incomplete generations out of each other medians', () => {
+    const base = metric('summary', 100, 20)
+    const summaries = summarizeByPhase([
+      {
+        ...base,
+        metadata: {
+          execution: 'foreground',
+          devices: ['Metal'],
+          speculative: false,
+          status: 'complete',
+        },
+      },
+      {
+        ...base,
+        ttftMs: 999,
+        metadata: {
+          execution: 'foreground',
+          devices: ['Metal'],
+          speculative: true,
+          status: 'complete',
+        },
+      },
+      {
+        ...base,
+        ttftMs: 888,
+        metadata: {
+          execution: 'background-cpu',
+          devices: ['CPU'],
+          speculative: false,
+          status: 'complete',
+        },
+      },
+      {
+        ...base,
+        ttftMs: 777,
+        metadata: {
+          execution: 'foreground',
+          devices: ['Metal'],
+          speculative: false,
+          status: 'stopped_limit',
+        },
+      },
+    ])
+    expect(summaries).toHaveLength(4)
+    expect(
+      summaries.map((summary) => summary.medianTtftMs).sort((a, b) => a - b),
+    ).toEqual([100, 777, 888, 999])
+  })
   it('returns nothing when there are no measurements', () => {
     expect(summarizeByPhase([])).toEqual([])
   })

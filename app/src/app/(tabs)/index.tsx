@@ -1,3 +1,4 @@
+import { useI18n } from '../../i18n/useI18n'
 import { useMemo, useState } from 'react'
 import { useRouter } from 'expo-router'
 import { SectionList, Text, View } from 'react-native'
@@ -17,6 +18,7 @@ import { type, useTheme } from '../../ui/theme'
 
 export default function NotesListScreen() {
   const { colors } = useTheme()
+  const { language } = useI18n()
   const notes = useNotesStore((state) => state.notes)
   const sortMode = useSettingsStore((state) => state.sortMode)
   const setSortMode = useSettingsStore((state) => state.setSortMode)
@@ -32,8 +34,8 @@ export default function NotesListScreen() {
     [notes, query, category, sortMode],
   )
   const sections = useMemo(
-    () => groupNotesByDate(visibleNotes, sortMode),
-    [visibleNotes, sortMode],
+    () => groupNotesByDate(visibleNotes, sortMode, new Date(), language),
+    [visibleNotes, sortMode, language],
   )
   return (
     <View style={{ flex: 1, backgroundColor: colors.canvas }}>

@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { StyleSheet, Text, type StyleProp, type TextStyle } from 'react-native'
 import { fadedTextColor, useReducedMotion } from '../ui/Motion'
 import { useTheme } from '../ui/theme'
@@ -20,7 +20,7 @@ interface LiveTranscriptProps {
   interimStyle?: StyleProp<TextStyle>
 }
 
-export function LiveTranscript({
+export const LiveTranscript = memo(function LiveTranscript({
   text,
   finalizedText = '',
   animate = true,
@@ -94,15 +94,18 @@ export function LiveTranscript({
   const interimStyleColor = StyleSheet.flatten(interimStyle)?.color
   const interimColor =
     typeof interimStyleColor === 'string' ? interimStyleColor : textColor
-  const characters = Array.from(frame.prefix)
-  const finalizedLength =
+  const finalizedLength = useMemo(() =>
     finalizedText.length > 0 && text.startsWith(finalizedText)
       ? Array.from(finalizedText).length
-      : 0
-  const stablePrefix = characters
-    .slice(0, Math.min(finalizedLength, characters.length))
-    .join('')
-  const interimPrefix = characters.slice(finalizedLength).join('')
+      : 0,
+  [finalizedText, text])
+  const [stablePrefix, interimPrefix] = useMemo(() => {
+    const characters = Array.from(frame.prefix)
+    return [
+      characters.slice(0, Math.min(finalizedLength, characters.length)).join(''),
+      characters.slice(finalizedLength).join(''),
+    ]
+  }, [finalizedLength, frame.prefix])
 
   return (
     <Text style={style} accessible accessibilityLabel={text}>
@@ -133,4 +136,4 @@ export function LiveTranscript({
       })}
     </Text>
   )
-}
+})

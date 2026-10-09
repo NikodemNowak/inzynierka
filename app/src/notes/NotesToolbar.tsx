@@ -1,3 +1,4 @@
+import { useI18n } from '../i18n/useI18n'
 import { useState } from 'react'
 import type { ReactNode } from 'react'
 import {
@@ -12,6 +13,7 @@ import type { NoteSortMode } from './noteListView'
 import { Icon, IconButton } from '../ui/Icon'
 import { BottomSheet } from '../ui/BottomSheet'
 import { type, useTheme } from '../ui/theme'
+import { categoryLabel } from '../domain/categories'
 
 interface NotesToolbarProps {
   query: string
@@ -34,6 +36,7 @@ export function NotesToolbar({
   afterSearch,
 }: NotesToolbarProps) {
   const { colors, isDark } = useTheme()
+  const { t, language } = useI18n()
   const [sorting, setSorting] = useState(false)
   return (
     <View>
@@ -51,9 +54,9 @@ export function NotesToolbar({
         <TextInput
           value={query}
           onChangeText={onQueryChange}
-          placeholder="Szukaj w notatkach"
+          placeholder={t('Szukaj w notatkach', 'Search notes')}
           placeholderTextColor={colors.muted}
-          accessibilityLabel="Szukaj w notatkach"
+          accessibilityLabel={t('Szukaj w notatkach', 'Search notes')}
           autoCorrect={false}
           returnKeyType="search"
           keyboardAppearance={isDark ? 'dark' : 'light'}
@@ -70,14 +73,14 @@ export function NotesToolbar({
         {!!query && (
           <IconButton
             name="close"
-            label="Wyczyść wyszukiwanie"
+            label={t('Wyczyść wyszukiwanie', 'Clear search')}
             onPress={() => onQueryChange('')}
             size={17}
           />
         )}
         <IconButton
           name="sort"
-          label="Zmień sortowanie"
+          label={t('Zmień sortowanie', 'Change sort order')}
           onPress={() => {
             Keyboard.dismiss()
             setSorting(true)
@@ -127,7 +130,9 @@ export function NotesToolbar({
                     fontWeight: selectedCategory === category ? '600' : '400',
                   }}
                 >
-                  {category ?? 'Wszystkie'}
+                  {category === null
+                    ? t('Wszystkie', 'All')
+                    : categoryLabel(category, language)}
                 </Text>
               </View>
             </Pressable>
@@ -136,13 +141,16 @@ export function NotesToolbar({
       )}
       <BottomSheet
         visible={sorting}
-        title="Sortowanie notatek"
+        title={t('Sortowanie notatek', 'Sort notes')}
         onClose={() => setSorting(false)}
       >
         {(
           [
-            { mode: 'updated', label: 'Ostatnio zmienione' },
-            { mode: 'created', label: 'Ostatnio dodane' },
+            {
+              mode: 'updated',
+              label: t('Ostatnio zmienione', 'Recently changed'),
+            },
+            { mode: 'created', label: t('Ostatnio dodane', 'Recently added') },
           ] as const
         ).map(({ mode, label }) => (
           <Pressable

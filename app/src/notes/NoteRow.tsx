@@ -1,6 +1,7 @@
+import { useI18n } from '../i18n/useI18n'
 import { Pressable, StyleSheet, Text, View } from 'react-native'
 import type { Note } from '../domain/note'
-import { isCategory } from '../domain/categories'
+import { categoryLabel, isCategory } from '../domain/categories'
 import { Icon } from '../ui/Icon'
 import { type, useTheme } from '../ui/theme'
 import { useNotesStore } from '../state/notesStore'
@@ -21,11 +22,12 @@ export function NoteRow({
   onPress: () => void
 }) {
   const { colors } = useTheme()
+  const { t, language, locale } = useI18n()
   const processingPhase = useNotesStore((s) => s.processing[note.id]?.phase)
   const processing = processingPhase !== undefined
   const categories = note.tags.filter(isCategory)
   const preview = note.summary?.trim() || note.content.trim()
-  const time = new Date(timestamp).toLocaleTimeString('pl-PL', {
+  const time = new Date(timestamp).toLocaleTimeString(locale, {
     hour: '2-digit',
     minute: '2-digit',
   })
@@ -50,7 +52,7 @@ export function NoteRow({
           }}
           numberOfLines={1}
         >
-          {note.title.trim() || 'Bez tytułu'}
+          {note.title.trim() || t('Bez tytułu', 'Untitled')}
         </Text>
         {!!preview && (
           <Text
@@ -81,15 +83,15 @@ export function NoteRow({
           <Text style={{ ...type.meta, color: colors.muted }}>
             {processing
               ? processingPhase === 'loading'
-                ? 'Wczytywanie modelu'
+                ? t('Wczytywanie modelu', 'Loading model')
                 : processingPhase === 'queued'
-                  ? 'Oczekiwanie na model'
-                  : 'Opracowywanie'
+                  ? t('Oczekiwanie na model', 'Waiting for model')
+                  : t('Opracowywanie', 'Processing')
               : note.audioUri && note.durationMs !== null
                 ? formatDuration(note.durationMs)
                 : note.audioUri
-                  ? 'Nagranie'
-                  : 'Tekst'}
+                  ? t('Nagranie', 'Recording')
+                  : t('Tekst', 'Text')}
           </Text>
           <Text style={{ ...type.meta, color: colors.muted }}>· {time}</Text>
           {!!categories.length && (
@@ -102,7 +104,10 @@ export function NoteRow({
                 marginLeft: 2,
               }}
             >
-              {categories.slice(0, 2).join(' · ')}
+              {categories
+                .slice(0, 2)
+                .map((category) => categoryLabel(category, language))
+                .join(' · ')}
               {categories.length > 2 ? ` +${categories.length - 2}` : ''}
             </Text>
           )}

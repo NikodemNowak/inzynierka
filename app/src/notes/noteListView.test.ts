@@ -26,6 +26,29 @@ const view = (overrides: Partial<NoteListView> = {}): NoteListView => ({
 })
 
 describe('groupNotesByDate', () => {
+  it('formats English headings without modifying note content or categories', () => {
+    const now = new Date(2026, 9, 1, 8)
+    const notes = [
+      note({
+        id: 'today',
+        title: 'Polska notatka',
+        tags: ['Praca'],
+        updatedAt: new Date(2026, 9, 1, 1).getTime(),
+      }),
+      note({ id: 'yesterday', updatedAt: new Date(2026, 8, 30, 1).getTime() }),
+      note({ id: 'older', updatedAt: new Date(2026, 8, 20, 1).getTime() }),
+    ]
+    const groups = groupNotesByDate(notes, 'updated', now, 'en')
+    expect(groups.map((group) => group.title)).toEqual([
+      'Today',
+      'Yesterday',
+      'September 20',
+    ])
+    expect(groups[0].data[0]).toBe(notes[0])
+    expect(notes[0].title).toBe('Polska notatka')
+    expect(notes[0].tags).toEqual(['Praca'])
+  })
+
   it('uses local calendar days at the month boundary, and the selected sort date', () => {
     const now = new Date(2026, 9, 1, 8)
     const notes = [

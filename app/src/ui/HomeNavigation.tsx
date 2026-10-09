@@ -2,12 +2,14 @@ import { useState } from 'react'
 import { useRouter } from 'expo-router'
 import { Pressable, Text, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
+import { useI18n } from '../i18n/useI18n'
 import { BottomSheet } from './BottomSheet'
 import { Button } from './Button'
 import { Icon, IconButton, type IconName } from './Icon'
 import { type, useTheme } from './theme'
 
 export function HomeHeader({ title }: { title: string }) {
+  const { t } = useI18n()
   const { colors } = useTheme()
   const insets = useSafeAreaInsets()
   const router = useRouter()
@@ -37,7 +39,7 @@ export function HomeHeader({ title }: { title: string }) {
       </Text>
       <IconButton
         name="settings"
-        label="Ustawienia"
+        label={t('Ustawienia', 'Settings')}
         onPress={() => router.push('/settings')}
       />
     </View>
@@ -46,25 +48,33 @@ export function HomeHeader({ title }: { title: string }) {
 const addOptions: ReadonlyArray<{
   icon: IconName
   title: string
+  titleEn: string
   description: string
+  descriptionEn: string
   route: '/record' | '/import' | '/note/new'
 }> = [
   {
     icon: 'mic',
     title: 'Nagraj',
+    titleEn: 'Record',
     description: 'Mów, a tekst pojawi się na żywo',
+    descriptionEn: 'Speak and see your words appear live',
     route: '/record',
   },
   {
     icon: 'file',
     title: 'Importuj audio',
+    titleEn: 'Import audio',
     description: 'Zamień plik audio w notatkę',
+    descriptionEn: 'Turn an audio file into a note',
     route: '/import',
   },
   {
     icon: 'edit',
     title: 'Napisz ręcznie',
+    titleEn: 'Write a note',
     description: 'Zapisz myśl własnymi słowami',
+    descriptionEn: 'Capture a thought in your own words',
     route: '/note/new',
   },
 ]
@@ -77,6 +87,7 @@ export function HomeNavigation({
   active: HomeTab
   onSelect: (tab: HomeTab) => void
 }) {
+  const { t } = useI18n()
   const { colors } = useTheme()
   const insets = useSafeAreaInsets()
   const router = useRouter()
@@ -101,7 +112,7 @@ export function HomeNavigation({
             <Pressable
               key={tab}
               accessibilityRole="button"
-              accessibilityLabel="Dodaj notatkę"
+              accessibilityLabel={t('Dodaj notatkę', 'Add note')}
               onPress={() => setAdding(true)}
               style={({ pressed }) => ({
                 width: 54,
@@ -123,7 +134,9 @@ export function HomeNavigation({
               }}
               accessibilityRole="tab"
               accessibilityState={{ selected: active === tab }}
-              accessibilityLabel={tab === 'notes' ? 'Notatki' : 'Zadania'}
+              accessibilityLabel={
+                tab === 'notes' ? t('Notatki', 'Notes') : t('Zadania', 'Tasks')
+              }
               style={{
                 minWidth: 90,
                 minHeight: 52,
@@ -145,7 +158,9 @@ export function HomeNavigation({
                   color: active === tab ? colors.accent : colors.muted,
                 }}
               >
-                {tab === 'notes' ? 'Notatki' : 'Zadania'}
+                {tab === 'notes'
+                  ? t('Notatki', 'Notes')
+                  : t('Zadania', 'Tasks')}
               </Text>
             </Pressable>
           ),
@@ -153,7 +168,7 @@ export function HomeNavigation({
       </View>
       <BottomSheet
         visible={adding}
-        title="Nowa notatka"
+        title={t('Nowa notatka', 'New note')}
         onClose={() => setAdding(false)}
       >
         {addOptions.map((option) => (
@@ -188,17 +203,17 @@ export function HomeNavigation({
             </View>
             <View style={{ flex: 1, gap: 3 }}>
               <Text style={{ ...type.title, fontSize: 17, color: colors.ink }}>
-                {option.title}
+                {t(option.title, option.titleEn)}
               </Text>
               <Text style={{ ...type.meta, fontSize: 13, color: colors.muted }}>
-                {option.description}
+                {t(option.description, option.descriptionEn)}
               </Text>
             </View>
             <Icon name="chevron-right" color={colors.faint} size={18} />
           </Pressable>
         ))}
         <Button
-          label="Anuluj"
+          label={t('Anuluj', 'Cancel')}
           variant="quiet"
           onPress={() => setAdding(false)}
         />

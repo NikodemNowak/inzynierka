@@ -1,3 +1,4 @@
+import { useI18n } from '../i18n/useI18n'
 import { useState } from 'react'
 import { Platform, Pressable, Text, View } from 'react-native'
 import {
@@ -8,6 +9,7 @@ import {
 import { Icon } from '../ui/Icon'
 import { useTheme } from '../ui/theme'
 import { nextPlaybackRate, type PlaybackRate } from './playbackRate'
+import { nativeCapture } from '../stt/nativeCapture'
 
 type Props = { uri: string; durationMs: number | null }
 export const formatAudioTime = (seconds: number): string => {
@@ -16,6 +18,7 @@ export const formatAudioTime = (seconds: number): string => {
 }
 export function AudioNotePlayer({ uri, durationMs }: Props) {
   const { colors } = useTheme()
+  const { t } = useI18n()
   const player = useAudioPlayer({ uri }, { updateInterval: 250 })
   const status = useAudioPlayerStatus(player)
   const [selectedRate, setSelectedRate] = useState<PlaybackRate>(1)
@@ -41,6 +44,16 @@ export function AudioNotePlayer({ uri, durationMs }: Props) {
         return
       }
       setPlaybackError(null)
+      const capture = await nativeCapture?.getSnapshot()
+      if (capture?.manifest.state === 'recording') {
+        setPlaybackError(
+          t(
+            'Odtwarzanie jest dostępne po zatrzymaniu mikrofonu.',
+            'Playback is available after stopping the microphone.',
+          ),
+        )
+        return
+      }
       // Required after recording: restore the shared iOS session to speaker playback.
       if (Platform.OS === 'ios')
         await setAudioModeAsync({
@@ -83,7 +96,11 @@ export function AudioNotePlayer({ uri, durationMs }: Props) {
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel={status.playing ? 'Pauza' : 'Odtwórz nagranie'}
+          accessibilityLabel={
+            status.playing
+              ? t('Pauza', 'Pause')
+              : t('Odtwórz nagranie', 'Play recording')
+          }
           onPress={() => void togglePlayback()}
           style={({ pressed }) => ({
             width: 44,
@@ -104,15 +121,21 @@ export function AudioNotePlayer({ uri, durationMs }: Props) {
         <View style={{ flex: 1 }}>
           <Pressable
             accessibilityRole="adjustable"
-            accessibilityLabel="Pozycja nagrania"
+            accessibilityLabel={t('Pozycja nagrania', 'Recording position')}
             accessibilityValue={{
               min: 0,
               max: Math.max(1, Math.floor(durationSeconds)),
               now: Math.floor(currentSeconds),
             }}
             accessibilityActions={[
-              { name: 'increment', label: 'Przewiń o 10 sekund' },
-              { name: 'decrement', label: 'Cofnij o 10 sekund' },
+              {
+                name: 'increment',
+                label: t('Przewiń o 10 sekund', 'Skip forward 10 seconds'),
+              },
+              {
+                name: 'decrement',
+                label: t('Cofnij o 10 sekund', 'Skip back 10 seconds'),
+              },
             ]}
             onAccessibilityAction={(event) => {
               if (event.nativeEvent.actionName === 'increment')
@@ -193,7 +216,10 @@ export function AudioNotePlayer({ uri, durationMs }: Props) {
         </View>
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel={`Prędkość ${activeRate}. Dotknij, aby zmienić`}
+          accessibilityLabel={t(
+            `Prędkość ${activeRate}. Dotknij, aby zmienić`,
+            `Speed ${activeRate}. Tap to change`,
+          )}
           onPress={cycleRate}
           style={{
             minWidth: 44,

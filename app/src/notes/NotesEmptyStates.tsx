@@ -1,14 +1,19 @@
+import { useI18n } from '../i18n/useI18n'
 import { Pressable, StyleSheet, Text, View } from 'react-native'
 import { Icon } from '../ui/Icon'
 import { radius, spacing, type, useTheme } from '../ui/theme'
 
 export function NotesEmptyState() {
   const { colors } = useTheme()
+  const { t } = useI18n()
   return (
     <View style={styles.container}>
       <View
         accessible
-        accessibilityLabel="Ilustracja notatki z falą dźwiękową"
+        accessibilityLabel={t(
+          'Ilustracja notatki z falą dźwiękową',
+          'Illustration of a note with a sound wave',
+        )}
         style={styles.illustration}
       >
         <View
@@ -61,10 +66,13 @@ export function NotesEmptyState() {
         accessibilityRole="header"
         style={[styles.title, { color: colors.ink }]}
       >
-        Miejsce na Twoje myśli
+        {t('Miejsce na Twoje myśli', 'A place for your thoughts')}
       </Text>
       <Text style={[styles.description, { color: colors.muted }]}>
-        Nagraj, zaimportuj lub napisz pierwszą notatkę.
+        {t(
+          'Nagraj, zaimportuj lub napisz pierwszą notatkę.',
+          'Record, import, or write your first note.',
+        )}
       </Text>
     </View>
   )
@@ -78,6 +86,7 @@ export function NotesNoResultsState({
   onClear: () => void
 }) {
   const { colors } = useTheme()
+  const { t } = useI18n()
   return (
     <View style={styles.container}>
       <View
@@ -98,10 +107,13 @@ export function NotesNoResultsState({
         accessibilityRole="header"
         style={[styles.title, { color: colors.ink }]}
       >
-        Brak wyników
+        {t('Brak wyników', 'No results')}
       </Text>
       <Text style={[styles.description, { color: colors.muted }]}>
-        Spróbuj innego hasła lub usuń filtry.
+        {t(
+          'Spróbuj innego hasła lub usuń filtry.',
+          'Try another search or clear the filters.',
+        )}
       </Text>
       <Pressable
         accessibilityRole="button"
@@ -112,7 +124,9 @@ export function NotesNoResultsState({
         ]}
       >
         <Text style={[styles.clearActionText, { color: colors.accent }]}>
-          {hasSearch ? 'Wyczyść wyszukiwanie' : 'Wyczyść filtry'}
+          {hasSearch
+            ? t('Wyczyść wyszukiwanie', 'Clear search')
+            : t('Wyczyść filtry', 'Clear filters')}
         </Text>
       </Pressable>
     </View>

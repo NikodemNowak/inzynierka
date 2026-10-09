@@ -1,3 +1,4 @@
+import { withDatabaseWrite } from '../db/writeQueue'
 import { getDatabase } from '../db/database'
 
 // Key-value store for the handful of user preferences that have to survive a
@@ -14,8 +15,10 @@ export const getSetting = async (key: string): Promise<string | null> => {
 
 export const setSetting = async (key: string, value: string): Promise<void> => {
   const db = await getDatabase()
-  await db.runAsync(
-    'INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value',
-    [key, value],
+  await withDatabaseWrite(() =>
+    db.runAsync(
+      'INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value',
+      [key, value],
+    ),
   )
 }

@@ -75,6 +75,17 @@ describe('findWavData', () => {
   })
 
   it('finds audio in a standard 44-byte WAV header', () => {
-    expect(findWavData(buildWavHeader(32000))).toEqual({ offset: 44, size: 32000 })
+    expect(findWavData(buildWavHeader(32000))).toEqual({
+      offset: 44,
+      size: 32000,
+    })
+  })
+
+  it('rejects a mismatched sample format instead of labeling it as PCM16k', () => {
+    const wrongRate = buildWavHeader(32000)
+    new DataView(wrongRate.buffer).setUint32(24, 48000, true)
+    expect(() => findWavData(wrongRate)).toThrow()
+    const truncatedFrame = buildWavHeader(3)
+    expect(() => findWavData(truncatedFrame)).toThrow()
   })
 })

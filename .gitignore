@@ -20,6 +20,8 @@ node_modules/
 dist/
 web-build/
 *.tsbuildinfo
+__pycache__/
+*.py[cod]
 npm-debug.*
 yarn-error.*
 

@@ -6,6 +6,10 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
+    "locales": {
+      "pl": "./locales/pl.json",
+      "en": "./locales/en.json"
+    },
     "scheme": "notatki",
     "newArchEnabled": true,
     "splash": {
@@ -14,6 +18,8 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
+      "buildNumber": "10",
+      "deploymentTarget": "17.0",
       "supportsTablet": true,
       "bundleIdentifier": "com.nowak.notatki"
     },
@@ -32,6 +38,8 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
+      "./plugins/withNotatkiProcessing",
+      "./plugins/withLlamaSourceBuild",
       "llama.rn",
       [
         "expo-audio",
@@ -54,7 +62,11 @@
           ]
         }
       ],
-      "expo-sharing"
+      "expo-sharing",
+      [
+        "expo-localization",
+        { "supportedLocales": ["pl", "en"] }
+      ]
     ]
   }
 }

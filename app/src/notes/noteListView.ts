@@ -1,4 +1,5 @@
 import type { Note } from '../domain/note'
+import { localeForLanguage, type Language } from '../i18n/language'
 
 export type NoteSortMode = 'updated' | 'created'
 
@@ -55,6 +56,7 @@ export const groupNotesByDate = (
   notes: Note[],
   mode: NoteSortMode,
   now = new Date(),
+  language: Language = 'pl',
 ): Array<{ title: string; data: Note[] }> => {
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
   const yesterday = new Date(today)
@@ -65,10 +67,14 @@ export const groupNotesByDate = (
     const key = `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`
     const title =
       date >= today
-        ? 'Dzisiaj'
+        ? language === 'pl'
+          ? 'Dzisiaj'
+          : 'Today'
         : date >= yesterday
-          ? 'Wczoraj'
-          : date.toLocaleDateString('pl-PL', {
+          ? language === 'pl'
+            ? 'Wczoraj'
+            : 'Yesterday'
+          : date.toLocaleDateString(localeForLanguage(language), {
               day: 'numeric',
               month: 'long',
               ...(date.getFullYear() !== now.getFullYear()

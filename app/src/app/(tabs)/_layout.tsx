@@ -1,9 +1,11 @@
+import { useI18n } from '../../i18n/useI18n'
 import type { ComponentProps } from 'react'
 import { Redirect, Tabs } from 'expo-router'
 import { View } from 'react-native'
 import { useSettingsStore } from '../../state/settingsStore'
 import { HomeHeader, HomeNavigation } from '../../ui/HomeNavigation'
 import { useTheme } from '../../ui/theme'
+import { RecordingBanner } from '../../stt/RecordingBanner'
 
 type TabBarProps = Parameters<
   NonNullable<ComponentProps<typeof Tabs>['tabBar']>
@@ -34,13 +36,17 @@ function HomeTabBar({ state, navigation }: TabBarProps) {
 
 function HomeFrame({ state, children }: TabLayoutProps) {
   const { colors } = useTheme()
+  const { t } = useI18n()
   return (
     <View style={{ flex: 1, backgroundColor: colors.canvas }}>
       <HomeHeader
         title={
-          state.routes[state.index]?.name === 'tasks' ? 'Zadania' : 'Notatki'
+          state.routes[state.index]?.name === 'tasks'
+            ? t('Zadania', 'Tasks')
+            : t('Notatki', 'Notes')
         }
       />
+      <RecordingBanner />
       {children}
     </View>
   )
@@ -48,6 +54,7 @@ function HomeFrame({ state, children }: TabLayoutProps) {
 
 export default function HomeTabsLayout() {
   const { colors } = useTheme()
+  const { t } = useI18n()
   const loaded = useSettingsStore((state) => state.loaded)
   const onboardingCompleted = useSettingsStore(
     (state) => state.onboardingCompleted,
@@ -69,8 +76,8 @@ export default function HomeTabsLayout() {
         sceneStyle: { backgroundColor: colors.canvas },
       }}
     >
-      <Tabs.Screen name="index" options={{ title: 'Notatki' }} />
-      <Tabs.Screen name="tasks" options={{ title: 'Zadania' }} />
+      <Tabs.Screen name="index" options={{ title: t('Notatki', 'Notes') }} />
+      <Tabs.Screen name="tasks" options={{ title: t('Zadania', 'Tasks') }} />
     </Tabs>
   )
 }

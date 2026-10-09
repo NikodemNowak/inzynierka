@@ -1,0 +1,8 @@
+{
+  "android": { "app_name": "Notes" },
+  "ios": {
+    "CFBundleDisplayName": "Notes",
+    "NSMicrophoneUsageDescription": "Allow Notes to record audio.",
+    "NSSpeechRecognitionUsageDescription": "Allow Notes to recognize speech."
+  }
+}

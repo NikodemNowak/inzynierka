@@ -11,6 +11,7 @@ import {
 import { Stack, useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { MODEL_CONFIG } from '../ai/modelConfig'
+import { useI18n } from '../i18n/useI18n'
 import { OnboardingIllustration } from '../onboarding/OnboardingIllustrations'
 import { useModelStore } from '../state/modelStore'
 import { useSettingsStore } from '../state/settingsStore'
@@ -22,21 +23,32 @@ import { useTheme } from '../ui/theme'
 const PAGES = [
   {
     title: 'Notatki, które\nzostają u Ciebie',
+    titleEn: 'Notes that\nstay with you',
     body: 'Nagrania i tekst zapisują się\nna Twoim telefonie. Bez konta.',
+    bodyEn: 'Recordings and text stay\non your phone. No account needed.',
   },
   {
     title: 'Mów. Tekst\npojawia się na żywo.',
+    titleEn: 'Speak. Your words\nappear live.',
     body: 'Po nagraniu możesz poprawić\nkażde zdanie.',
+    bodyEn: 'After recording, you can edit\nevery sentence.',
   },
   {
     title: 'Mniej tekstu.\nWięcej konkretów.',
+    titleEn: 'Less text.\nMore clarity.',
     body: 'Opcjonalny model tworzy tytuły\ni podsumowania offline.',
+    bodyEn: 'An optional model creates titles\nand summaries offline.',
   },
 ] as const
-const modelSize = `${(MODEL_CONFIG.approxSizeMb / 1024).toLocaleString('pl-PL', { maximumFractionDigits: 1 })} GB`
 const modelName = MODEL_CONFIG.displayName.replace(/\s*\([^)]*\)$/, '')
 
 export default function WelcomeScreen() {
+  const { t, locale } = useI18n()
+  const pages = PAGES.map((item) => ({
+    title: t(item.title, item.titleEn),
+    body: t(item.body, item.bodyEn),
+  }))
+  const modelSize = `${(MODEL_CONFIG.approxSizeMb / 1024).toLocaleString(locale, { maximumFractionDigits: 1 })} GB`
   const router = useRouter()
   const insets = useSafeAreaInsets()
   const { width, height, fontScale } = useWindowDimensions()
@@ -92,14 +104,18 @@ export default function WelcomeScreen() {
   return (
     <View style={[styles.screen, { backgroundColor: colors.canvas }]}>
       <Stack.Screen
-        options={{ title: 'Witaj', headerShown: false, gestureEnabled: false }}
+        options={{
+          title: t('Witaj', 'Welcome'),
+          headerShown: false,
+          gestureEnabled: false,
+        }}
       />
       <View style={[styles.header, { paddingTop: Math.max(insets.top, 8) }]}>
         <View style={styles.headerSide}>
           {page > 0 && (
             <IconButton
               name="chevron-left"
-              label="Poprzedni krok"
+              label={t('Poprzedni krok', 'Previous step')}
               onPress={() => goToPage(page - 1)}
               disabled={isFinishing}
               size={25}
@@ -108,13 +124,16 @@ export default function WelcomeScreen() {
         </View>
         <View style={styles.pageIndex}>
           <View style={styles.dots}>
-            {PAGES.map((item, i) => (
+            {pages.map((_, i) => (
               <Pressable
-                key={item.title}
+                key={i}
                 onPress={() => goToPage(i)}
                 disabled={isFinishing}
                 accessibilityRole="tab"
-                accessibilityLabel={`Krok ${i + 1} z 3`}
+                accessibilityLabel={t(
+                  `Krok ${i + 1} z 3`,
+                  `Step ${i + 1} of 3`,
+                )}
                 accessibilityState={{
                   selected: page === i,
                   disabled: isFinishing,
@@ -134,7 +153,7 @@ export default function WelcomeScreen() {
             ))}
           </View>
           <Text style={[styles.counter, { color: colors.muted }]}>
-            {page + 1} z 3
+            {t(`${page + 1} z 3`, `${page + 1} of 3`)}
           </Text>
         </View>
         {lastPage ? (
@@ -144,10 +163,15 @@ export default function WelcomeScreen() {
             disabled={isFinishing}
             onPress={() => void finish()}
             accessibilityRole="button"
-            accessibilityLabel="Pomiń wprowadzenie i przejdź do notatek"
+            accessibilityLabel={t(
+              'Pomiń wprowadzenie i przejdź do notatek',
+              'Skip introduction and go to notes',
+            )}
             style={styles.headerSide}
           >
-            <Text style={[styles.skip, { color: colors.accent }]}>Pomiń</Text>
+            <Text style={[styles.skip, { color: colors.accent }]}>
+              {t('Pomiń', 'Skip')}
+            </Text>
           </Pressable>
         )}
       </View>
@@ -169,8 +193,8 @@ export default function WelcomeScreen() {
         style={styles.pager}
         contentContainerStyle={styles.pagerContent}
       >
-        {PAGES.map((item, index) => (
-          <View key={item.title} style={{ width, flex: 1 }}>
+        {pages.map((item, index) => (
+          <View key={index} style={{ width, flex: 1 }}>
             <ScrollView
               showsVerticalScrollIndicator={false}
               contentContainerStyle={[
@@ -229,17 +253,20 @@ export default function WelcomeScreen() {
                       </Text>
                       <Text style={[styles.modelSize, { color: colors.muted }]}>
                         {status === 'ready'
-                          ? 'Pobrany'
+                          ? t('Pobrany', 'Downloaded')
                           : status === 'downloading'
                             ? `${Math.round(progress)}%`
                             : status === 'checking'
-                              ? 'Sprawdzam…'
-                              : `Około ${modelSize}`}
+                              ? t('Sprawdzam…', 'Checking…')
+                              : t(`Około ${modelSize}`, `About ${modelSize}`)}
                       </Text>
                       {status === 'downloading' && (
                         <View
                           accessibilityRole="progressbar"
-                          accessibilityLabel="Pobieranie modelu"
+                          accessibilityLabel={t(
+                            'Pobieranie modelu',
+                            'Downloading model',
+                          )}
                           accessibilityValue={{
                             min: 0,
                             max: 100,
@@ -271,10 +298,10 @@ export default function WelcomeScreen() {
                     <Button
                       label={
                         status === 'ready' || status === 'downloading'
-                          ? 'Przejdź do notatek'
+                          ? t('Przejdź do notatek', 'Go to notes')
                           : status === 'checking'
-                            ? 'Sprawdzanie modelu…'
-                            : 'Pobierz model'
+                            ? t('Sprawdzanie modelu…', 'Checking model…')
+                            : t('Pobierz model', 'Download model')
                       }
                       variant="primary"
                       disabled={isFinishing || status === 'checking'}
@@ -299,15 +326,24 @@ export default function WelcomeScreen() {
                             { color: colors.accent },
                           ]}
                         >
-                          Pomiń i przejdź do notatek
+                          {t(
+                            'Pomiń i przejdź do notatek',
+                            'Skip and go to notes',
+                          )}
                         </Text>
                       </Pressable>
                     )}
                     {status !== 'ready' && (
                       <Text style={[styles.footnote, { color: colors.muted }]}>
                         {status === 'downloading'
-                          ? 'Postęp pobierania zobaczysz nad listą notatek.'
-                          : 'Model pobierzesz też w Ustawieniach.'}
+                          ? t(
+                              'Postęp pobierania zobaczysz nad listą notatek.',
+                              'Download progress will appear above your notes.',
+                            )
+                          : t(
+                              'Model pobierzesz też w Ustawieniach.',
+                              'You can also download the model in Settings.',
+                            )}
                       </Text>
                     )}
                     {finishError && (
@@ -344,7 +380,7 @@ export default function WelcomeScreen() {
             </Text>
           )}
           <Button
-            label="Dalej"
+            label={t('Dalej', 'Next')}
             variant="primary"
             onPress={() => goToPage(page + 1)}
             disabled={isFinishing}

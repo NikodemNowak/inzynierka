@@ -1,8 +1,10 @@
 import { useState, type ReactNode } from 'react'
 import { Text, View, type ColorValue } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
+import { useI18n } from '../i18n/useI18n'
 import { IconButton } from './Icon'
 import { useTheme } from './theme'
+import { RecordingBanner } from '../stt/RecordingBanner'
 
 interface HeaderButtonProps {
   tintColor?: ColorValue
@@ -24,6 +26,7 @@ interface HeaderProps {
   route: { name: string }
 }
 export function AppHeader({ back, navigation, options, route }: HeaderProps) {
+  const { t } = useI18n()
   const insets = useSafeAreaInsets()
   const { colors } = useTheme()
   const showBack = Boolean(back) && options.headerBackVisible !== false
@@ -66,7 +69,7 @@ export function AppHeader({ back, navigation, options, route }: HeaderProps) {
           ) : showBack ? (
             <IconButton
               name="chevron-left"
-              label="Wróć"
+              label={t('Wróć', 'Back')}
               onPress={navigation.goBack}
               size={25}
             />
@@ -110,6 +113,7 @@ export function AppHeader({ back, navigation, options, route }: HeaderProps) {
           {options.headerRight?.(props)}
         </View>
       </View>
+      <RecordingBanner />
     </View>
   )
 }

@@ -1,5 +1,6 @@
 import * as FileSystem from 'expo-file-system/legacy'
-import { downloadModel } from './modelDownload'
+import { downloadModel, isModelDownloaded } from './modelDownload'
+import { MODEL_CONFIG } from './modelConfig'
 
 jest.mock('expo-file-system/legacy', () => ({
   createDownloadResumable: jest.fn(),
@@ -23,6 +24,8 @@ const mockMove = jest.mocked(FileSystem.moveAsync)
 
 beforeEach(() => {
   jest.clearAllMocks()
+  delete MODEL_CONFIG.sizeBytes
+  delete MODEL_CONFIG.sha256
   mockGetInfo.mockResolvedValue({
     exists: false,
     isDirectory: false,
@@ -30,6 +33,44 @@ beforeEach(() => {
   })
   mockDelete.mockResolvedValue(undefined)
   mockMove.mockResolvedValue(undefined)
+})
+
+test('an existing truncated file is not treated as a downloaded production model', async () => {
+  MODEL_CONFIG.sizeBytes = 1000
+  mockGetInfo.mockResolvedValue({
+    exists: true,
+    isDirectory: false,
+    size: 999,
+    modificationTime: 1,
+    uri: 'file:///documents/model.gguf',
+  })
+  await expect(isModelDownloaded()).resolves.toBe(false)
+})
+
+test('a successful HTTP response with incorrect expected bytes is never promoted', async () => {
+  MODEL_CONFIG.sizeBytes = 1000
+  mockGetInfo
+    .mockResolvedValueOnce({
+      exists: false,
+      isDirectory: false,
+      uri: 'file:///missing',
+    })
+    .mockResolvedValueOnce({
+      exists: true,
+      isDirectory: false,
+      size: 999,
+      modificationTime: 1,
+      uri: 'file:///documents/model.gguf.part',
+    })
+  mockCreateDownload.mockReturnValue({
+    cancelAsync: jest.fn(),
+    downloadAsync: jest.fn(async () => ({
+      status: 200,
+      uri: 'file:///documents/model.gguf.part',
+    })),
+  } as unknown as ReturnType<typeof FileSystem.createDownloadResumable>)
+  await expect(downloadModel(jest.fn())).rejects.toThrow('Rozmiar')
+  expect(mockMove).not.toHaveBeenCalled()
 })
 
 test('cancelling a transfer removes its temporary file and never promotes it', async () => {

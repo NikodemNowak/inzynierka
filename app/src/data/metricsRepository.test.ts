@@ -44,6 +44,7 @@ describe('local LLM metrics persistence', () => {
         210,
         287,
         expect.any(Number),
+        null,
       ],
     )
   })
@@ -71,6 +72,7 @@ describe('local LLM metrics persistence', () => {
         16_154,
         1,
         expect.any(Number),
+        null,
       ],
     )
   })

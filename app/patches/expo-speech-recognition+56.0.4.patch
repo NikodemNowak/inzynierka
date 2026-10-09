@@ -94,3 +94,89 @@ index 0e6b676..a5fe36a 100644
          if (options.volumeChangeEventOptions?.enabled != true) {
              return
          }
+diff --git a/node_modules/expo-speech-recognition/build/ExpoSpeechRecognitionModule.types.d.ts b/node_modules/expo-speech-recognition/build/ExpoSpeechRecognitionModule.types.d.ts
+index 319bdcb..57c3483 100644
+--- a/node_modules/expo-speech-recognition/build/ExpoSpeechRecognitionModule.types.d.ts
++++ b/node_modules/expo-speech-recognition/build/ExpoSpeechRecognitionModule.types.d.ts
+@@ -644,7 +644,7 @@ export declare class ExpoSpeechRecognitionModuleType extends NativeModule<ExpoSp
+     /**
+      * Whether the on-device speech recognition is available on the device.
+      */
+-    supportsOnDeviceRecognition(): boolean;
++    supportsOnDeviceRecognition(locale?: string): boolean;
+     /**
+      * Whether the recording feature is available on the device.
+      *
+diff --git a/node_modules/expo-speech-recognition/ios/ExpoSpeechRecognitionModule.swift b/node_modules/expo-speech-recognition/ios/ExpoSpeechRecognitionModule.swift
+index daec776..e9f0d85 100644
+--- a/node_modules/expo-speech-recognition/ios/ExpoSpeechRecognitionModule.swift
++++ b/node_modules/expo-speech-recognition/ios/ExpoSpeechRecognitionModule.swift
+@@ -185,6 +185,21 @@ public class ExpoSpeechRecognitionModule: Module {
+           // Reset the previous result
+           self.previousResult = nil
+ 
++          // Validate the requested locale, not the device's default language.
++          // An offline-only request must never silently become a network task.
++          if options.requiresOnDeviceRecognition {
++            guard let offlineLocale = resolveLocale(localeIdentifier: options.lang),
++              let offlineRecognizer = SFSpeechRecognizer(locale: offlineLocale),
++              offlineRecognizer.supportsOnDeviceRecognition
++            else {
++              sendErrorAndStop(
++                error: "language-not-supported",
++                message: "On-device recognition is unavailable for \(options.lang)."
++              )
++              return
++            }
++          }
++
+           // Re-create the speech recognizer when locales change
+           if self.speechRecognizer == nil || currentLocale != options.lang {
+             guard let locale = resolveLocale(localeIdentifier: options.lang) else {
+@@ -349,8 +364,16 @@ public class ExpoSpeechRecognitionModule: Module {
+       try AVAudioSession.sharedInstance().setActive(value, options: setActiveOptions)
+     }
+ 
+-    Function("supportsOnDeviceRecognition") { () -> Bool in
+-      let recognizer = SFSpeechRecognizer()
++    Function("supportsOnDeviceRecognition") { (localeIdentifier: String?) -> Bool in
++      let recognizer: SFSpeechRecognizer?
++      if let localeIdentifier {
++        guard let locale = resolveLocale(localeIdentifier: localeIdentifier) else {
++          return false
++        }
++        recognizer = SFSpeechRecognizer(locale: locale)
++      } else {
++        recognizer = SFSpeechRecognizer()
++      }
+       return recognizer?.supportsOnDeviceRecognition ?? false
+     }
+ 
+diff --git a/node_modules/expo-speech-recognition/ios/ExpoSpeechRecognizer.swift b/node_modules/expo-speech-recognition/ios/ExpoSpeechRecognizer.swift
+index c474f80..43848da 100644
+--- a/node_modules/expo-speech-recognition/ios/ExpoSpeechRecognizer.swift
++++ b/node_modules/expo-speech-recognition/ios/ExpoSpeechRecognizer.swift
+@@ -576,9 +576,7 @@ actor ExpoSpeechRecognizer: ObservableObject {
+     // These won't get emitted to the user, however
+     request.shouldReportPartialResults = options.interimResults || !options.continuous
+ 
+-    if recognizer.supportsOnDeviceRecognition {
+-      request.requiresOnDeviceRecognition = options.requiresOnDeviceRecognition
+-    }
++    request.requiresOnDeviceRecognition = options.requiresOnDeviceRecognition
+ 
+     if let taskHint = options.iosTaskHint {
+       request.taskHint = taskHint.sfSpeechRecognitionTaskHint
+diff --git a/node_modules/expo-speech-recognition/src/ExpoSpeechRecognitionModule.types.ts b/node_modules/expo-speech-recognition/src/ExpoSpeechRecognitionModule.types.ts
+index 28f323f..6a4b6b4 100644
+--- a/node_modules/expo-speech-recognition/src/ExpoSpeechRecognitionModule.types.ts
++++ b/node_modules/expo-speech-recognition/src/ExpoSpeechRecognitionModule.types.ts
+@@ -690,7 +690,7 @@ export declare class ExpoSpeechRecognitionModuleType extends NativeModule<ExpoSp
+   /**
+    * Whether the on-device speech recognition is available on the device.
+    */
+-  supportsOnDeviceRecognition(): boolean;
++  supportsOnDeviceRecognition(locale?: string): boolean;
+   /**
+    * Whether the recording feature is available on the device.
+    *

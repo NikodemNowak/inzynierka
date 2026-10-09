@@ -1,5 +1,5 @@
 import { createElement } from 'react'
-import { AppState, type AppStateStatus } from 'react-native'
+import { AppState, Platform, type AppStateStatus } from 'react-native'
 import { act, create, type ReactTestRenderer } from 'react-test-renderer'
 import { ExpoSpeechRecognitionModule } from 'expo-speech-recognition'
 import { useSpeechRecorder, type SpeechRecorder } from './useSpeechRecorder'
@@ -20,6 +20,8 @@ jest.mock('expo-speech-recognition', () => ({
     start: jest.fn(),
     stop: jest.fn(),
     abort: jest.fn(),
+    getSupportedLocales: jest.fn(),
+    androidTriggerOfflineModelDownload: jest.fn(),
   },
   useSpeechRecognitionEvent: (
     name: string,
@@ -44,8 +46,8 @@ let recorder: SpeechRecorder
 let tree: ReactTestRenderer
 let changeAppState: (state: AppStateStatus) => void
 const complete = jest.fn()
-function Harness() {
-  recorder = useSpeechRecorder(complete)
+function Harness({ language = 'pl' }: { language?: 'pl' | 'en' }) {
+  recorder = useSpeechRecorder(complete, language)
   return null
 }
 const emit = async (name: string, value: SpeechEvent = {}) => {
@@ -78,6 +80,14 @@ beforeEach(async () => {
     expires: 'never',
     status: 'granted',
   } as Awaited<ReturnType<typeof native.requestPermissionsAsync>>)
+  native.getSupportedLocales.mockResolvedValue({
+    locales: ['pl-PL', 'en-US'],
+    installedLocales: [],
+  })
+  native.androidTriggerOfflineModelDownload.mockResolvedValue({
+    status: 'download_success',
+    message: 'Installed',
+  })
   await act(async () => {
     tree = create(createElement(Harness))
   })
@@ -86,6 +96,118 @@ afterEach(async () => {
   await act(async () => tree.unmount())
   jest.useRealTimers()
   jest.restoreAllMocks()
+})
+
+test('keeps the selected locale across permissions, hook updates and recognizer restarts', async () => {
+  let grant:
+    | ((
+        value: Awaited<ReturnType<typeof native.requestPermissionsAsync>>,
+      ) => void)
+    | undefined
+  native.requestPermissionsAsync.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        grant = resolve
+      }),
+  )
+  await act(async () => tree.update(createElement(Harness, { language: 'en' })))
+  let starting: Promise<void> | undefined
+  await act(async () => {
+    starting = recorder.start()
+  })
+  await act(async () => tree.update(createElement(Harness, { language: 'pl' })))
+  await act(async () => {
+    grant?.({
+      granted: true,
+      canAskAgain: true,
+      expires: 'never',
+      status: 'granted',
+    } as Awaited<ReturnType<typeof native.requestPermissionsAsync>>)
+    await starting
+  })
+  await emit('start')
+  await emit('result', {
+    isFinal: true,
+    results: [{ transcript: 'Call Alice tomorrow.' }],
+  })
+  await emit('end')
+  expect(native.start).toHaveBeenCalledTimes(2)
+  expect(native.supportsOnDeviceRecognition).toHaveBeenCalledWith('en-US')
+  expect(
+    native.start.mock.calls.every(([options]) => options.lang === 'en-US'),
+  ).toBe(true)
+  await act(async () => recorder.stop())
+  await emit('end')
+  expect(complete).toHaveBeenCalledWith(
+    expect.objectContaining({
+      language: 'en',
+      transcript: 'Call Alice tomorrow.',
+    }),
+  )
+})
+
+test('uses the selected English locale for imported audio', async () => {
+  await act(async () => tree.update(createElement(Harness, { language: 'en' })))
+  await act(async () => recorder.start({ uri: 'file:///english.m4a' }))
+  expect(native.start).toHaveBeenCalledWith(
+    expect.objectContaining({
+      lang: 'en-US',
+      audioSource: { uri: 'file:///english.m4a' },
+    }),
+  )
+  await emit('start')
+  await emit('end')
+  expect(complete).toHaveBeenCalledWith(
+    expect.objectContaining({
+      language: 'en',
+      audioUri: 'file:///english.m4a',
+    }),
+  )
+})
+
+test('keeps the selected locale across an Android offline model download', async () => {
+  jest.replaceProperty(Platform, 'OS', 'android')
+  let finishDownload:
+    | ((
+        value: Awaited<
+          ReturnType<typeof native.androidTriggerOfflineModelDownload>
+        >,
+      ) => void)
+    | undefined
+  native.androidTriggerOfflineModelDownload.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        finishDownload = resolve
+      }),
+  )
+  await act(async () => tree.update(createElement(Harness, { language: 'en' })))
+  let starting: Promise<void> | undefined
+  await act(async () => {
+    starting = recorder.start()
+  })
+  expect(native.androidTriggerOfflineModelDownload).toHaveBeenCalledWith({
+    locale: 'en-US',
+  })
+  await act(async () => tree.update(createElement(Harness, { language: 'pl' })))
+  await act(async () => {
+    finishDownload?.({ status: 'download_success', message: 'Installed' })
+    await starting
+  })
+  expect(native.start).toHaveBeenCalledWith(
+    expect.objectContaining({ lang: 'en-US' }),
+  )
+  expect(native.supportsOnDeviceRecognition).toHaveBeenCalledWith()
+})
+
+test('does not open audio when the selected on-device locale is unavailable', async () => {
+  native.supportsOnDeviceRecognition.mockReturnValueOnce(false)
+  await act(async () => tree.update(createElement(Harness, { language: 'en' })))
+  await act(async () => recorder.start())
+  expect(native.supportsOnDeviceRecognition).toHaveBeenCalledWith('en-US')
+  expect(native.requestPermissionsAsync).not.toHaveBeenCalled()
+  expect(native.start).not.toHaveBeenCalled()
+  expect(recorder.status).toBe('idle')
+  expect(recorder.error).toContain('Angielski model')
 })
 
 test('an iOS audio interruption saves captured speech and audio without restarting', async () => {

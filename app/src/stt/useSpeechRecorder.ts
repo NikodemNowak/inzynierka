@@ -7,8 +7,13 @@ import {
 import { RECORDINGS_DIR, ensureRecordingsDir } from '../audio/audioFiles'
 import { concatWavFiles } from '../audio/wavConcat'
 import { normalizeRecognitionVolume } from './microphoneMeter'
+import { localeForLanguage, type Language } from '../i18n/language'
+import { translate } from '../i18n/translate'
+import { nativeCapture } from './nativeCapture'
+import { useNativeSpeechRecorder } from './useNativeSpeechRecorder'
+import { useNativeImportRecorder } from './useNativeImportRecorder'
+import { MAX_AUDIO_DURATION_MS } from '../audio/captureManifest'
 
-const LOCALE = 'pl-PL'
 // On-device recognizer package that exposes installed offline language models.
 const ANDROID_ONDEVICE_PACKAGE = 'com.google.android.as'
 
@@ -17,22 +22,52 @@ const ANDROID_ONDEVICE_PACKAGE = 'com.google.android.as'
 // the end of the recording; the rest genuinely cannot be recovered from.
 const RECOVERABLE_ERRORS = new Set(['no-speech', 'speech-timeout'])
 
-const recognitionErrorMessage = (code: string, importing: boolean): string => {
+const recognitionErrorMessage = (
+  code: string,
+  importing: boolean,
+  language: Language = 'pl',
+): string => {
   switch (code) {
     case 'not-allowed':
-      return 'Brak zgody na mikrofon lub rozpoznawanie mowy. Włącz dostęp w ustawieniach telefonu.'
+      return translate(
+        'Brak zgody na mikrofon lub rozpoznawanie mowy. Włącz dostęp w ustawieniach telefonu.',
+        'Microphone or speech recognition permission is missing. Enable access in your phone settings.',
+      )
     case 'interrupted':
-      return 'Nagrywanie zostało przerwane przez system. Zachowano dotychczasowy materiał.'
+      return translate(
+        'Nagrywanie zostało przerwane przez system. Zachowano dotychczasowy materiał.',
+        'Recording was interrupted by the system. Your recording so far has been kept.',
+      )
     case 'language-not-supported':
-      return 'Polski model rozpoznawania mowy jest niedostępny. Sprawdź ustawienia języka i dyktowania w telefonie.'
+      return language === 'pl'
+        ? translate(
+            'Polski model rozpoznawania mowy jest niedostępny. Sprawdź ustawienia języka i dyktowania w telefonie.',
+            'The Polish speech model is unavailable. Check the language and dictation settings on your phone.',
+          )
+        : translate(
+            'Angielski model rozpoznawania mowy jest niedostępny. Sprawdź ustawienia języka i dyktowania w telefonie.',
+            'The English speech model is unavailable. Check the language and dictation settings on your phone.',
+          )
     case 'service-not-allowed':
-      return 'Rozpoznawanie mowy jest niedostępne. Sprawdź jego uprawnienia i ustawienia w telefonie.'
+      return translate(
+        'Rozpoznawanie mowy jest niedostępne. Sprawdź jego uprawnienia i ustawienia w telefonie.',
+        'Speech recognition is unavailable. Check its permissions and your phone settings.',
+      )
     case 'audio-capture':
       return importing
-        ? 'Nie udało się odczytać nagrania. Sprawdź, czy plik audio jest poprawny i daje się odtworzyć.'
-        : 'Utracono dostęp do mikrofonu. Zachowano dotychczasowy materiał.'
+        ? translate(
+            'Nie udało się odczytać nagrania. Sprawdź, czy plik audio jest poprawny i daje się odtworzyć.',
+            'The recording could not be read. Check that the audio file is valid and plays correctly.',
+          )
+        : translate(
+            'Utracono dostęp do mikrofonu. Zachowano dotychczasowy materiał.',
+            'Microphone access was lost. Your recording so far has been kept.',
+          )
     default:
-      return 'Rozpoznawanie mowy zostało przerwane. Zachowano dotychczasowy materiał. Możesz spróbować ponownie.'
+      return translate(
+        'Rozpoznawanie mowy zostało przerwane. Zachowano dotychczasowy materiał. Możesz spróbować ponownie.',
+        'Speech recognition was interrupted. Your recording so far has been kept. You can try again.',
+      )
   }
 }
 
@@ -40,19 +75,30 @@ const recognitionErrorMessage = (code: string, importing: boolean): string => {
 // forever. Consecutive failures without any speech in between are capped.
 const MAX_CONSECUTIVE_RESTARTS = 5
 
-export type RecorderStatus = 'idle' | 'starting' | 'recording' | 'stopping'
+export type RecorderStatus =
+  | 'idle'
+  | 'starting'
+  | 'recording'
+  | 'stopping'
+  | 'interrupted'
 
 // When provided to start(), the recognizer transcribes this audio file instead
 // of the microphone. The note then keeps this file as its audio.
 export interface AudioFileSource {
   uri: string
+  durationMs?: number
 }
 
 export interface RecordingResult {
+  language: Language
   transcript: string
   audioUri: string | null
   durationMs: number
   notice?: string
+  sessionId?: string
+  needsTranscription?: boolean
+  // Verify the saved audio before AI; never treat live partials as complete.
+  autoTranscribeAudio?: boolean
 }
 
 export interface SpeechRecorder {
@@ -66,12 +112,16 @@ export interface SpeechRecorder {
   error: string | null
   permissionDenied: boolean
   info: string | null
-  start: (source?: AudioFileSource) => Promise<void>
+  start: (source?: AudioFileSource, language?: Language) => Promise<void>
   stop: () => void
+  resume?: () => Promise<void>
+  backgroundRecording?: boolean
+  recordingLanguage?: Language
 }
 
-export const useSpeechRecorder = (
+const useLegacySpeechRecorder = (
   onComplete: (result: RecordingResult) => void,
+  language: Language = 'pl',
 ): SpeechRecorder => {
   const [status, setStatus] = useState<RecorderStatus>('idle')
   const [transcript, setTranscript] = useState('')
@@ -100,6 +150,7 @@ export const useSpeechRecorder = (
   const stopRequestedRef = useRef(false)
   const restartsRef = useRef(0)
   const sourceRef = useRef<AudioFileSource | undefined>(undefined)
+  const languageRef = useRef<Language>(language)
 
   useEffect(() => {
     onCompleteRef.current = onComplete
@@ -160,7 +211,15 @@ export const useSpeechRecorder = (
     if (startTimeRef.current === 0) startTimeRef.current = Date.now()
     stopTimer()
     timerRef.current = setInterval(() => {
-      setDurationMs(elapsedRef.current + Date.now() - startTimeRef.current)
+      const elapsed = elapsedRef.current + Date.now() - startTimeRef.current
+      setDurationMs(Math.min(MAX_AUDIO_DURATION_MS, elapsed))
+      if (!sourceRef.current && elapsed >= MAX_AUDIO_DURATION_MS) {
+        noticeRef.current = translate(
+          'Osiągnięto limit 30 minut. Nagranie zatrzymano i zachowano.',
+          'The 30 minute limit was reached. Recording has stopped and been kept.',
+        )
+        stopRef.current()
+      }
     }, 250)
   })
 
@@ -202,7 +261,7 @@ export const useSpeechRecorder = (
   const startSession = (source?: AudioFileSource): void => {
     nativeActiveRef.current = true
     ExpoSpeechRecognitionModule.start({
-      lang: LOCALE,
+      lang: localeForLanguage(languageRef.current),
       interimResults: true,
       continuous: true,
       requiresOnDeviceRecognition: true,
@@ -245,7 +304,10 @@ export const useSpeechRecorder = (
     durationMs: number
   }> => {
     if (sourceRef.current)
-      return { audioUri: sourceRef.current.uri, durationMs: elapsedRef.current }
+      return {
+        audioUri: sourceRef.current.uri,
+        durationMs: sourceRef.current.durationMs ?? elapsedRef.current,
+      }
     const parts = audioPartsRef.current
     if (parts.length === 0)
       return { audioUri: null, durationMs: elapsedRef.current }
@@ -257,8 +319,10 @@ export const useSpeechRecorder = (
       )
       return { audioUri: uri, durationMs: recordedDuration }
     } catch {
-      noticeRef.current =
-        'Zachowano tekst, ale nie udało się przygotować pliku nagrania.'
+      noticeRef.current = translate(
+        'Zachowano tekst, ale nie udało się przygotować pliku nagrania.',
+        'Your text has been kept, but the audio file could not be prepared.',
+      )
       return { audioUri: null, durationMs: elapsedRef.current }
     }
   }
@@ -276,6 +340,7 @@ export const useSpeechRecorder = (
       setBoth('idle')
       onCompleteRef.current({
         transcript: text,
+        language: languageRef.current,
         ...audio,
         ...(noticeRef.current ? { notice: noticeRef.current } : {}),
       })
@@ -297,6 +362,7 @@ export const useSpeechRecorder = (
     const message = recognitionErrorMessage(
       event.error,
       sourceRef.current !== undefined,
+      languageRef.current,
     )
     noticeRef.current = message
     setPermissionDenied(event.error === 'not-allowed')
@@ -325,7 +391,11 @@ export const useSpeechRecorder = (
         startSession(undefined)
         return
       } catch {
-        noticeRef.current = recognitionErrorMessage('audio-capture', false)
+        noticeRef.current = recognitionErrorMessage(
+          'audio-capture',
+          false,
+          languageRef.current,
+        )
         setError(noticeRef.current)
       }
     }
@@ -334,8 +404,10 @@ export const useSpeechRecorder = (
       !stopRequestedRef.current &&
       restartsRef.current >= MAX_CONSECUTIVE_RESTARTS
     ) {
-      noticeRef.current =
-        'Rozpoznawanie mowy przerwane. Zapisano to, co udało się rozpoznać.'
+      noticeRef.current = translate(
+        'Rozpoznawanie mowy przerwane. Zapisano to, co udało się rozpoznać.',
+        'Speech recognition stopped. The recognized text has been saved.',
+      )
       setError(noticeRef.current)
     }
     finalize()
@@ -345,8 +417,11 @@ export const useSpeechRecorder = (
   // Ensure it is installed before starting, otherwise start() emits
   // "language supported, but not yet downloaded". iOS (SFSpeechRecognizer)
   // provisions its model itself, so this only applies to Android.
-  const ensureOfflineModel = async (): Promise<boolean> => {
+  const ensureOfflineModel = async (
+    sessionLanguage: Language,
+  ): Promise<boolean> => {
     if (Platform.OS !== 'android') return true
+    const locale = localeForLanguage(sessionLanguage)
 
     let installed: string[] = []
     try {
@@ -357,17 +432,30 @@ export const useSpeechRecorder = (
     } catch {
       // Service package not queryable on this device — fall through and try to download.
     }
-    if (installed.includes(LOCALE)) return true
+    if (installed.includes(locale)) return true
 
-    setInfo('Pobieranie modelu języka offline (≈40 MB)…')
+    setInfo(
+      translate(
+        'Pobieranie modelu języka offline (≈40 MB)…',
+        'Downloading the offline speech model (≈40 MB)…',
+      ),
+    )
     try {
       await ExpoSpeechRecognitionModule.androidTriggerOfflineModelDownload({
-        locale: LOCALE,
+        locale,
       })
       return true
     } catch {
       setError(
-        'Nie udało się przygotować polskiego modelu mowy. Sprawdź połączenie z internetem i spróbuj ponownie.',
+        sessionLanguage === 'pl'
+          ? translate(
+              'Nie udało się przygotować polskiego modelu mowy. Sprawdź połączenie z internetem i spróbuj ponownie.',
+              'The Polish speech model could not be prepared. Check your internet connection and try again.',
+            )
+          : translate(
+              'Nie udało się przygotować angielskiego modelu mowy. Sprawdź połączenie z internetem i spróbuj ponownie.',
+              'The English speech model could not be prepared. Check your internet connection and try again.',
+            ),
       )
       return false
     } finally {
@@ -375,8 +463,12 @@ export const useSpeechRecorder = (
     }
   }
 
-  const start = async (source?: AudioFileSource): Promise<void> => {
+  const start = async (
+    source?: AudioFileSource,
+    sessionLanguage: Language = language,
+  ): Promise<void> => {
     if (statusRef.current !== 'idle') return
+    languageRef.current = sessionLanguage
     const generation = ++generationRef.current
     const cancelled = () =>
       !mountedRef.current ||
@@ -402,8 +494,20 @@ export const useSpeechRecorder = (
     setBoth('starting')
 
     try {
-      if (!ExpoSpeechRecognitionModule.supportsOnDeviceRecognition()) {
-        setError('Rozpoznawanie on-device jest niedostępne na tym urządzeniu')
+      const supportsOffline =
+        Platform.OS === 'ios'
+          ? ExpoSpeechRecognitionModule.supportsOnDeviceRecognition(
+              localeForLanguage(sessionLanguage),
+            )
+          : ExpoSpeechRecognitionModule.supportsOnDeviceRecognition()
+      if (!supportsOffline) {
+        setError(
+          recognitionErrorMessage(
+            'language-not-supported',
+            Boolean(source),
+            sessionLanguage,
+          ),
+        )
         finalizedRef.current = true
         setBoth('idle')
         return
@@ -414,13 +518,19 @@ export const useSpeechRecorder = (
       if (cancelled()) return
       if (!permission.granted) {
         setPermissionDenied(true)
-        setError(recognitionErrorMessage('not-allowed', Boolean(source)))
+        setError(
+          recognitionErrorMessage(
+            'not-allowed',
+            Boolean(source),
+            sessionLanguage,
+          ),
+        )
         finalizedRef.current = true
         setBoth('idle')
         return
       }
 
-      if (!(await ensureOfflineModel())) {
+      if (!(await ensureOfflineModel(sessionLanguage))) {
         if (cancelled()) return
         finalizedRef.current = true
         setBoth('idle')
@@ -434,7 +544,12 @@ export const useSpeechRecorder = (
         stopRequestedRef.current = true
         finalizedRef.current = true
         setBoth('idle')
-        setInfo('Wróć do aplikacji, aby rozpocząć nagrywanie.')
+        setInfo(
+          translate(
+            'Wróć do aplikacji, aby rozpocząć nagrywanie.',
+            'Return to the app to start recording.',
+          ),
+        )
         return
       }
       startSession(source)
@@ -443,7 +558,10 @@ export const useSpeechRecorder = (
       nativeActiveRef.current = false
       finalizedRef.current = true
       setError(
-        'Nie udało się rozpocząć rozpoznawania mowy. Sprawdź uprawnienia i spróbuj ponownie.',
+        translate(
+          'Nie udało się rozpocząć rozpoznawania mowy. Sprawdź uprawnienia i spróbuj ponownie.',
+          'Speech recognition could not start. Check your permissions and try again.',
+        ),
       )
       setBoth('idle')
     }
@@ -473,8 +591,10 @@ export const useSpeechRecorder = (
       if (!nativeActiveRef.current) return
       if (statusRef.current !== 'recording' && statusRef.current !== 'starting')
         return
-      noticeRef.current =
-        'Nagrywanie zakończono po schowaniu aplikacji lub zablokowaniu telefonu. Zachowano dotychczasowy materiał.'
+      noticeRef.current = translate(
+        'Nagrywanie zakończono po schowaniu aplikacji lub zablokowaniu telefonu. Zachowano dotychczasowy materiał.',
+        'Recording ended when the app was hidden or the phone was locked. Your recording so far has been kept.',
+      )
       setInfo(noticeRef.current)
       stopRef.current()
     })
@@ -493,4 +613,19 @@ export const useSpeechRecorder = (
     start,
     stop,
   }
+}
+
+export const useSpeechRecorder = (
+  onComplete: (result: RecordingResult) => void,
+  language: Language = 'pl',
+  mode: 'record' | 'import' = 'record',
+): SpeechRecorder => {
+  // Native availability and the screen's mode are stable for a mounted hook.
+  const useRecorder =
+    Platform.OS === 'ios' && nativeCapture
+      ? mode === 'record'
+        ? useNativeSpeechRecorder
+        : useNativeImportRecorder
+      : useLegacySpeechRecorder
+  return useRecorder(onComplete, language)
 }

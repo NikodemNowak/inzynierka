@@ -9,6 +9,7 @@ import {
   View,
 } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
+import { useI18n } from '../i18n/useI18n'
 import { IconButton } from './Icon'
 import { useReducedMotion } from './Motion'
 import { type, useTheme } from './theme'
@@ -24,6 +25,7 @@ export function BottomSheet({
   title?: string
   children: ReactNode
 }) {
+  const { t } = useI18n()
   const { colors } = useTheme()
   const insets = useSafeAreaInsets()
   const reduced = useReducedMotion()
@@ -41,7 +43,7 @@ export function BottomSheet({
       >
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Zamknij panel"
+          accessibilityLabel={t('Zamknij panel', 'Close panel')}
           onPress={onClose}
           style={{
             position: 'absolute',
@@ -84,7 +86,11 @@ export function BottomSheet({
             <Text style={{ ...type.title, color: colors.ink, flex: 1 }}>
               {title}
             </Text>
-            <IconButton name="close" label="Zamknij" onPress={onClose} />
+            <IconButton
+              name="close"
+              label={t('Zamknij', 'Close')}
+              onPress={onClose}
+            />
           </View>
           <ScrollView
             keyboardShouldPersistTaps="handled"

@@ -1,5 +1,10 @@
 import { useModelStore } from './modelStore'
-import { downloadModel, ModelDownloadCancelledError } from '../ai/modelDownload'
+import {
+  downloadModel,
+  ModelDownloadCancelledError,
+  getNativeDownloadState,
+  cancelNativeDownload,
+} from '../ai/modelDownload'
 
 jest.mock('../ai/modelDownload', () => ({
   ModelDownloadCancelledError: class ModelDownloadCancelledError extends Error {},
@@ -7,6 +12,9 @@ jest.mock('../ai/modelDownload', () => ({
   downloadModel: jest.fn(),
   getModelSizeBytes: jest.fn(),
   isModelDownloaded: jest.fn(),
+  getNativeDownloadState: jest.fn(async () => null),
+  observeNativeDownload: jest.fn(),
+  cancelNativeDownload: jest.fn(),
 }))
 
 jest.mock('../ai/llm', () => ({ unloadModel: jest.fn() }))
@@ -17,6 +25,45 @@ const mockDownloadModel = jest.mocked(downloadModel)
 beforeEach(() => {
   jest.clearAllMocks()
   useModelStore.setState(useModelStore.getInitialState(), true)
+  jest.mocked(getNativeDownloadState).mockResolvedValue(null)
+})
+
+test('refresh reattaches a previously authorized native download without starting another request', async () => {
+  jest.mocked(getNativeDownloadState).mockResolvedValue({
+    version: 1,
+    id: 'download-restored',
+    url: 'https://example.test/model',
+    filename: 'model.gguf',
+    expectedBytes: 1000,
+    state: 'running',
+    writtenBytes: 450,
+    language: 'en',
+  })
+  await useModelStore.getState().refresh()
+  expect(useModelStore.getState()).toMatchObject({
+    status: 'downloading',
+    progress: 45,
+  })
+  expect(mockDownloadModel).not.toHaveBeenCalled()
+})
+test('a reattached transfer can be deliberately cancelled after JavaScript relaunch', async () => {
+  jest.mocked(getNativeDownloadState).mockResolvedValue({
+    version: 1,
+    id: 'download-restored',
+    url: 'https://example.test/model',
+    filename: 'model.gguf',
+    expectedBytes: 1000,
+    state: 'running',
+    writtenBytes: 450,
+    language: 'en',
+  })
+  await useModelStore.getState().refresh()
+  jest.mocked(cancelNativeDownload).mockImplementationOnce(async () => {
+    jest.mocked(getNativeDownloadState).mockResolvedValue(null)
+  })
+  await useModelStore.getState().cancelDownload()
+  expect(cancelNativeDownload).toHaveBeenCalledTimes(1)
+  expect(useModelStore.getState().status).toBe('absent')
 })
 
 test('cancelling a model download aborts it and returns to the absent state', async () => {

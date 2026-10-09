@@ -1,3 +1,4 @@
+import { useI18n } from '../i18n/useI18n'
 import { useRouter } from 'expo-router'
 import { Pressable, Text, View } from 'react-native'
 import { useModelStore } from '../state/modelStore'
@@ -6,6 +7,7 @@ import { useTheme } from '../ui/theme'
 
 export function ModelDownloadBanner() {
   const { colors } = useTheme()
+  const { t } = useI18n()
   const router = useRouter()
   const status = useModelStore((s) => s.status)
   const progress = useModelStore((s) => s.progress)
@@ -14,7 +16,10 @@ export function ModelDownloadBanner() {
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`Pobieranie modelu, ${value} procent. Otwórz ustawienia`}
+      accessibilityLabel={t(
+        `Pobieranie modelu, ${value} procent. Otwórz ustawienia`,
+        `Downloading model, ${value} percent. Open settings`,
+      )}
       onPress={() => router.push('/settings')}
       style={({ pressed }) => ({
         marginHorizontal: 24,
@@ -34,7 +39,7 @@ export function ModelDownloadBanner() {
       <View style={{ flex: 1, gap: 4 }}>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
           <Text style={{ color: colors.body, fontSize: 12 }}>
-            Model · pobieranie
+            {t('Model · pobieranie', 'Model · downloading')}
           </Text>
           <Text
             style={{

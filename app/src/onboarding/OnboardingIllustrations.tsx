@@ -12,6 +12,7 @@ import Svg, {
   Stop,
   Text as SvgText,
 } from 'react-native-svg'
+import { useI18n } from '../i18n/useI18n'
 import { Icon } from '../ui/Icon'
 import { useReducedMotion } from '../ui/Motion'
 import { useTheme } from '../ui/theme'
@@ -32,6 +33,7 @@ export function OnboardingIllustration({
   active: boolean
   appActive: boolean
 }) {
+  const { t } = useI18n()
   const reduced = useReducedMotion()
   const animate = active && appActive && !reduced
   return (
@@ -40,9 +42,18 @@ export function OnboardingIllustration({
       accessibilityRole="image"
       accessibilityLabel={
         [
-          'Fala głosu zamienia się w prywatną notatkę',
-          'Słowa pojawiają się w notatce podczas mówienia',
-          'Z nagrania powstają tytuł i krótkie podsumowanie',
+          t(
+            'Fala głosu zamienia się w prywatną notatkę',
+            'A voice wave becomes a private note',
+          ),
+          t(
+            'Słowa pojawiają się w notatce podczas mówienia',
+            'Words appear in a note as you speak',
+          ),
+          t(
+            'Z nagrania powstają tytuł i krótkie podsumowanie',
+            'A recording becomes a title and a short summary',
+          ),
         ][page]
       }
       style={styles.scene}
@@ -257,6 +268,7 @@ function DictationArt({ animate }: { animate: boolean }) {
 }
 
 function SummaryArt() {
+  const { t } = useI18n()
   const { colors, isDark } = useTheme()
   const line = isDark ? '#506979' : '#D1DFEE'
   return (
@@ -281,7 +293,7 @@ function SummaryArt() {
           fontSize="13"
           fontWeight="600"
         >
-          Spotkanie
+          {t('Spotkanie', 'Meeting')}
         </SvgText>
         <SvgText
           x="21"
@@ -290,7 +302,7 @@ function SummaryArt() {
           fontSize="13"
           fontWeight="600"
         >
-          z promotorem
+          {t('z promotorem', 'with my advisor')}
         </SvgText>
         {[101, 101, 80].map((width, i) => (
           <Rect
@@ -337,10 +349,10 @@ function SummaryArt() {
           fontSize="15"
           fontWeight="600"
         >
-          Tytuł
+          {t('Tytuł', 'Title')}
         </SvgText>
         <SvgText x="195" y="136" fill={colors.body} fontSize="11.5">
-          Spotkanie z promotorem
+          {t('Spotkanie z promotorem', 'Meeting with my advisor')}
         </SvgText>
         <Rect x="195" y="151" width="102" height="7" rx="3.5" fill={line} />
         <SvgText
@@ -350,7 +362,7 @@ function SummaryArt() {
           fontSize="13"
           fontWeight="600"
         >
-          Podsumowanie
+          {t('Podsumowanie', 'Summary')}
         </SvgText>
         {[108, 85, 71].map((width, i) => (
           <G key={i}>

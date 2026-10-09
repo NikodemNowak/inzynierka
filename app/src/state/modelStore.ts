@@ -5,10 +5,18 @@ import {
   downloadModel,
   getModelSizeBytes,
   isModelDownloaded,
+  getNativeDownloadState,
+  observeNativeDownload,
+  cancelNativeDownload,
 } from '../ai/modelDownload'
+import {
+  downloadStateProgress,
+  type NativeDownloadState,
+} from '../ai/nativeModelDownload'
 import { unloadModel } from '../ai/llm'
 import { enqueueLlm } from '../ai/llmQueue'
 import { modelDownloadErrorMessage } from '../ai/modelDownloadError'
+import { translate } from '../i18n/translate'
 
 export type ModelStatus = 'checking' | 'absent' | 'downloading' | 'ready'
 
@@ -27,6 +35,7 @@ interface ModelState {
 
 let activeDownloadController: AbortController | null = null
 let activeDownloadPromise: Promise<void> | null = null
+let observing = false
 
 // Downloading the model is a deliberate, user-initiated action rather than a
 // hidden step of note processing, so its state lives here: the welcome screen
@@ -39,6 +48,60 @@ export const useModelStore = create<ModelState>((set, get) => ({
   error: null,
 
   refresh: async () => {
+    const applyNative = (state: NativeDownloadState) => {
+      if (state.state === 'complete')
+        set({
+          status: 'ready',
+          sizeBytes: state.expectedBytes,
+          progress: 100,
+          error: null,
+          isCancelling: false,
+        })
+      else if (state.state === 'running' || state.state === 'verifying')
+        set({
+          status: 'downloading',
+          progress: downloadStateProgress(state),
+          sizeBytes: 0,
+          error: null,
+        })
+      else
+        set({
+          status: 'absent',
+          progress: 0,
+          sizeBytes: 0,
+          isCancelling: false,
+          error:
+            state.state === 'cancelled'
+              ? null
+              : modelDownloadErrorMessage(
+                  new Error(state.error ?? 'Download interrupted'),
+                ),
+        })
+    }
+    if (!observing) {
+      observing = true
+      observeNativeDownload(applyNative)
+    }
+    let native: NativeDownloadState | null
+    try {
+      native = await getNativeDownloadState()
+    } catch (failure) {
+      set({
+        status: 'absent',
+        error: modelDownloadErrorMessage(failure),
+        progress: 0,
+      })
+      return
+    }
+    if (
+      native &&
+      ['running', 'verifying', 'paused', 'failed', 'complete'].includes(
+        native.state,
+      )
+    ) {
+      applyNative(native)
+      return
+    }
     if (activeDownloadPromise) return
     const downloaded = await isModelDownloaded()
     if (activeDownloadPromise) return
@@ -106,7 +169,16 @@ export const useModelStore = create<ModelState>((set, get) => ({
   cancelDownload: async () => {
     const controller = activeDownloadController
     const operation = activeDownloadPromise
-    if (!controller || !operation) return
+    if (!controller || !operation) {
+      set({ isCancelling: true })
+      try {
+        await cancelNativeDownload()
+        await get().refresh()
+      } finally {
+        set({ isCancelling: false })
+      }
+      return
+    }
     set({ isCancelling: true })
     controller.abort()
     await operation
@@ -120,7 +192,12 @@ export const useModelStore = create<ModelState>((set, get) => ({
       await deleteModel()
       set({ status: 'absent', progress: 0, sizeBytes: 0 })
     } catch {
-      set({ error: 'Nie udało się usunąć modelu. Spróbuj ponownie.' })
+      set({
+        error: translate(
+          'Nie udało się usunąć modelu. Spróbuj ponownie.',
+          'Unable to remove the model. Try again.',
+        ),
+      })
     }
   },
 }))

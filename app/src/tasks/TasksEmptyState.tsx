@@ -1,8 +1,10 @@
+import { useI18n } from '../i18n/useI18n'
 import { Pressable, StyleSheet, Text, View } from 'react-native'
 import { radius, spacing, type, useTheme } from '../ui/theme'
 
 export function TasksEmptyState({ onOpenNotes }: { onOpenNotes: () => void }) {
   const { colors } = useTheme()
+  const { t } = useI18n()
   return (
     <View style={styles.container}>
       <View style={styles.illustration}>
@@ -40,10 +42,13 @@ export function TasksEmptyState({ onOpenNotes }: { onOpenNotes: () => void }) {
         accessibilityRole="header"
         style={[styles.title, { color: colors.ink }]}
       >
-        Jeszcze bez zadań
+        {t('Jeszcze bez zadań', 'No tasks yet')}
       </Text>
       <Text style={[styles.description, { color: colors.muted }]}>
-        Otwórz notatkę i wybierz „Zaproponuj zadania”.
+        {t(
+          'Otwórz notatkę i wybierz „Zaproponuj zadania”.',
+          'Open a note and choose “Suggest tasks”.',
+        )}
       </Text>
       <Pressable
         accessibilityRole="button"
@@ -51,7 +56,7 @@ export function TasksEmptyState({ onOpenNotes }: { onOpenNotes: () => void }) {
         style={({ pressed }) => [styles.action, { opacity: pressed ? 0.6 : 1 }]}
       >
         <Text style={[styles.actionText, { color: colors.accent }]}>
-          Przejdź do notatek
+          {t('Przejdź do notatek', 'Go to notes')}
         </Text>
       </Pressable>
     </View>

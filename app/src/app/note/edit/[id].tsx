@@ -1,3 +1,4 @@
+import { useI18n } from '../../../i18n/useI18n'
 import { useEffect, useRef, useState } from 'react'
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import {
@@ -14,13 +15,16 @@ import { Field } from '../../../ui/Field'
 import { useTheme, spacing, type } from '../../../ui/theme'
 import { useNotesStore } from '../../../state/notesStore'
 import { useModelStore } from '../../../state/modelStore'
-import { MODEL_MISSING_MESSAGE } from '../../../ai/noteProcessing'
+import { getModelMissingMessage } from '../../../ai/noteProcessing'
 import { NoteTags } from '../../../tags/NoteTags'
 import { isCategory } from '../../../domain/categories'
 import type { Note, NoteInput } from '../../../domain/note'
+import { LanguagePicker } from '../../../ui/LanguagePicker'
+import type { Language } from '../../../i18n/language'
 
 type NoteDraft = Pick<NoteInput, 'title' | 'content' | 'tags'> & {
   summary: string
+  language: Language
 }
 
 const draftFromNote = (note: Note | undefined): NoteDraft => ({
@@ -28,9 +32,11 @@ const draftFromNote = (note: Note | undefined): NoteDraft => ({
   content: note?.content ?? '',
   summary: note?.summary ?? '',
   tags: (note?.tags ?? []).filter(isCategory),
+  language: note?.language ?? 'pl',
 })
 
 const sameDraft = (left: NoteDraft, right: NoteDraft): boolean =>
+  left.language === right.language &&
   left.title === right.title &&
   left.content === right.content &&
   left.summary === right.summary &&
@@ -40,6 +46,7 @@ const sameDraft = (left: NoteDraft, right: NoteDraft): boolean =>
 export default function EditNoteScreen() {
   const { id } = useLocalSearchParams<{ id: string }>()
   const { colors } = useTheme()
+  const { t } = useI18n()
   const insets = useSafeAreaInsets()
   const note = useNotesStore((state) =>
     state.notes.find((item) => item.id === id),
@@ -119,7 +126,12 @@ export default function EditNoteScreen() {
   const save = async () => {
     if (!note || processing || saving) return
     if (draft.content.trim().length === 0 && !note.audioUri) {
-      setError('Treść transkrypcji nie może być pusta.')
+      setError(
+        t(
+          'Treść transkrypcji nie może być pusta.',
+          'The transcript cannot be empty.',
+        ),
+      )
       return
     }
     if (
@@ -129,7 +141,10 @@ export default function EditNoteScreen() {
     ) {
       setExternalChange(true)
       setError(
-        'Notatka zmieniła się od czasu otwarcia edycji. Wczytaj aktualne dane przed zapisem.',
+        t(
+          'Notatka zmieniła się od czasu otwarcia edycji. Wczytaj aktualne dane przed zapisem.',
+          'The note has changed since you opened the editor. Load the current version before saving.',
+        ),
       )
       return
     }
@@ -143,6 +158,7 @@ export default function EditNoteScreen() {
         tags: draft.tags,
         audioUri: note.audioUri,
         durationMs: note.durationMs,
+        language: draft.language,
       })
       initialDraft.current = { ...draft, tags: [...draft.tags] }
       expectedUpdatedAt.current =
@@ -159,11 +175,18 @@ export default function EditNoteScreen() {
   if (!note) {
     return (
       <View style={[styles.empty, { backgroundColor: colors.canvas }]}>
-        <Stack.Screen options={{ title: 'Edytuj notatkę' }} />
+        <Stack.Screen options={{ title: t('Edytuj notatkę', 'Edit note') }} />
         <Text style={[styles.body, { color: colors.muted }]}>
-          {loaded ? 'Ta notatka już nie istnieje.' : 'Wczytuję notatkę…'}
+          {loaded
+            ? t('Ta notatka już nie istnieje.', 'This note no longer exists.')
+            : t('Wczytuję notatkę…', 'Loading note…')}
         </Text>
-        {loaded && <Button label="Wróć do listy" onPress={goToList} />}
+        {loaded && (
+          <Button
+            label={t('Wróć do listy', 'Back to notes')}
+            onPress={goToList}
+          />
+        )}
       </View>
     )
   }
@@ -174,17 +197,17 @@ export default function EditNoteScreen() {
     <>
       <Stack.Screen
         options={{
-          title: 'Edytuj notatkę',
+          title: t('Edytuj notatkę', 'Edit note'),
           headerBackVisible: false,
           headerLeft: () => (
             <Pressable
               onPress={goToList}
               accessibilityRole="button"
-              accessibilityLabel="Anuluj edycję"
+              accessibilityLabel={t('Anuluj edycję', 'Cancel editing')}
               style={styles.headerCancel}
             >
               <Text style={[styles.headerSaveText, { color: colors.accent }]}>
-                Anuluj
+                {t('Anuluj', 'Cancel')}
               </Text>
             </Pressable>
           ),
@@ -193,7 +216,7 @@ export default function EditNoteScreen() {
               onPress={() => void save()}
               disabled={!dirty || !editable}
               accessibilityRole="button"
-              accessibilityLabel="Zapisz zmiany"
+              accessibilityLabel={t('Zapisz zmiany', 'Save changes')}
               accessibilityState={{
                 disabled: !dirty || !editable,
                 busy: saving,
@@ -204,7 +227,7 @@ export default function EditNoteScreen() {
               ]}
             >
               <Text style={[styles.headerSaveText, { color: colors.accent }]}>
-                Zapisz
+                {t('Zapisz', 'Save')}
               </Text>
             </Pressable>
           ),
@@ -224,7 +247,10 @@ export default function EditNoteScreen() {
       >
         {processing && (
           <Text style={[styles.hint, { color: colors.muted }]}>
-            Trwa opracowywanie tej notatki. Edycja jest tymczasowo wyłączona.
+            {t(
+              'Trwa opracowywanie tej notatki. Edycja jest tymczasowo wyłączona.',
+              'This note is being processed. Editing is temporarily disabled.',
+            )}
           </Text>
         )}
         {error && (
@@ -233,44 +259,53 @@ export default function EditNoteScreen() {
         {externalChange && (
           <>
             <Text style={[styles.body, { color: colors.danger }]}>
-              Inna operacja zmieniła notatkę. Wczytaj jej aktualną treść, aby
-              nie nadpisać nowszych danych.
+              {t(
+                'Inna operacja zmieniła notatkę. Wczytaj jej aktualną treść, aby nie nadpisać nowszych danych.',
+                'Another operation changed the note. Load its current content to avoid overwriting newer changes.',
+              )}
             </Text>
             <Button
-              label="Wczytaj aktualną notatkę"
+              label={t('Wczytaj aktualną notatkę', 'Load current note')}
               icon="refresh"
               onPress={discardChanges}
             />
           </>
         )}
+        <LanguagePicker
+          value={draft.language}
+          onChange={(language) =>
+            setDraft((current) => ({ ...current, language }))
+          }
+          disabled={!editable}
+        />
         <Field
-          label="Tytuł"
+          label={t('Tytuł', 'Title')}
           value={draft.title}
           onChangeText={(title) =>
             setDraft((current) => ({ ...current, title }))
           }
-          placeholder="Bez tytułu"
+          placeholder={t('Bez tytułu', 'Untitled')}
           editable={editable}
           textStyle={styles.titleField}
         />
         <Field
-          label="Podsumowanie"
+          label={t('Podsumowanie', 'Summary')}
           value={draft.summary}
           onChangeText={(summary) =>
             setDraft((current) => ({ ...current, summary }))
           }
-          placeholder="Dodaj własne podsumowanie"
+          placeholder={t('Dodaj własne podsumowanie', 'Add your own summary')}
           multiline
           minHeight={96}
           editable={editable}
         />
         <Field
-          label="Transkrypcja"
+          label={t('Transkrypcja', 'Transcript')}
           value={draft.content}
           onChangeText={(content) =>
             setDraft((current) => ({ ...current, content }))
           }
-          placeholder="Treść notatki"
+          placeholder={t('Treść notatki', 'Note content')}
           multiline
           minHeight={180}
           editable={editable}
@@ -282,7 +317,7 @@ export default function EditNoteScreen() {
         />
         {!modelReady && (
           <Text style={[styles.hint, { color: colors.muted }]}>
-            {MODEL_MISSING_MESSAGE}
+            {getModelMissingMessage()}
           </Text>
         )}
       </ScrollView>
@@ -293,19 +328,22 @@ export default function EditNoteScreen() {
           pendingAction.current = null
           setLeaveConfirmation(false)
         }}
-        title="Masz niezapisane zmiany"
+        title={t('Masz niezapisane zmiany', 'You have unsaved changes')}
       >
         <Text style={[styles.body, { color: colors.muted }]}>
-          Zmiany nie zostały zapisane. Czy chcesz je odrzucić?
+          {t(
+            'Zmiany nie zostały zapisane. Czy chcesz je odrzucić?',
+            'Your changes have not been saved. Discard them?',
+          )}
         </Text>
         <Button
-          label="Odrzuć zmiany"
+          label={t('Odrzuć zmiany', 'Discard changes')}
           variant="danger"
           icon="trash"
           onPress={discardAndLeave}
         />
         <Button
-          label="Zostań przy edycji"
+          label={t('Zostań przy edycji', 'Keep editing')}
           variant="secondary"
           onPress={() => {
             pendingAction.current = null

@@ -1,5 +1,6 @@
+import { useI18n } from '../i18n/useI18n'
 import { Pressable, StyleSheet, Text, View } from 'react-native'
-import { NOTE_CATEGORIES } from '../domain/categories'
+import { categoryLabel, NOTE_CATEGORIES } from '../domain/categories'
 import { radius, spacing, type, useTheme } from '../ui/theme'
 
 export function NoteTags({
@@ -16,6 +17,7 @@ export function NoteTags({
   compact?: boolean
 }) {
   const { colors } = useTheme()
+  const { t, language } = useI18n()
   const categories = editable
     ? NOTE_CATEGORIES
     : NOTE_CATEGORIES.filter((tag) => tags.includes(tag))
@@ -31,7 +33,9 @@ export function NoteTags({
   return (
     <View style={styles.container}>
       {showLabel && (
-        <Text style={[styles.heading, { color: colors.ink }]}>Kategorie</Text>
+        <Text style={[styles.heading, { color: colors.ink }]}>
+          {t('Kategorie', 'Categories')}
+        </Text>
       )}
       <View style={styles.chips}>
         {categories.map((category) => {
@@ -53,7 +57,7 @@ export function NoteTags({
               accessibilityState={
                 editable ? { checked: active, disabled: !editable } : undefined
               }
-              accessibilityLabel={category}
+              accessibilityLabel={categoryLabel(category, language)}
             >
               <Text
                 style={[
@@ -61,7 +65,7 @@ export function NoteTags({
                   { color: active ? colors.accent : colors.body },
                 ]}
               >
-                {category}
+                {categoryLabel(category, language)}
               </Text>
             </Pressable>
           )

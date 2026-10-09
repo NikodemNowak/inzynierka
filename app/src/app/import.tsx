@@ -1,18 +1,42 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Stack, useNavigation, useRouter } from 'expo-router'
-import { usePreventRemove } from 'expo-router/react-navigation'
+import {
+  Stack,
+  useNavigation,
+  useRouter,
+  useLocalSearchParams,
+} from 'expo-router'
+import { useIsFocused, usePreventRemove } from 'expo-router/react-navigation'
 import { ScrollView, StyleSheet, Text, View } from 'react-native'
 import Svg, { Path } from 'react-native-svg'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import * as DocumentPicker from 'expo-document-picker'
 import { useNotesStore } from '../state/notesStore'
+import { useSettingsStore } from '../state/settingsStore'
+import { useI18n } from '../i18n/useI18n'
+import {
+  localeForLanguage,
+  noteLanguageOrDefault,
+  type Language,
+} from '../i18n/language'
+import { LanguagePicker } from '../ui/LanguagePicker'
 import {
   useSpeechRecorder,
   type RecordingResult,
 } from '../stt/useSpeechRecorder'
 import { LiveTranscript } from '../stt/LiveTranscript'
 import { PermissionSettingsButton } from '../stt/PermissionSettingsButton'
-import { deleteRecordingFile, saveRecordingFile } from '../audio/audioFiles'
+import {
+  deleteRecordingFile,
+  saveRecordingFile,
+  deletePickerCacheFile,
+} from '../audio/audioFiles'
+import { inspectImportAudio } from '../audio/importAudio'
+import { clearImportCheckpoint } from '../stt/importTranscription'
+import {
+  markImportSourceCommitted,
+  type ImportContinuation,
+} from '../processing/importProcessing'
+import type { Note } from '../domain/note'
 import { BottomSheet } from '../ui/BottomSheet'
 import { Button } from '../ui/Button'
 import { Icon } from '../ui/Icon'
@@ -22,10 +46,11 @@ import { spacing, type, useTheme } from '../ui/theme'
 interface SelectedAudio {
   name: string
   size: number | null
+  durationMs: number
 }
 
-const defaultTitle = (): string =>
-  `Import ${new Date().toLocaleString('pl-PL', {
+const defaultTitle = (language: Language): string =>
+  `Import ${new Date().toLocaleString(localeForLanguage(language), {
     day: '2-digit',
     month: '2-digit',
     year: 'numeric',
@@ -88,10 +113,21 @@ function AudioFileMark({
 }
 
 export default function ImportAudioScreen() {
+  const isFocused = useIsFocused()
   const router = useRouter()
+  const { noteId, titlePending } = useLocalSearchParams<{ noteId?: string; titlePending?: string }>()
   const navigation = useNavigation()
   const { colors } = useTheme()
+  const { t } = useI18n()
+  const noteLanguage = useSettingsStore((state) => state.noteLanguage)
+  const settingsLoaded = useSettingsStore((state) => state.loaded)
+  const setNoteLanguage = useSettingsStore((state) => state.setNoteLanguage)
+  const importLanguageRef = useRef<Language>(noteLanguage)
+  const languageSavePendingRef = useRef(false)
+  const [languageSaving, setLanguageSaving] = useState(false)
   const add = useNotesStore((state) => state.add)
+  const applyTranscript = useNotesStore((state) => state.applyTranscript)
+  const removeNote = useNotesStore((state) => state.remove)
   const processWithLlm = useNotesStore((state) => state.processWithLlm)
   const [selectedAudio, setSelectedAudio] = useState<SelectedAudio | null>(null)
   const [requesting, setRequesting] = useState(false)
@@ -100,6 +136,10 @@ export default function ImportAudioScreen() {
   const [saveError, setSaveError] = useState<string | null>(null)
   const [showExitPrompt, setShowExitPrompt] = useState(false)
   const storedUriRef = useRef<string | null>(null)
+  const sourceNoteRef = useRef<Note | null>(null)
+  const ownsSourceRef = useRef(false)
+  const pickerControllerRef = useRef<AbortController | null>(null)
+  const initializedBackfillRef = useRef(false)
   const startPromiseRef = useRef<Promise<void> | null>(null)
   const pendingResultRef = useRef<RecordingResult | null>(null)
   const pendingNavigationRef = useRef<(() => void) | null>(null)
@@ -108,12 +148,38 @@ export default function ImportAudioScreen() {
   const allowExitRef = useRef(false)
   const insets = useSafeAreaInsets()
 
-  const persistResult = useCallback(
-    async (result: RecordingResult) => {
-      const transcript = result.transcript.trim()
-      if (transcript.length === 0) {
+  const changeNoteLanguage = useCallback(
+    async (language: Language) => {
+      if (languageSavePendingRef.current) return
+      languageSavePendingRef.current = true
+      setLanguageSaving(true)
+      setSaveError(null)
+      try {
+        await setNoteLanguage(language)
+      } catch {
         setSaveError(
-          'Nie rozpoznano mowy w pliku. Możesz ponowić próbę dla tego nagrania albo wybrać inny plik.',
+          t(
+            'Nie udało się zapisać języka notatki. Spróbuj ponownie.',
+            'The note language could not be saved. Try again.',
+          ),
+        )
+      } finally {
+        languageSavePendingRef.current = false
+        setLanguageSaving(false)
+      }
+    },
+    [setNoteLanguage, t],
+  )
+
+  const persistResult = useCallback(
+    async (result: RecordingResult, continuation?: ImportContinuation) => {
+      const transcript = result.transcript.trim()
+      if (transcript.length === 0 && !result.audioUri) {
+        setSaveError(
+          t(
+            'Nie rozpoznano mowy w pliku. Możesz ponowić próbę dla tego nagrania albo wybrać inny plik.',
+            'No speech was recognized in the file. Try this recording again or choose another file.',
+          ),
         )
         setSaving(false)
         return
@@ -122,53 +188,98 @@ export default function ImportAudioScreen() {
       setSaving(true)
       setSaveError(null)
       try {
-        const note = await add({
-          title: defaultTitle(),
-          content: transcript,
-          summary: null,
-          tags: [],
-          audioUri: result.audioUri,
-          durationMs: null,
-        })
+        const sourceNote = sourceNoteRef.current
+        const note =
+          sourceNote ??
+          (await add({
+            title: defaultTitle(result.language),
+            language: result.language,
+            content: transcript,
+            summary: null,
+            tags: [],
+            audioUri: result.audioUri,
+            durationMs: result.durationMs,
+            transcriptionIncomplete: result.needsTranscription ?? false,
+          }))
+        if (sourceNote) {
+          const applied = await applyTranscript(
+            sourceNote.id,
+            {
+              updatedAt: sourceNote.updatedAt,
+              content: sourceNote.content,
+              audioUri: sourceNote.audioUri,
+            },
+            transcript,
+            result.durationMs,
+            result.needsTranscription ?? false,
+          )
+          if (!applied)
+            throw new Error(
+              t(
+                'Notatka została zmieniona lub usunięta. Zachowano audio i postęp; uruchom transkrypcję ponownie z aktualnej notatki.',
+                'The note was edited or deleted. Audio and progress have been kept; start transcription again from the current note.',
+              ),
+            )
+        }
+        // SQLite owns the source now; navigation may release this screen while
+        // the same granted import continues its durable AI stage.
+        markImportSourceCommitted(continuation)
+        sourceNoteRef.current =
+          useNotesStore.getState().notes.find((item) => item.id === note.id) ??
+          note
+        ownsSourceRef.current = false
+        if (!result.needsTranscription && result.audioUri)
+          await clearImportCheckpoint(result.audioUri, result.language)
         pendingResultRef.current = null
         // The note now owns the copied source audio.
         storedUriRef.current = null
         setSelectedAudio(null)
-        if (transcript.length > 0) void processWithLlm(note.id)
         allowExitRef.current = true
-        router.replace(`/note/${note.id}`)
+        const preparingNewTitle = transcript.length > 0 && !result.needsTranscription && (!sourceNote || titlePending === '1')
+        router.replace(preparingNewTitle
+          ? { pathname: '/note/[id]', params: { id: note.id, titlePending: '1' } }
+          : `/note/${note.id}`)
+        if (transcript.length > 0 && !result.needsTranscription) {
+          if (continuation)
+            await processWithLlm(note.id, { importContinuation: continuation })
+          else void processWithLlm(note.id)
+        }
       } catch (e) {
         setSaveError(e instanceof Error ? e.message : String(e))
         setSaving(false)
+        if (continuation) throw e
       }
     },
-    [add, processWithLlm, router],
+    [add, applyTranscript, processWithLlm, router, t, titlePending],
   )
 
   const handleComplete = useCallback(
-    async (result: RecordingResult) => {
+    async (result: RecordingResult, continuation?: ImportContinuation) => {
       if (cancellationRequestedRef.current) {
         await finishCancelledImportRef.current?.()
         return
       }
 
-      if (result.transcript.trim().length === 0) {
+      if (result.transcript.trim().length === 0 && !result.audioUri) {
         pendingResultRef.current = null
         setSaveError(
           result.notice ??
-            'Nie rozpoznano mowy w pliku. Możesz ponowić próbę dla tego nagrania albo wybrać inny plik.',
+            t(
+              'Nie rozpoznano mowy w pliku. Możesz ponowić próbę dla tego nagrania albo wybrać inny plik.',
+              'No speech was recognized in the file. Try this recording again or choose another file.',
+            ),
         )
         setSaving(false)
         return
       }
 
       pendingResultRef.current = result
-      await persistResult(result)
+      await persistResult(result, continuation)
     },
-    [persistResult],
+    [persistResult, t],
   )
 
-  const recorder = useSpeechRecorder(handleComplete)
+  const recorder = useSpeechRecorder(handleComplete, noteLanguage, 'import')
   const { status, finalTranscript } = recorder
   const statusRef = useRef(status)
   statusRef.current = status
@@ -189,7 +300,16 @@ export default function ImportAudioScreen() {
       setCanceling(false)
       setSaveError(null)
       setRequesting(true)
-      const startPromise = recorder.start({ uri })
+      const knownDuration =
+        sourceNoteRef.current?.durationMs ?? selectedAudio?.durationMs
+      const startPromise = recorder.start(
+        {
+          uri,
+          durationMs:
+            knownDuration && knownDuration > 0 ? knownDuration : undefined,
+        },
+        importLanguageRef.current,
+      )
       startPromiseRef.current = startPromise
       try {
         await startPromise
@@ -200,11 +320,38 @@ export default function ImportAudioScreen() {
         startPromiseRef.current = null
       }
     },
-    [recorder.start],
+    [recorder.start, selectedAudio?.durationMs],
   )
 
+  useEffect(() => {
+    if (!noteId || initializedBackfillRef.current) return
+    const note = useNotesStore
+      .getState()
+      .notes.find((item) => item.id === noteId)
+    if (!note?.audioUri) return
+    initializedBackfillRef.current = true
+    sourceNoteRef.current = note
+    storedUriRef.current = note.audioUri
+    ownsSourceRef.current = false
+    importLanguageRef.current = noteLanguageOrDefault(note.language)
+    setSelectedAudio({
+      name: note.title,
+      size: null,
+      durationMs: note.durationMs ?? 0,
+    })
+    void beginTranscription(note.audioUri)
+  }, [noteId, beginTranscription])
+
   const pickAndTranscribe = useCallback(async () => {
+    if (!settingsLoaded || languageSavePendingRef.current) return
+    // Snapshot before opening the picker, which can outlive a language change.
+    const selectedLanguage = noteLanguage
+    importLanguageRef.current = selectedLanguage
+    setRequesting(true)
     setSaveError(null)
+    const pickerController = new AbortController()
+    pickerControllerRef.current = pickerController
+    let pickerUri: string | null = null
     try {
       const picked = await DocumentPicker.getDocumentAsync({
         type: 'audio/*',
@@ -213,25 +360,71 @@ export default function ImportAudioScreen() {
       if (picked.canceled) return
       const asset = picked.assets?.[0]
       if (!asset) {
-        setSaveError('Nie udało się odczytać wybranego pliku.')
+        setSaveError(
+          t(
+            'Nie udało się odczytać wybranego pliku.',
+            'The selected file could not be read.',
+          ),
+        )
         return
       }
+      pickerUri = asset.uri
+
+      const durationMs = await inspectImportAudio(
+        asset.uri,
+        pickerController.signal,
+      )
+      if (pickerController.signal.aborted) return
 
       // Save a stable copy so the note can keep the source after cache cleanup.
       const storedUri = await saveRecordingFile(asset.uri)
+      if (pickerController.signal.aborted) {
+        await deleteRecordingFile(storedUri)
+        return
+      }
       const previousUri = storedUriRef.current
-      if (previousUri) await deleteRecordingFile(previousUri)
+      // A previous import already owns its audio through a durable note.
+      if (previousUri && !sourceNoteRef.current && ownsSourceRef.current)
+        await deleteRecordingFile(previousUri)
+      let note: Note
+      try {
+        note = await add({
+          title: defaultTitle(selectedLanguage),
+          language: selectedLanguage,
+          content: '',
+          summary: null,
+          tags: [],
+          audioUri: storedUri,
+          durationMs,
+          transcriptionIncomplete: true,
+        })
+      } catch (failure) {
+        await deleteRecordingFile(storedUri)
+        throw failure
+      }
+      sourceNoteRef.current = note
+      ownsSourceRef.current = true
+      if (pickerController.signal.aborted) {
+        await removeNote(note.id)
+        sourceNoteRef.current = null
+        ownsSourceRef.current = false
+        return
+      }
       storedUriRef.current = storedUri
       pendingResultRef.current = null
       setSelectedAudio({
         name: asset.name,
         size: typeof asset.size === 'number' ? asset.size : null,
+        durationMs,
       })
       await beginTranscription(storedUri)
     } catch (e) {
       setSaveError(e instanceof Error ? e.message : String(e))
+    } finally {
+      await deletePickerCacheFile(pickerUri)
+      setRequesting(false)
     }
-  }, [beginTranscription])
+  }, [add, removeNote, beginTranscription, noteLanguage, settingsLoaded, t])
 
   const retry = useCallback(() => {
     if (pendingResultRef.current) {
@@ -243,10 +436,17 @@ export default function ImportAudioScreen() {
 
   const cleanupCancelledImport = useCallback(async () => {
     const uri = storedUriRef.current
+    const sourceNote = sourceNoteRef.current
+    const ownsSource = ownsSourceRef.current
     storedUriRef.current = null
     pendingResultRef.current = null
     cancellationRequestedRef.current = false
-    await deleteRecordingFile(uri)
+    if (uri && ownsSource)
+      await clearImportCheckpoint(uri, importLanguageRef.current)
+    if (sourceNote && ownsSource) await removeNote(sourceNote.id)
+    else if (!sourceNote) await deleteRecordingFile(uri)
+    sourceNoteRef.current = null
+    ownsSourceRef.current = false
     setSelectedAudio(null)
     setSaveError(null)
     setCanceling(false)
@@ -255,12 +455,13 @@ export default function ImportAudioScreen() {
     pendingNavigationRef.current = null
     if (pendingNavigation) allowExitRef.current = true
     pendingNavigation?.()
-  }, [])
+  }, [removeNote])
   finishCancelledImportRef.current = cleanupCancelledImport
 
   const cancelImport = useCallback(() => {
     setShowExitPrompt(false)
     cancellationRequestedRef.current = true
+    pickerControllerRef.current?.abort()
     setCanceling(true)
 
     const stopOrCleanUp = () => {
@@ -306,7 +507,12 @@ export default function ImportAudioScreen() {
   // A copied source that was never attached to a note is disposable after exit.
   useEffect(
     () => () => {
-      if (!allowExitRef.current && storedUriRef.current) {
+      pickerControllerRef.current?.abort()
+      if (
+        !allowExitRef.current &&
+        storedUriRef.current &&
+        !sourceNoteRef.current
+      ) {
         void deleteRecordingFile(storedUriRef.current)
       }
     },
@@ -314,23 +520,44 @@ export default function ImportAudioScreen() {
   )
 
   const statusText = canceling
-    ? 'Anuluję import…'
+    ? t('Anuluję import…', 'Canceling import…')
     : saving
-      ? 'Zapisuję notatkę…'
+      ? t('Zapisuję notatkę…', 'Saving note…')
       : requesting || status === 'starting'
-        ? 'Przygotowuję transkrypcję…'
+        ? t('Przygotowuję transkrypcję…', 'Preparing transcription…')
         : status === 'recording'
-          ? 'Przepisuję nagranie lokalnie…'
+          ? t(
+              'Przepisuję nagranie lokalnie…',
+              'Transcribing recording locally…',
+            )
           : status === 'stopping'
-            ? 'Kończę transkrypcję…'
+            ? t('Kończę transkrypcję…', 'Finishing transcription…')
             : ''
   const retryLabel = pendingResultRef.current
-    ? 'Ponów zapis notatki'
-    : 'Ponów transkrypcję'
+    ? t('Ponów zapis notatki', 'Retry saving note')
+    : t('Ponów transkrypcję', 'Retry transcription')
 
   return (
     <View style={[styles.screen, { backgroundColor: colors.canvas }]}>
-      <Stack.Screen options={{ title: 'Importuj nagranie' }} />
+      <Stack.Screen
+        options={{ title: t('Importuj nagranie', 'Import recording') }}
+      />
+
+      <View style={styles.languagePicker}>
+        <LanguagePicker
+          value={
+            selectedAudio || busy ? importLanguageRef.current : noteLanguage
+          }
+          onChange={(language) => void changeNoteLanguage(language)}
+          disabled={
+            !settingsLoaded ||
+            languageSaving ||
+            busy ||
+            Boolean(selectedAudio) ||
+            pendingResultRef.current !== null
+          }
+        />
+      </View>
 
       {selectedAudio ? (
         <View
@@ -378,17 +605,20 @@ export default function ImportAudioScreen() {
               />
             </View>
             <Text style={[styles.title, { color: colors.ink }]}>
-              Zamień nagranie w notatkę
+              {t('Zamień nagranie w notatkę', 'Turn a recording into a note')}
             </Text>
             <Text style={[styles.subtitle, { color: colors.muted }]}>
-              Wybierz plik audio z telefonu.
+              {t(
+                'Wybierz plik audio z telefonu, do 30 minut. Audio jest zachowywane przed transkrypcją.',
+                'Choose an audio file from your phone, up to 30 minutes. Audio is saved before transcription.',
+              )}
             </Text>
           </View>
         )}
 
         {statusText.length > 0 && (
           <View style={styles.statusRow}>
-            {canceling ? null : <ProcessingIndicator label={statusText} />}
+            {canceling ? null : <ProcessingIndicator label={statusText} active={isFocused} stage={saving ? 'saving' : 'processing'} />}
             {canceling && (
               <Text style={[styles.statusText, { color: colors.muted }]}>
                 {statusText}
@@ -407,6 +637,11 @@ export default function ImportAudioScreen() {
           </View>
         )}
         {recorder.permissionDenied && <PermissionSettingsButton />}
+        {recorder.info && (
+          <Text style={[styles.placeholder, { color: colors.muted }]}>
+            {recorder.info}
+          </Text>
+        )}
 
         {selectedAudio && (
           <View
@@ -417,7 +652,7 @@ export default function ImportAudioScreen() {
         {selectedAudio && (
           <View style={styles.transcriptSection}>
             <Text style={[styles.transcriptLabel, { color: colors.ink }]}>
-              Transkrypcja
+              {t('Transkrypcja', 'Transcript')}
             </Text>
             {transcript.length > 0 ? (
               <LiveTranscript
@@ -429,8 +664,14 @@ export default function ImportAudioScreen() {
             ) : (
               <Text style={[styles.placeholder, { color: colors.muted }]}>
                 {status === 'idle'
-                  ? 'Po rozpoczęciu transkrypcji rozpoznany tekst pojawi się tutaj.'
-                  : 'Czekam na rozpoznane słowa…'}
+                  ? t(
+                      'Po rozpoczęciu transkrypcji rozpoznany tekst pojawi się tutaj.',
+                      'Recognized text will appear here once transcription starts.',
+                    )
+                  : t(
+                      'Czekam na rozpoznane słowa…',
+                      'Waiting for recognized words…',
+                    )}
               </Text>
             )}
           </View>
@@ -449,7 +690,11 @@ export default function ImportAudioScreen() {
         {busy ? (
           <>
             <Button
-              label={canceling ? 'Anuluję import…' : 'Anuluj import'}
+              label={
+                canceling
+                  ? t('Anuluję import…', 'Canceling import…')
+                  : t('Anuluj import', 'Cancel import')
+              }
               variant="quiet"
               icon={canceling ? undefined : 'close'}
               onPress={() => setShowExitPrompt(true)}
@@ -465,7 +710,7 @@ export default function ImportAudioScreen() {
               onPress={retry}
             />
             <Button
-              label="Anuluj import"
+              label={t('Anuluj import', 'Cancel import')}
               variant="quiet"
               icon="close"
               onPress={() => setShowExitPrompt(true)}
@@ -480,7 +725,7 @@ export default function ImportAudioScreen() {
               onPress={retry}
             />
             <Button
-              label="Wybierz inny plik"
+              label={t('Wybierz inny plik', 'Choose another file')}
               variant="quiet"
               icon="upload"
               onPress={() => void pickAndTranscribe()}
@@ -488,7 +733,8 @@ export default function ImportAudioScreen() {
           </>
         ) : (
           <Button
-            label="Wybierz plik audio"
+            label={t('Wybierz plik audio', 'Choose audio file')}
+            disabled={!settingsLoaded || languageSaving}
             variant="primary"
             icon="upload"
             onPress={() => void pickAndTranscribe()}
@@ -504,25 +750,31 @@ export default function ImportAudioScreen() {
         }}
         title={
           pendingResultRef.current
-            ? 'Notatka nie została zapisana'
-            : 'Importowanie trwa'
+            ? t('Notatka nie została zapisana', 'The note was not saved')
+            : t('Importowanie trwa', 'Import in progress')
         }
       >
         <Text style={[styles.sheetCopy, { color: colors.body }]}>
           {pendingResultRef.current
-            ? 'Tekst z pliku jest zachowany na tym ekranie. Ponów zapis, wróć do transkrypcji albo usuń ten import.'
-            : 'Możesz zapisać dotychczas rozpoznany tekst, przerwać import albo kontynuować transkrypcję.'}
+            ? t(
+                'Tekst z pliku jest zachowany na tym ekranie. Ponów zapis, wróć do transkrypcji albo usuń ten import.',
+                'The text from the file is kept on this screen. Retry saving, return to transcription or discard this import.',
+              )
+            : t(
+                'Możesz zapisać dotychczas rozpoznany tekst, przerwać import albo kontynuować transkrypcję.',
+                'You can save the recognized text so far, stop importing or continue transcription.',
+              )}
         </Text>
         {pendingResultRef.current ? (
           <Button
-            label="Ponów zapis notatki"
+            label={t('Ponów zapis notatki', 'Retry saving note')}
             variant="primary"
             icon="refresh"
             onPress={retry}
           />
         ) : (
           <Button
-            label="Zapisz rozpoznany tekst"
+            label={t('Zapisz rozpoznany tekst', 'Save recognized text')}
             variant="primary"
             icon="check"
             onPress={stopAndSaveText}
@@ -530,7 +782,17 @@ export default function ImportAudioScreen() {
           />
         )}
         <Button
-          label="Przerwij import bez zapisywania"
+          label={
+            noteId
+              ? t(
+                  'Przerwij uzupełnianie transkrypcji',
+                  'Cancel transcript completion',
+                )
+              : t(
+                  'Usuń import i jego audio',
+                  'Delete this import and its audio',
+                )
+          }
           variant="danger"
           icon="trash"
           onPress={cancelImport}
@@ -538,7 +800,9 @@ export default function ImportAudioScreen() {
         />
         <Button
           label={
-            pendingResultRef.current ? 'Zostań na ekranie' : 'Kontynuuj import'
+            pendingResultRef.current
+              ? t('Zostań na ekranie', 'Stay on this screen')
+              : t('Kontynuuj import', 'Continue import')
           }
           variant="quiet"
           onPress={() => {
@@ -553,6 +817,7 @@ export default function ImportAudioScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
+  languagePicker: { marginHorizontal: spacing.lg, marginTop: spacing.lg },
   fileRow: {
     minHeight: 88,
     flexDirection: 'row',
