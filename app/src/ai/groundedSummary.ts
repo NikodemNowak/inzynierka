@@ -12,6 +12,7 @@ import {
   summaryRelationPageRequest, parseSummaryRelationPage,
   type SummaryDraft, type SummaryVerification, type SummaryWireRequest, type SummaryCheckTargets, type SummaryCheckPage,
 } from './summaryProtocol';
+import { planSummaryWindows } from './summaryWindowBudget';
 
 export interface GroundedSummaryResult {
   readonly summary: string;
@@ -245,22 +246,9 @@ type Session = ReturnType<typeof createSession>;
 // would not change the protocol payload or its actual tokenizer cost.
 const budgetSummaryWindows = async (
   units: readonly SummarySourceUnit[], language: Language, session: Session,
-): Promise<readonly SummaryWindow[]> => {
-  const windows: SummaryWindow[] = [];
-  let current: SummarySourceUnit[] = [];
-  for (const unit of units) {
-    const proposed = [...current, unit];
-    const fits = await session.fits(summaryDraftRequest(proposed, language), summaryDraftSchema(proposed));
-    if (!fits && current.length) {
-      windows.push({ units: current, firstId: current[0].id, lastId: current[current.length - 1].id });
-      current = [];
-      if (windows.length >= 64 || !(await session.fits(summaryDraftRequest([unit], language), summaryDraftSchema([unit])))) return [];
-    } else if (!fits) return [];
-    current.push(unit);
-  }
-  if (current.length) windows.push({ units: current, firstId: current[0].id, lastId: current[current.length - 1].id });
-  return windows;
-};
+): Promise<readonly SummaryWindow[]> =>
+  planSummaryWindows(units, candidate =>
+    session.fits(summaryDraftRequest(candidate, language), summaryDraftSchema(candidate)));
 
 const requestWithData = (base: PromptRequest, field: string, data: unknown, instruction: string): PromptRequest => ({
   ...base, system: `${base.system}\n${instruction}`,
