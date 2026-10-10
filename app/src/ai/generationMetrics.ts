@@ -13,6 +13,7 @@ import { getLoadedModelInfo, type GenerationResult } from './llm'
 export interface ObservedGeneration {
   phase: string
   inputChars: number
+  sourceChars: number
   result: GenerationResult
 }
 const observers = new Set<(event: ObservedGeneration) => void>()
@@ -63,14 +64,19 @@ export const runtimeMetricMetadata = (
 
 // Measuring must never be able to break generating: a failed write is dropped
 // rather than propagated to the note the user is waiting for.
+// sourceChars is the characters of the ORIGINAL note source embedded in this
+// request. Call sites whose inputChars already is source-derived text omit it,
+// so it defaults to inputChars; call sites whose inputChars is the whole prompt
+// pass the source-derived count explicitly.
 export const recordGeneration = (
   phase: string,
   inputChars: number,
   result: GenerationResult,
+  sourceChars: number = inputChars,
 ): void => {
   for (const observer of observers) {
     try {
-      observer({ phase, inputChars, result })
+      observer({ phase, inputChars, sourceChars, result })
     } catch {
       /* measurement cannot break processing */
     }

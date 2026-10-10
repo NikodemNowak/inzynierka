@@ -141,7 +141,7 @@ test.each([
   expect(result.tags).toEqual(["Nauka"]);
   const phases = jest.mocked(recordGeneration).mock.calls.map(([phase]) => phase);
   expect(phases.slice(0, 3)).toEqual(["source_structure", "tasks", "tags"]);
-  expect(phases.slice(3, -1).every(phase => phase === "summary")).toBe(true);
+  expect(phases.slice(3, -1).every(phase => phase.startsWith("summary-"))).toBe(true);
   expect(phases.at(-1)).toBe("title");
   expect(result.summaryDocument?.source).toBe(source);
   expect(execution.taskEvidenceMemo?.sourceStructure?.result?.ends).toHaveLength(10);

@@ -31,6 +31,7 @@ const incomplete: SummaryDecision = { kind: 'incomplete' };
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value);
 const same = (left: unknown, right: unknown): boolean => JSON.stringify(left) === JSON.stringify(right);
 const ids = (units: readonly SummarySourceUnit[]): readonly number[] => units.map(unit => unit.id);
+const unitChars = (units: readonly SummarySourceUnit[]): number => units.reduce((sum, unit) => sum + unit.text.length, 0);
 const overlaps = (left: { start: number; end: number }, right: { start: number; end: number }): boolean => left.start < right.end && right.start < left.end;
 
 // Task evidence is additional context. Every catalog unit still participates in
@@ -164,7 +165,7 @@ const createSession = (content: string, language: Language, execution: Processin
     assertRuntime();
     return available > 0 ? { ...request, nPredict: Math.min(request.nPredict, available) } : null;
   };
-  const runSummaryRequest = async (request: PromptRequest, schema: Readonly<Record<string, unknown>>): Promise<string | null> => {
+  const runSummaryRequest = async (request: PromptRequest, schema: Readonly<Record<string, unknown>>, phase: string, sourceChars: number): Promise<string | null> => {
     assertRuntime();
     if (calls >= 192 || !(await fits(request, schema))) return null;
     assertRuntime();
@@ -178,7 +179,7 @@ const createSession = (content: string, language: Language, execution: Processin
     const result = await generate(prompt, () => undefined, { system: request.system, jsonSchema: schema,
       temperature: 0.1, nPredict: request.nPredict, signal: execution.signal });
     assertRuntime();
-    recordGeneration('summary', prompt.length, result);
+    recordGeneration(phase, prompt.length, result, sourceChars);
     return isIncompleteGeneration(result) ? null : result.text;
   };
   const binding = { pipeline: PIPELINE_VERSION, source: content, language, sourceUnitPlanIdentity, modelRuntimeIdentity, taskProofIdentity };
@@ -303,7 +304,7 @@ const verify = async (
     const saved = await session.read(`${key}:${index}`);
     let parsed = saved && same(saved.scope, binding) ? parseSummaryVerificationPage(JSON.stringify(saved.verification), units, draft, page.targets) : null;
     if (!parsed) {
-      const raw = await session.runSummaryRequest(page.request, page.schema);
+      const raw = await session.runSummaryRequest(page.request, page.schema, 'summary-verify', unitChars(units));
       parsed = raw === null ? null : parseSummaryVerificationPage(raw, units, draft, page.targets);
       if (!parsed) return null;
       await session.write(`${key}:${index}`, { scope: binding, draft, verification: parsed.verification });
@@ -335,6 +336,8 @@ const checkedDraft = async (
   initial?: SummaryDraft, reconciliation?: SummaryDraft, initialVerification?: SummaryVerification | null, format?: SummaryDraft['format'], groups: readonly (readonly number[])[] = [],
 ): Promise<CheckedDraft | typeof overBudget | null> => {
   const key = `summary:v2:draft:${units[0].id}:${units[units.length - 1].id}`;
+  // The same rendered units are re-sent in both the draft and its repair.
+  const sourceChars = unitChars(units);
   let draft = initial ?? null;
   format = format ?? initial?.format ?? reconciliation?.format;
   const schema = summaryDraftSchema(units, format);
@@ -351,7 +354,7 @@ const checkedDraft = async (
       draft = parseSummaryDraft(JSON.stringify(saved.draft), units);
     if (draft && format && draft.format !== format) draft = null;
     if (!draft) {
-      const raw = await session.runSummaryRequest(fitted, schema);
+      const raw = await session.runSummaryRequest(fitted, schema, 'summary-draft', sourceChars);
       draft = raw === null ? null : parseSummaryDraft(raw, units);
       if (draft && format && draft.format !== format) draft = null;
       if (draft) await session.write(key, { scope: draftBinding, draft, verification: null });
@@ -369,7 +372,7 @@ const checkedDraft = async (
     const repairFormat = format ?? draft?.format;
     const repairSchema = summaryDraftSchema(units, repairFormat);
     const fitted = await session.fitDraft(request, repairSchema);
-    const raw = fitted ? await session.runSummaryRequest(fitted, repairSchema) : null;
+    const raw = fitted ? await session.runSummaryRequest(fitted, repairSchema, 'summary-repair', sourceChars) : null;
     draft = raw === null ? null : parseSummaryDraft(raw, units);
     if (draft && repairFormat && draft.format !== repairFormat) draft = null;
   }
@@ -397,7 +400,7 @@ const discoverRelations = async (
     const saved = await session.read(key);
     let result = saved && same(saved.scope, binding) ? parseSummaryRelationPage(JSON.stringify(saved.relations), units, page.targets, index === 0) : null;
     if (!result) {
-      const raw = await session.runSummaryRequest(page.wire.request, page.wire.schema);
+      const raw = await session.runSummaryRequest(page.wire.request, page.wire.schema, 'summary-relations', unitChars(units));
       result = raw === null ? null : parseSummaryRelationPage(raw, units, page.targets, index === 0);
       if (!result) return null;
       await session.write(key, { scope: binding, relations: result });

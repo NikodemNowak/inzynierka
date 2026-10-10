@@ -1,6 +1,7 @@
 import type { RuntimeMetricMetadata } from '../data/metricsRepository'
 import type { Language } from '../i18n/language'
 import type { BenchmarkArm } from './benchmarkProfiles'
+import type { GenerationPhaseTotal } from './benchmarkPhaseTotals'
 import type { ModelVerification } from './benchmarkModels'
 import type { GenerationCompletion } from './llm'
 import type { NativeSpeechWindowDiagnostics } from '../stt/nativeCapture'
@@ -68,6 +69,9 @@ export interface BenchmarkGeneration {
   outputText?: string
   phase: string
   inputChars: number
+  // Characters of the original note source embedded in this request. Optional
+  // so run files saved before this field still load.
+  sourceChars?: number | null
   ttftMs: number
   wallMs: number
   promptMs: number
@@ -131,6 +135,8 @@ export interface BenchmarkRun {
   draftTokens: number | null
   draftTokensAccepted: number | null
   generations: BenchmarkGeneration[]
+  // Optional so run files saved before per-phase totals still load.
+  generationPhases?: GenerationPhaseTotal[]
   output: {
     title: string
     summary: string

@@ -13,6 +13,7 @@ import {
   unloadModel,
 } from './llm'
 import { observeGenerations, runtimeMetricMetadata } from './generationMetrics'
+import { summarizeGenerationPhases } from './benchmarkPhaseTotals'
 import { processNoteWithLlm } from './noteProcessing'
 import { clearSourcePlanCache } from './sourcePlanCache'
 import { evaluateBenchmarkAudioQuality } from './benchmarkAudioQuality'
@@ -263,11 +264,12 @@ export const runBenchmarkSuite = async (
             let error: string | null = null
             const generations: BenchmarkGeneration[] = []
             const stopObserving = observeGenerations(
-              ({ phase, inputChars, result }) => {
+              ({ phase, inputChars, sourceChars, result }) => {
                 generations.push({
                   outputText: result.text,
                   phase,
                   inputChars,
+                  sourceChars,
                   ttftMs: result.ttftMs,
                   wallMs: result.wallMs,
                   promptMs: result.promptMs,
@@ -473,6 +475,7 @@ export const runBenchmarkSuite = async (
                   )
                 : null,
               generations,
+              generationPhases: summarizeGenerationPhases(generations),
               output,
               error,
               ...(cancellationReason ? { cancellationReason } : {}),

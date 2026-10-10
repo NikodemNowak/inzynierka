@@ -173,6 +173,7 @@ const emit = (): void => {
   mockObserver?.({
     phase: 'summary',
     inputChars: 100,
+    sourceChars: 100,
     result: {
       text: 'Summary',
       ttftMs: 2,
@@ -457,7 +458,19 @@ test('records the pipeline version and raw generation for local failure diagnosi
     warmRepeats: 0,
   })
   expect(run).toMatchObject({ pipelineVersion: 'source-linked-summary-v40' })
-  expect(run.generations[0]).toMatchObject({ outputText: 'Summary' })
+  expect(run.generations[0]).toMatchObject({ outputText: 'Summary', sourceChars: 100 })
+  expect(run.generationPhases).toEqual([
+    {
+      phase: 'summary',
+      calls: 1,
+      wallMs: 50,
+      promptMs: 20,
+      predictedMs: 25,
+      promptTokens: 30,
+      predictedTokens: 20,
+      sourceChars: 100,
+    },
+  ])
 })
 
 test('does not stop a different note generation when this suite is cancelled while queued', async () => {

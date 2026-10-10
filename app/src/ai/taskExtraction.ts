@@ -348,7 +348,15 @@ const reconcileChange = async (
         jsonSchema: relationshipSchema(batch),
         signal: execution?.signal,
       });
-      recordGeneration("task-change", source.length, result);
+      // sourceChars counts the original source quotations embedded in this
+      // reconciliation prompt: the batch evidence quotes plus the change quote.
+      recordGeneration(
+        "task-change",
+        source.length,
+        result,
+        batch.reduce((sum, entry) => sum + entry.quote.length, 0) +
+          change.quote.length,
+      );
       assertRuntime();
       if (result.completion?.interrupted) {
         const error = new Error("Generation interrupted");
