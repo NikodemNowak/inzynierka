@@ -378,11 +378,14 @@ test.each([5, 7])("retains all %s final commitments and exact long source when f
     expect(promptTokens + wire.request.nPredict + 24).toBeGreaterThan(8192);
   }
   const result = await processNoteWithLlm(content, () => undefined, undefined, "en");
-  expect(result.summary).toBe("");
-  expect(result.summaryDocument).toBeNull();
-  expect(result.failedFields).toEqual(["summary"]);
-  expect(result.warnings).toEqual(["A reliable summary could not be created. Your source note has been kept.",
-    "The summary could not be verified. Your complete transcript has been kept."]);
+  // P0-1 long-note fallback: discovery overflow is decided before any relation
+  // model call, so the note continues without cross-window links and every task
+  // commitment is retained. Known limitation: a correction in another window
+  // than its original may stay unlinked; verification still gates publication.
+  expect(result.summary).toBe(tasks.map(quote => `• ${quote}`).join("\n"));
+  expect(result.summaryDocument?.source).toBe(content);
+  expect(result.failedFields).toBeUndefined();
+  expect(result.warnings).toBeUndefined();
   expect(result.title).toBe("Workshop");
   expect(result.tags).toEqual(["Praca"]);
   expect(extractTaskEvidence).toHaveBeenCalledTimes(1);
@@ -391,7 +394,9 @@ test.each([5, 7])("retains all %s final commitments and exact long source when f
   for (const entry of proof.evidence) expect(content.slice(entry.start, entry.end)).toBe(entry.quote);
   tasks.forEach(quote => expect(content).toContain(quote));
   expect(model.mock.calls.some(([prompt]) => prompt.includes("Read ALL source statements"))).toBe(true);
-  expect(model.mock.calls.filter(([, , options]) => nativeSummary(options))).toHaveLength(0);
+  // The fallback never sends a partial relation request or a relation model
+  // call; every discovery probe still measured the complete source.
+  expect(model.mock.calls.some(([prompt]) => prompt.startsWith('{"sourceData"'))).toBe(false);
   const discoveryMeasurements = jest.mocked(measureFormattedPromptTokens).mock.calls.filter(([input]) => input.userPrompt.startsWith('{"sourceData"'));
   expect(discoveryMeasurements.length).toBeGreaterThan(0);
   for (const [input] of discoveryMeasurements) {
@@ -560,9 +565,11 @@ test("restores one current next review when the valid model selection omits its 
   const result = await processNoteWithLlm(content, () => undefined, undefined, "en");
   expect(pathway).toEqual([
     { kind: 'draft', eventPresent: false }, { kind: 'review', eventStatus: 'missing' },
-    { kind: 'repair', eventPresent: true }, { kind: 'review', eventStatus: 'covered' },
+    // P0-4b deterministic completion: the missing essence unit is appended
+    // literally without a repair generation, then the single re-verify runs.
+    { kind: 'review', eventStatus: 'covered' },
   ]);
-  expect(result.summary).toBe("• Community podcast: Maya prepares the first episode outline by Thursday.\n• Daniel: contact the guest speaker by Tuesday.\n• Nora: updated guest list to Maya before Wednesday.\n• Final production budget: 1450 dollars.\n• North studio canceled; use the south studio.\n• Use existing microphones; no new cameras.\n• Editorial review: November 8 at 2 in the afternoon.");
+  expect(result.summary).toBe("• Community podcast: Maya prepares the first episode outline by Thursday.\n• Daniel: contact the guest speaker by Tuesday.\n• Nora: updated guest list to Maya before Wednesday.\n• Final production budget: 1450 dollars.\n• North studio canceled; use the south studio.\n• Use existing microphones; no new cameras.\n• The next editorial review is on November 8 at 2 in the afternoon.");
   expect(result.summaryDocument?.source).toBe(content);
   expect(result.summaryDocument?.points[0].sources.map(range => content.slice(range.start, range.end)))
     .toEqual(['These are planning notes for the community podcast.', tasks[0]]);

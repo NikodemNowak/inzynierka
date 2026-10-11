@@ -265,7 +265,8 @@ describe('schemas and canonical document boundary', () => {
     const supportedIssue = verdict(); supportedIssue.points[0].issues = ['actor'];
     expect(schemaAccepts(schema, supportedIssue)).toBe(false);
     const missing = verdict(); missing.units[0] = { sourceId: 4, status: 'missing', pointIds: [], supersededBy: [] };
-    expect(schemaAccepts(schema, missing)).toBe(true);
+    // P0-4a: unit 4 is cited by point 1, so the grammar no longer offers 'missing' there.
+    expect(schemaAccepts(schema, missing)).toBe(false);
     const uncertain = verdict(); uncertain.points[0] = { pointId: 1, status: 'uncertain', issues: ['actor'] };
     uncertain.units[0] = { sourceId: 4, status: 'uncertain', pointIds: [], supersededBy: [] };
     expect(schemaAccepts(schema, uncertain)).toBe(true);
@@ -462,4 +463,108 @@ test.each([undefined, 'bullets', 'paragraph', 'grouped'] as const)('fix1 I1 keep
   const long = { format: selectedFormat, points: [{ text: 'x'.repeat(1_048_576), sourceIds: [4], ...(selectedFormat === 'grouped' ? { group: 'Topic' } : {}) }] };
   expect(schemaAccepts(schema, long)).toBe(true);
   expect(parseSummaryDraft(JSON.stringify(long), units)).toBeNull(); // Raw transport cap remains the guard.
+});
+
+describe('P0 relation and verification grammar caps', () => {
+  // Deterministic characters-to-token approximation, the same formula the
+  // paging integration tests use: ceil((system + prompt) / 3) + 12.
+  const approximatePromptTokens = (wire: protocol.SummaryWireRequest): number =>
+    Math.ceil((wire.request.system.length + wire.request.prompt('').length) / 3) + 12;
+  const branchProperties = (branch: Readonly<Record<string, unknown>>): Record<string, Record<string, unknown>> =>
+    branch.properties as Record<string, Record<string, unknown>>;
+  const unitRowItems = (schema: Readonly<Record<string, unknown>>): readonly { readonly anyOf: readonly Readonly<Record<string, unknown>>[] }[] =>
+    (((schema.properties as Record<string, Record<string, unknown>>).units) as { items: readonly { anyOf: readonly Readonly<Record<string, unknown>>[] }[] }).items;
+  const supersededByOf = (row: { readonly anyOf: readonly Readonly<Record<string, unknown>>[] }): Readonly<Record<string, unknown>> =>
+    branchProperties(row.anyOf.find(branch => branchProperties(branch).status.const === 'superseded')!).supersededBy;
+  const statusEnumOf = (row: { readonly anyOf: readonly Readonly<Record<string, unknown>>[] }): readonly string[] => {
+    const status = row.anyOf.map(branch => branchProperties(branch).status).find(candidate => Array.isArray(candidate.enum))!;
+    return status.enum as readonly string[];
+  };
+
+  test('P0-1 caps relatedEarlier so a 95-unit late-target relation page fits the 8192 budget', () => {
+    const count = 95;
+    const lateUnits: readonly SummarySourceUnit[] = Array.from({ length: count }, (_, index) => ({
+      id: index + 1, start: index * 100, end: index * 100 + 84,
+      text: `Workshop archive item ${index + 1} recorded during the review meeting for later reference.`,
+    }));
+    const wire = protocol.summaryRelationPageRequest(lateUnits, [count], 'en', true);
+    const rows = (wire.schema.properties as Record<string, Record<string, unknown>>).rows;
+    const rowItems = rows.items as readonly Readonly<Record<string, unknown>>[];
+    const relatedEarlier = (rowItems[0].properties as Record<string, Record<string, unknown>>).relatedEarlier;
+    expect(relatedEarlier.maxItems).toBe(8);
+    const refs = (relatedEarlier.items as Readonly<Record<string, unknown>>).enum as readonly string[];
+    expect(refs).toHaveLength(count - 1); // The enum still names every earlier source.
+    const promptTokens = approximatePromptTokens(wire);
+    expect(wire.maxWireBytes).not.toBeNull();
+    expect(promptTokens + wire.maxWireBytes! + 24).toBeLessThanOrEqual(8192);
+    // Guard the regression: without the cap the same page cannot fit. The wire
+    // byte formula is linear in maxItems, so the uncapped reserve adds one item
+    // plus one separator for every entry the cap removed.
+    const itemBytes = Math.max(...refs.map(ref => JSON.stringify(ref).length + 22));
+    const uncappedExtra = (count - 1 - 8) * (itemBytes + 23);
+    expect(promptTokens + wire.maxWireBytes! + uncappedExtra + 24).toBeGreaterThan(8192);
+  });
+
+  test('P0-2 caps supersededBy at 8 while the parser stays permissive and closure survives', () => {
+    const count = 10;
+    const chainUnits: readonly SummarySourceUnit[] = Array.from({ length: count }, (_, index) => ({
+      id: index + 1, start: index * 10, end: index * 10 + 5, text: 'Fact.',
+    }));
+    const chainDraft: SummaryDraft = { format: 'bullets', points: [{ text: 'Final fact.', sourceIds: [1, count] }] };
+    const schema = summaryVerificationSchema(chainUnits, chainDraft);
+    const unitRows = unitRowItems(schema);
+    expect(supersededByOf(unitRows[0]).maxItems).toBe(8); // 9 later units, capped.
+    expect(supersededByOf(unitRows[0]).items).toEqual({ type: 'integer', enum: [2, 3, 4, 5, 6, 7, 8, 9, 10] });
+    expect(supersededByOf(unitRows[2]).maxItems).toBe(7); // Existing call sites keep the default below 8.
+    const chainVerdict = (firstCorrections: readonly number[]) => ({
+      points: [{ pointId: 1, status: 'supported', issues: [] as string[] }],
+      units: chainUnits.map((unit, index) => ({
+        sourceId: unit.id,
+        status: index === count - 1 ? 'covered' : 'superseded',
+        pointIds: index === count - 1 ? [1] : ([] as number[]),
+        supersededBy: index === count - 1 ? ([] as number[]) : index === 0 ? [...firstCorrections] : [count],
+      })),
+    });
+    const eight = chainVerdict([2, 3, 4, 5, 6, 7, 8, 9]);
+    const nine = chainVerdict([2, 3, 4, 5, 6, 7, 8, 9, 10]);
+    expect(schemaAccepts(schema, eight)).toBe(true);
+    expect(schemaAccepts(schema, nine)).toBe(false); // Grammar cap only.
+    expect(protocol.parseSummaryVerification(JSON.stringify(eight), chainUnits, chainDraft)).not.toBeNull();
+    // parseVerification stays permissive; closure walks a 9-entry list without crashing.
+    expect(protocol.parseSummaryVerification(JSON.stringify(nine), chainUnits, chainDraft)).not.toBeNull();
+    const duplicated = chainVerdict([2, 2, 3, 4, 5, 6, 7, 8]);
+    expect(schemaAccepts(schema, duplicated)).toBe(false); // uniqueItems
+    expect(protocol.parseSummaryVerification(JSON.stringify(duplicated), chainUnits, chainDraft)).toBeNull(); // idList uniqueness
+    const stale: SummaryDraft = { format: 'bullets', points: [{ text: 'Obsolete fact.', sourceIds: [1] }] };
+    expect(protocol.parseSummaryVerification(JSON.stringify(eight), chainUnits, stale)).toBeNull(); // Closure rejects resurrecting the chain.
+  });
+
+  test('P0-4a cited units cannot be missing while uncited rows keep all three statuses', () => {
+    const context: readonly SummarySourceUnit[] = [
+      { id: 1, start: 0, end: 5, text: 'Cited.' },
+      { id: 2, start: 6, end: 11, text: 'Spare.' },
+      { id: 3, start: 12, end: 17, text: 'Extra.' },
+    ];
+    const citedDraft: SummaryDraft = { format: 'bullets', points: [{ text: 'Cited fact.', sourceIds: [1] }] };
+    const schema = summaryVerificationSchema(context, citedDraft);
+    const unitRows = unitRowItems(schema);
+    expect(statusEnumOf(unitRows[0])).toEqual(['context', 'uncertain']);
+    expect(statusEnumOf(unitRows[1])).toEqual(['context', 'missing', 'uncertain']);
+    const unitRow = (sourceId: number, status: string, pointIds: readonly number[] = []) =>
+      ({ sourceId, status, pointIds, supersededBy: [] as number[] });
+    const verdictWith = (index: number, row: ReturnType<typeof unitRow>) => {
+      const units = [unitRow(1, 'context'), unitRow(2, 'context'), unitRow(3, 'context')];
+      units[index] = row;
+      return { points: [{ pointId: 1, status: 'supported', issues: [] as string[] }], units };
+    };
+    expect(schemaAccepts(schema, verdictWith(0, unitRow(1, 'missing')))).toBe(false);
+    expect(schemaAccepts(schema, verdictWith(0, unitRow(1, 'context')))).toBe(true);
+    expect(schemaAccepts(schema, verdictWith(0, unitRow(1, 'uncertain')))).toBe(true);
+    expect(schemaAccepts(schema, verdictWith(0, unitRow(1, 'covered', [1])))).toBe(true);
+    for (const status of ['context', 'missing', 'uncertain']) {
+      expect(schemaAccepts(schema, verdictWith(1, unitRow(2, status)))).toBe(true);
+    }
+    // The parser remains permissive (grammar-level guard only).
+    expect(protocol.parseSummaryVerification(JSON.stringify(verdictWith(0, unitRow(1, 'missing'))), context, citedDraft)).not.toBeNull();
+  });
 });

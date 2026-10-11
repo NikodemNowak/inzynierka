@@ -167,8 +167,10 @@ const objectSchema = (properties: Readonly<Record<string, unknown>>, required = 
   ({ type: 'object', properties, required, additionalProperties: false });
 const idSchema = (ids: readonly number[]): Readonly<Record<string, unknown>> =>
   ids.length ? { type: 'integer', enum: ids } : { type: 'integer', minimum: 1 };
-const idsSchema = (ids: readonly number[], minItems = 0): Readonly<Record<string, unknown>> =>
-  ({ type: 'array', items: idSchema(ids), uniqueItems: true, minItems: ids.length ? minItems : 0, maxItems: ids.length });
+// The optional maxItems cap bounds list transport without shrinking the enum:
+// the model may still name any allowed ID, just not list more than the cap.
+const idsSchema = (ids: readonly number[], minItems = 0, maxItems = ids.length): Readonly<Record<string, unknown>> =>
+  ({ type: 'array', items: idSchema(ids), uniqueItems: true, minItems: ids.length ? minItems : 0, maxItems: Math.min(ids.length, maxItems) });
 
 // llama.rn 0.12.3's converter handles anyOf before object properties. Each
 // branch must therefore contain the complete object, not sibling constraints.
@@ -215,10 +217,15 @@ export const summaryVerificationSchema = (
           sourceId: { const: unit.id }, status: { const: 'covered' },
           pointIds: idsSchema(links[index].citingPointIds, 1), supersededBy: idsSchema([]),
         })] : []),
-        objectSchema({ sourceId: { const: unit.id }, status: { type: 'string', enum: ['context', 'missing', 'uncertain'] },
+        // A unit cited by a draft point is judged through that point's verdict;
+        // offering 'missing' here produced false missing evidence (phone run 346).
+        // Uncited rows keep all three statuses.
+        objectSchema({ sourceId: { const: unit.id },
+          status: { type: 'string', enum: links[index].citingPointIds.length ? ['context', 'uncertain'] : ['context', 'missing', 'uncertain'] },
           pointIds: idsSchema([]), supersededBy: idsSchema([]) }),
+        // At most 8 listed corrections per row; the enum still names every later source.
         ...(laterIds.length ? [objectSchema({ sourceId: { const: unit.id }, status: { const: 'superseded' },
-          pointIds: idsSchema([]), supersededBy: idsSchema(laterIds, 1) })] : []),
+          pointIds: idsSchema([]), supersededBy: idsSchema(laterIds, 1, 8) })] : []),
       ] }];
     })),
   });
@@ -349,7 +356,9 @@ export const summaryRelationPageRequest = (
     rows: tupleSchema(targetIds.map(id => {
       const unit = units.find(candidate => candidate.id === id)!;
       const earlier = units.filter(candidate => candidate.start < unit.start).map(candidate => sourceRef(candidate.id));
-      return objectSchema({ source: { const: sourceRef(id) }, relatedEarlier: { type: 'array', maxItems: earlier.length,
+      // finiteWireBytes multiplies maxItems, so capping the list keeps each row
+      // reserve constant instead of O(N). The enum keeps every earlier ref.
+      return objectSchema({ source: { const: sourceRef(id) }, relatedEarlier: { type: 'array', maxItems: Math.min(earlier.length, 8),
         items: earlier.length ? { type: 'string', enum: earlier } : { type: 'string' }, uniqueItems: true }, unresolved: { type: 'boolean' } });
     })),
   });

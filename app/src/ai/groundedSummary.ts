@@ -2,6 +2,7 @@ import { renderSummaryDocument, type SummaryDocument } from '../domain/summary';
 import type { Language } from '../i18n/language';
 import { generate, getContextWindowSize, getLoadedModelInfo, measureFormattedPromptTokens } from './llm';
 import { recordGeneration } from './generationMetrics';
+import { essenceUnitIds, type EssenceCategory } from './essenceAudit';
 import { PIPELINE_VERSION, sourceExecutionView, throwIfProcessingAborted, type FinalTaskEvidence, type ProcessingExecutionContext } from './processingContext';
 import { isIncompleteGeneration, type PromptRequest } from './sourcePipeline';
 import { hasUnsupportedRequiredTaskContext, validateSourceUnitPlan } from './sourceUnits';
@@ -259,18 +260,35 @@ const requestWithData = (base: PromptRequest, field: string, data: unknown, inst
 interface PlannedCheckPage extends SummaryWireRequest { readonly targets: SummaryCheckTargets; readonly promptTokens: number }
 
 // Split only response rows. Each candidate keeps the full, identical context.
+// P0-3 (PLAN-POPRAWY-v40-2026-10-11): fill each page greedily with the largest
+// fitting prefix of the remaining rows, probed by binary search over the prefix
+// length, so every row appears exactly once and in order. The mandatory
+// single-row probe keeps today's fail-closed result when one row cannot fit.
 const planPages = async <T>(targets: readonly T[], build: (part: readonly T[], first: boolean) => SummaryWireRequest, session: Session): Promise<readonly { wire: SummaryWireRequest; targets: readonly T[]; promptTokens: number }[] | null> => {
-  const pending = [targets];
   const pages: { wire: SummaryWireRequest; targets: readonly T[]; promptTokens: number }[] = [];
-  while (pending.length) {
-    const part = pending.shift()!;
-    const wire = build(part, pages.length === 0);
-    const promptTokens = await session.measure(wire.request, wire.schema);
+  let remaining: readonly T[] = targets;
+  while (remaining.length) {
+    const first = pages.length === 0;
+    const single = build(remaining.slice(0, 1), first);
+    const singleTokens = await session.measure(single.request, single.schema);
     session.assertRuntime();
-    if (promptTokens + wire.request.nPredict + 24 <= getContextWindowSize()) { pages.push({ wire, targets: part, promptTokens }); continue; }
-    if (part.length <= 1) return null;
-    const middle = Math.ceil(part.length / 2);
-    pending.unshift(part.slice(0, middle), part.slice(middle));
+    if (singleTokens + single.request.nPredict + 24 > getContextWindowSize()) return null;
+    let bestLength = 1;
+    let bestWire = single;
+    let bestTokens = singleTokens;
+    let low = 2;
+    let high = remaining.length;
+    while (low <= high) {
+      const middle = Math.floor((low + high) / 2);
+      const wire = build(remaining.slice(0, middle), first);
+      const promptTokens = await session.measure(wire.request, wire.schema);
+      session.assertRuntime();
+      if (promptTokens + wire.request.nPredict + 24 <= getContextWindowSize()) {
+        bestLength = middle; bestWire = wire; bestTokens = promptTokens; low = middle + 1;
+      } else high = middle - 1;
+    }
+    pages.push({ wire: bestWire, targets: remaining.slice(0, bestLength), promptTokens: bestTokens });
+    remaining = remaining.slice(bestLength);
   }
   return pages;
 };
@@ -331,6 +349,20 @@ const literalRepair = (
   return { format: draft.format, points: points.map(point => ({ text: point!.text, sourceIds: point!.sourceIds })) };
 };
 
+// P0-4b (PLAN-POPRAWY-v40-2026-10-11): Polish group labels for deterministic
+// essence completion in grouped drafts.
+const essenceCategoryGroups: Readonly<Record<EssenceCategory, string>> = {
+  decision: 'Ustalenia', task: 'Zadania', 'amount-date': 'Kwoty i daty', correction: 'Poprawki', availability: 'Dostępność',
+};
+
+// Per-unit guard for literal completion: never resurrect a unit that a task
+// correction superseded, a review flagged, or whose task context is unsupported.
+// literalRepair keeps its whole-scope refusal for the rejected-points path.
+const guardedEssenceUnit = (unit: SummarySourceUnit, taskProof?: FinalTaskEvidence): boolean =>
+  hasUnsupportedRequiredTaskContext(unit.text) ||
+  (taskProof?.superseded.some(pair => overlaps(unit, pair.earlier) || overlaps(unit, pair.later)) ?? false) ||
+  (taskProof?.reviewSpans?.some(span => overlaps(unit, span)) ?? false);
+
 const checkedDraft = async (
   units: readonly SummarySourceUnit[], language: Language, session: Session, taskProof?: FinalTaskEvidence,
   initial?: SummaryDraft, reconciliation?: SummaryDraft, initialVerification?: SummaryVerification | null, format?: SummaryDraft['format'], groups: readonly (readonly number[])[] = [],
@@ -364,17 +396,54 @@ const checkedDraft = async (
   if (verification === overBudget) return overBudget;
   if (draft && verification && isCompleteSummaryVerification(verification, draft)) return { draft, verification };
   if (!(await session.consumeRepair())) return null;
-  const literal = draft ? literalRepair(units, draft, verification, taskProof) : null;
-  if (literal) draft = literal;
-  else {
-    const request = requestWithData(summaryDraftRequest(units, language), 'repairData', { draft, verification },
+  // P0-4b: verification units with status missing|uncertain that carry an
+  // essence signal are completed or repaired explicitly. Units outside the
+  // essence set still block acceptance through the unchanged gate below.
+  const essence = essenceUnitIds(units, taskProof);
+  const required = draft && verification ? verification.units.filter(unit =>
+    (unit.status === 'missing' || unit.status === 'uncertain') && essence.has(unit.sourceId)) : [];
+  const allPointsSupported = verification !== null && verification.points.every(point => point.status === 'supported');
+  const noRejectedRiskIssues = verification !== null && verification.points.every(point => point.status === 'supported' ||
+    !point.issues.some(issue => issue === 'correction' || issue === 'condition' || issue === 'uncertainty'));
+  const generateRepair = async (requiredUnits: readonly { readonly id: number; readonly text: string }[] | null): Promise<SummaryDraft | null> => {
+    let request = requestWithData(summaryDraftRequest(units, language), 'repairData', { draft, verification },
       'Repair this invalid or incomplete draft against ALL supplied original sources. Correct meaning and missing distinct facts. Return the complete corrected draft, not a patch.');
+    if (requiredUnits) request = requestWithData(request, 'requiredUnitsData', requiredUnits,
+      'Te jednostki muszą być obecne w co najmniej jednym punkcie. Połącz je z istniejącym punktem albo dodaj krótki nowy. Zwróć cały poprawiony szkic, nie łatkę.');
     const repairFormat = format ?? draft?.format;
     const repairSchema = summaryDraftSchema(units, repairFormat);
     const fitted = await session.fitDraft(request, repairSchema);
     const raw = fitted ? await session.runSummaryRequest(fitted, repairSchema, 'summary-repair', sourceChars) : null;
-    draft = raw === null ? null : parseSummaryDraft(raw, units);
-    if (draft && repairFormat && draft.format !== repairFormat) draft = null;
+    const repaired = raw === null ? null : parseSummaryDraft(raw, units);
+    return repaired && (!repairFormat || repaired.format === repairFormat) ? repaired : null;
+  };
+  if (!required.length) {
+    const literal = draft ? literalRepair(units, draft, verification, taskProof) : null;
+    if (literal) draft = literal;
+    else draft = await generateRepair(null);
+  } else if (draft && allPointsSupported && noRejectedRiskIssues) {
+    // Deterministic literal completion without a model call: append every
+    // unguarded required unit as its own anchored point. The single re-verify
+    // below and the unchanged gate still decide acceptance.
+    const completionFormat = draft.format;
+    const byId = new Map(units.map(unit => [unit.id, unit]));
+    const completion = required.flatMap(unit => {
+      const source = byId.get(unit.sourceId);
+      if (!source || guardedEssenceUnit(source, taskProof)) return [];
+      const category = essence.get(source.id);
+      return [{ text: source.text, sourceIds: [source.id],
+        ...(completionFormat === 'grouped' && category ? { group: essenceCategoryGroups[category] } : {}) }];
+    });
+    draft = { format: completionFormat, points: [...draft.points, ...completion] };
+  } else {
+    // Rejected points or guarded risk issues require a generative repair that
+    // names the required essence units explicitly.
+    const byId = new Map(units.map(unit => [unit.id, unit]));
+    const requiredUnitsData = required.flatMap(unit => {
+      const source = byId.get(unit.sourceId);
+      return source ? [{ id: source.id, text: source.text }] : [];
+    });
+    draft = await generateRepair(requiredUnitsData);
   }
   if (!draft) return null;
   await session.write(key, { scope: draftBinding, draft, verification: null });
@@ -385,11 +454,19 @@ const checkedDraft = async (
   return { draft, verification };
 };
 
+// P0-1 (PLAN-POPRAWY-v40-2026-10-11): planning overflow is decided before any
+// model call and permits the documented bullets fallback; a model or parse
+// failure keeps the established fail-closed result.
+type RelationsDiscovery =
+  | { readonly kind: 'ok'; readonly groups: readonly (readonly number[])[]; readonly format: SummaryDraft['format'] }
+  | { readonly kind: 'over-budget' }
+  | { readonly kind: 'failed' };
+
 const discoverRelations = async (
   units: readonly SummarySourceUnit[], language: Language, session: Session,
-): Promise<{ groups: readonly (readonly number[])[]; format: SummaryDraft['format'] } | null> => {
+): Promise<RelationsDiscovery> => {
   const plan = await planPages(ids(units), (targets, first) => summaryRelationPageRequest(units, targets, language, first), session);
-  if (!plan) return null;
+  if (!plan) return { kind: 'over-budget' };
   const binding = { units, plan: plan.map(page => ({ ...wireBinding(page.wire), promptTokens: page.promptTokens })) };
   await session.write('summary:v2:relations:plan', { scope: binding });
   const groups: number[][] = [];
@@ -402,14 +479,14 @@ const discoverRelations = async (
     if (!result) {
       const raw = await session.runSummaryRequest(page.wire.request, page.wire.schema, 'summary-relations', unitChars(units));
       result = raw === null ? null : parseSummaryRelationPage(raw, units, page.targets, index === 0);
-      if (!result) return null;
+      if (!result) return { kind: 'failed' };
       await session.write(key, { scope: binding, relations: result });
     }
-    if (result.rows.some(row => row.unresolved)) return null;
+    if (result.rows.some(row => row.unresolved)) return { kind: 'failed' };
     if (index === 0) format = result.format;
     for (const row of result.rows) if (row.relatedEarlier.length) groups.push([Number(row.source.slice(1)), ...row.relatedEarlier.map(ref => Number(ref.slice(1)))]);
   }
-  return format ? { groups, format } : null;
+  return format ? { kind: 'ok', groups, format } : { kind: 'failed' };
 };
 const correctionGroups = (verification: SummaryVerification): readonly (readonly number[])[] =>
   verification.units.filter(unit => unit.supersededBy.length).map(unit => [unit.sourceId, ...unit.supersededBy]);
@@ -455,8 +532,14 @@ const generateAndCheckSummary = async (
   let groups: readonly (readonly number[])[] = [];
   if (windows.length > 1) {
     const relations = await discoverRelations(units, language, session);
-    if (!relations) return incomplete;
-    groups = relations.groups; format = relations.format;
+    if (relations.kind === 'failed') return incomplete;
+    // P0-1 fallback (PLAN-POPRAWY-v40-2026-10-11): relation planning still
+    // overflows the context, so this long note continues without cross-window
+    // links and with forced bullets. Known limitation: a correction that lives
+    // in a different window than its original stays unlinked. The final audit
+    // still enforces consistency, and the result is never silently published.
+    if (relations.kind === 'over-budget') { groups = []; format = 'bullets'; }
+    else { groups = relations.groups; format = relations.format; }
   }
   const local: CheckedDraft[] = [];
   const processed = windows;

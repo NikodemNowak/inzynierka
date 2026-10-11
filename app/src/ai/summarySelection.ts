@@ -256,7 +256,7 @@ const contentWords = (text: string): Set<string> => {
 // These cues only identify explicit lexical changes. They are not an entailment
 // test: indirect changes, pronouns and meaning expressed with other vocabulary
 // can still be missed. Preserve the entire later statement, never rewrite it.
-const isExplicitChange = (text: string): boolean =>
+export const isExplicitChange = (text: string): boolean =>
   /(?:zastępu|zastapi|zastąpi|anulowan|odwołan|odwol|zamiast|korygu|korekt|zmian|\bjednak\b|\bostateczn|\bkońcow|\bfinal\b|replac|cancel|correct|\binstead\b|\bactually\b)/iu.test(
     text,
   );
@@ -264,7 +264,7 @@ const isExplicitChange = (text: string): boolean =>
 // Only a literal repeated clause is reconciled here, including the same subject.
 // "Alice will send ..." -> "Alice will not send ..." is bounded and observable;
 // pronouns, inflection changes and indirect cancellations remain model choices.
-const negatesLiteralClause = (later: string, earlier: string): boolean => {
+export const negatesLiteralClause = (later: string, earlier: string): boolean => {
   const words = (text: string): string[] =>
     text.toLocaleLowerCase().match(/\p{L}+|\d+/gu) ?? [];
   const laterWords = words(later);
@@ -360,7 +360,7 @@ const finalScalarSubject = (text: string): boolean => {
     (terms.length === 2 && SCALAR_HEADS.has(terms[0]) && finalCue.test(terms[1]));
 };
 
-const scalarFact = (text: string): ScalarFact | null => {
+export const scalarFact = (text: string): ScalarFact | null => {
   if (text.trim().endsWith("?")) return null;
   const correction = /^(?:correction|korekta)\s*[:,]/iu.test(text.trim());
   // ASR can omit punctuation after the spoken correction cue. Recognize that
@@ -386,7 +386,7 @@ const sameWords = (left: readonly string[], right: readonly string[]): boolean =
 const includesWords = (full: readonly string[], part: readonly string[]): boolean =>
   part.length > 0 && full.some((_, start) => sameWords(full.slice(start, start + part.length), part));
 
-const replacedScalar = (text: string): ScalarFact | null => {
+export const replacedScalar = (text: string): ScalarFact | null => {
   if (text.trim().endsWith("?")) return null;
   const match = text.match(/^(.*?)\s+(?:replaces|zastępuje)\s+(?:the\s+)?(?:earlier\s+|previous\s+|original\s+|wcześniejszy\s+|poprzedni\s+)?(.+?)\s*[.!]?$/iu);
   if (!match) return null;
@@ -619,7 +619,7 @@ const reviewSentences = (entry: SourceReviewSpan, content: string, all: readonly
 // This only ranks source sentences the model already selected. Literal dates
 // and closed correction statements reserve a slot before optional context;
 // it neither discovers new facts nor authorizes any source deletion.
-const hasExplicitDate = (text: string): boolean => {
+export const hasExplicitDate = (text: string): boolean => {
   if (/\b(?:\d{4}-\d{2}-\d{2}|\d{1,2}[./]\d{1,2}(?:[./]\d{4})?|\d{1,2}:\d{2})\b/u.test(text)) return true;
   const dated = (phrase: string): boolean => [...sourceSpecifics(phrase)].some((value) => /\p{L}/u.test(value));
   for (const match of text.matchAll(/(?:^|[^\p{L}])(?:on|by|before|until|at|w|we|do|przed|o)\s+((?:(?:next|this)\s+)?[\p{L}\d]+(?:\s+[\p{L}\d]+)?)/giu))
@@ -677,7 +677,7 @@ const directClosedCurrentMonetaryCorrection = (text: string): boolean => {
 
 // Visibility only for an already selected closed current Polish correction.
 // The cue never authorizes deletion or a new scalar replacement relationship.
-const selectedPolishScalarCorrection = (text: string): boolean => {
+export const selectedPolishScalarCorrection = (text: string): boolean => {
   const statement = text.trim().match(/^poprawka\s*[:,]?\s+(.+)$/iu)?.[1];
   if (!statement || hasUnsupportedRequiredTaskContext(text) ||
       /(?:^|[^\p{L}])(?:nie|nigdy|dawn\p{L}*|wcześniejsz\p{L}*|poprzedn\p{L}*|zeszłoroczn\p{L}*|historyczn\p{L}*)(?!\p{L})/iu.test(statement) ||
@@ -686,7 +686,7 @@ const selectedPolishScalarCorrection = (text: string): boolean => {
   return !!fact && fact.subject.filter((word) => SCALAR_HEADS.has(word)).length === 1;
 };
 
-const importantSelectedFact = (sentence: SourceSentence): boolean =>
+export const importantSelectedFact = (sentence: SourceSentence): boolean =>
   hasExplicitDate(sentence.text) || scalarFact(sentence.text)?.corrective === true || selectedPolishScalarCorrection(sentence.text) || joinedSelectedScalarCorrection(sentence.text) || replacedScalar(sentence.text) !== null || selectedMonetaryReplacement(sentence.text) ||
   /(?:^|[^\p{L}])(?:cancelled|canceled|anulowan\p{L}*|odwołan\p{L}*)(?!\p{L})/iu.test(sentence.text);
 

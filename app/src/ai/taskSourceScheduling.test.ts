@@ -132,7 +132,9 @@ test("settles literal task recovery before independently grounded summary and so
   const { execution, saved } = checkpointExecution();
   installPlan(undefined, execution);
   const result = await processNoteWithLlm(content, () => undefined, undefined, "en", execution);
-  expect(stages).toEqual(["tasks", "retry", "summary", "verification", "verification", "verification", "verification", "title", "tags"]);
+  // P0-3 greedy paging: the same verifier targets now fit three pages instead
+  // of four; the summary itself and every downstream field stay unchanged.
+  expect(stages).toEqual(["tasks", "retry", "summary", "verification", "verification", "verification", "title", "tags"]);
   expect(model.mock.calls[0][0]).toContain("\nSOURCE_START\n" + statements.map((text, index) => `[${index + 1}] ${text}`).join("\n") + "\nSOURCE_END");
   const proof = await cachedTaskProof(execution);
   expect(saved.has(`tasks:0:${content.length}`)).toBe(true);
@@ -144,10 +146,10 @@ test("settles literal task recovery before independently grounded summary and so
   // The uncertainty is represented explicitly, so a faithful checked summary
   // can succeed while its independent task proof still carries that warning.
   expect(result.failedFields).toBeUndefined();
-  expect(stages).toHaveLength(9);
+  expect(stages).toHaveLength(8);
   expect(model.mock.calls[2][0]).not.toContain("FIELD_TASK_START");
   expect(model.mock.calls[3][2]?.jsonSchema).toHaveProperty("properties.units");
-  const category = model.mock.calls[8];
+  const category = model.mock.calls[7];
   expect(category[0]).toContain(statements[2]);
   expect(category[2]?.jsonSchema).toMatchObject({ required: ["purposeId", "category"], properties: { purposeId: { enum: statements.map((_, index) => index + 1) } } });
   const correction = model.mock.calls[1];

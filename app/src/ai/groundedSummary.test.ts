@@ -70,7 +70,12 @@ test('keeps distinct facts including the final negative and exact original range
   expect(model).toHaveBeenCalledTimes(2);
 });
 
-test('repairs a missing non-task fact once and independently rechecks it', async () => {
+test('repairs a missing non-essence fact once and independently rechecks it', async () => {
+  const content = 'W poniedziałek pokażę aplikację. Potem opowiem o projekcie.';
+  const full: SummaryDraft = { format: 'bullets', points: [
+    { text: 'Poniedziałek: pokaz aplikacji.', sourceIds: [1] },
+    { text: 'Potem: opowieść o projekcie.', sourceIds: [2] },
+  ] };
   let repaired = false;
   model.mockImplementation(async (prompt, _onToken, options) => {
     const payload = JSON.parse(prompt) as Payload;
@@ -83,10 +88,107 @@ test('repairs a missing non-task fact once and independently rechecks it', async
       expect(repaired).toBe(true);
       return generated(supported(payload));
     }
-    if (payload.repairData) { repaired = true; return generated(completeDraft); }
-    return generated({ ...completeDraft, points: completeDraft.points.slice(0, 1) });
+    if (payload.repairData) { repaired = true; return generated(full); }
+    return generated({ ...full, points: full.points.slice(0, 1) });
   });
-  expect(await generateGroundedSummary(source, 'pl')).toMatchObject({ incomplete: false, summary: expect.stringContaining('brak zajęć') });
+  expect(await generateGroundedSummary(content, 'pl')).toMatchObject({ incomplete: false, summary: expect.stringContaining('opowieść o projekcie') });
+});
+
+test('P0-4b completes a missing essence unit literally without a repair generation', async () => {
+  model.mockImplementation(async (prompt, _onToken, options) => {
+    const payload = JSON.parse(prompt) as Payload;
+    if ('units' in ((options!.jsonSchema!.properties ?? {}) as object)) {
+      if (payload.draftData!.points.length === 1) return generated({
+        points: [{ pointId: 1, status: 'supported', issues: [] }],
+        units: [{ sourceId: 1, status: 'covered', pointIds: [1], supersededBy: [] },
+          { sourceId: 2, status: 'missing', pointIds: [], supersededBy: [] }],
+      });
+      return generated(supported(payload));
+    }
+    return generated({ format: 'bullets', points: [{ text: 'Poniedziałek: pokaz aplikacji.', sourceIds: [1] }] });
+  });
+  const result = await generateGroundedSummary(source, 'pl');
+  expect(result).toMatchObject({ incomplete: false });
+  expect(result.summary).toContain('W piątek nie mam zajęć.');
+  expect(result.summaryDocument?.points.map(point => point.text)).toEqual(['Poniedziałek: pokaz aplikacji.', 'W piątek nie mam zajęć.']);
+  // Deterministic completion: draft, first verify, single re-verify. No repair
+  // generation was needed because the appended point is the literal source unit.
+  expect(model).toHaveBeenCalledTimes(3);
+  expect(model.mock.calls.some(([prompt]) => Boolean((JSON.parse(prompt) as Payload).repairData))).toBe(false);
+});
+
+test.each(['superseded', 'reviewSpans'] as const)('P0-4b leaves a %s-guarded essence unit incomplete instead of resurrecting it', async guard => {
+  const content = 'The original budget was 900 dollars. Correction: the final budget is 1450 dollars.';
+  const earlier = 'The original budget was 900 dollars.';
+  const later = 'Correction: the final budget is 1450 dollars.';
+  const laterStart = content.indexOf(later);
+  const proof: FinalTaskEvidence = {
+    tasks: [], evidence: [], warnings: [],
+    superseded: guard === 'superseded' ? [{
+      earlier: { id: 'old', start: 0, end: earlier.length, quote: earlier, kind: 'cancelled', importance: 2 },
+      later: { id: 'new', start: laterStart, end: laterStart + later.length, quote: later, kind: 'fact', importance: 2 },
+    }] : [],
+    ...(guard === 'reviewSpans' ? { reviewSpans: [{ start: laterStart, end: laterStart + later.length, quote: later, reason: 'Unresolved correction' }] } : {}),
+  };
+  model.mockImplementation(async (_prompt, _onToken, options) => {
+    if ('units' in ((options!.jsonSchema!.properties ?? {}) as object)) return generated({
+      points: [{ pointId: 1, status: 'supported', issues: [] }],
+      units: [{ sourceId: 1, status: 'covered', pointIds: [1], supersededBy: [] },
+        { sourceId: 2, status: 'missing', pointIds: [], supersededBy: [] }],
+    });
+    return generated({ format: 'bullets', points: [{ text: 'Original budget: 900 dollars.', sourceIds: [1] }] });
+  });
+  const result = await generateGroundedSummary(content, 'en', undefined, proof);
+  expect(result).toMatchObject({ incomplete: true, summaryDocument: null });
+  expect(result.summary).toBe('');
+  // Draft plus one verification; the guarded unit was never appended, so the
+  // unchanged draft reuses its cached verdict and no repair generation ran.
+  expect(model).toHaveBeenCalledTimes(2);
+});
+
+test('P0-4b does not append missing non-essence small talk and stays fail-closed', async () => {
+  const content = 'Raport jest gotowy. Kawa była dobra.';
+  const single: SummaryDraft = { format: 'bullets', points: [{ text: 'Raport gotowy.', sourceIds: [1] }] };
+  model.mockImplementation(async (prompt, _onToken, options) => {
+    const payload = JSON.parse(prompt) as Payload;
+    if ('units' in ((options!.jsonSchema!.properties ?? {}) as object)) {
+      if (payload.draftData!.points.length === 1) return generated({
+        points: [{ pointId: 1, status: 'supported', issues: [] }],
+        units: [{ sourceId: 1, status: 'covered', pointIds: [1], supersededBy: [] },
+          { sourceId: 2, status: 'missing', pointIds: [], supersededBy: [] }],
+      });
+      return generated(supported(payload));
+    }
+    return generated(single);
+  });
+  const result = await generateGroundedSummary(content, 'en');
+  // Small talk outside the essence set is never appended literally; the model
+  // repair could not close the gap, so acceptance stays fail-closed.
+  expect(result).toMatchObject({ incomplete: true, summaryDocument: null });
+  expect(result.summary).toBe('');
+});
+
+test('P0-4b labels appended essence points with Polish category groups in grouped drafts', async () => {
+  const content = 'Raport jest gotowy. Ustaliliśmy termin spotkania.';
+  const draft: SummaryDraft = { format: 'grouped', points: [{ text: 'Raport gotowy.', sourceIds: [1], group: 'Praca' }] };
+  model.mockImplementation(async (prompt, _onToken, options) => {
+    const payload = JSON.parse(prompt) as Payload;
+    if ('units' in ((options!.jsonSchema!.properties ?? {}) as object)) {
+      if (payload.draftData!.points.length === 1) return generated({
+        points: [{ pointId: 1, status: 'supported', issues: [] }],
+        units: [{ sourceId: 1, status: 'covered', pointIds: [1], supersededBy: [] },
+          { sourceId: 2, status: 'missing', pointIds: [], supersededBy: [] }],
+      });
+      return generated(supported(payload));
+    }
+    return generated(draft);
+  });
+  const result = await generateGroundedSummary(content, 'pl');
+  expect(result.incomplete).toBe(false);
+  expect(result.summaryDocument?.format).toBe('grouped');
+  expect(result.summaryDocument?.points).toHaveLength(2);
+  expect(result.summaryDocument?.points[1]).toMatchObject({ text: 'Ustaliliśmy termin spotkania.', group: 'Ustalenia' });
+  expect(result.summary).toContain('Ustalenia');
 });
 
 test('never publishes a repeatedly unverified answer or retries without a bound', async () => {
@@ -614,12 +716,70 @@ test.each(['paragraph', 'grouped'] as const)('Task4c source-only discovery prece
   expect(result.summaryDocument!.points.every(point => format !== 'grouped' || point.group === 'Costs and plans')).toBe(true);
 });
 
-test('Task4c raw discovery overflow fails before any model call, never prefix-only success', async () => {
+test('Task4c raw discovery overflow falls back to bullets without relations, never a partial prefix', async () => {
   windowedModel();
   const ordinary = tokenCount.getMockImplementation()!;
   tokenCount.mockImplementation(async input => JSON.parse(input.userPrompt).sourceData ? 8192 : ordinary(input));
+  const result = await generateGroundedSummary('One. Two. Three. Four.', 'en');
+  expect(result).toMatchObject({ incomplete: false, summaryDocument: { format: 'bullets' } });
+  expect(result.summaryDocument?.points.map(point => point.text)).toEqual(['One.', 'Two.', 'Three.', 'Four.']);
+  // P0-1 planning overflow is decided before any model call: no relation
+  // request and no partial prefix ever runs. Known limitation of the fallback:
+  // a cross-window correction may stay unlinked; the audit still gates
+  // publication, so nothing is published silently without verification.
+  expect(model.mock.calls.some(([prompt]) => 'sourceData' in (JSON.parse(prompt) as Payload))).toBe(false);
+});
+
+test('Task4c relations overflow fallback still fails closed when the fallback draft cannot be verified', async () => {
+  windowedModel();
+  const ordinary = model.getMockImplementation()!;
+  model.mockImplementation(async (prompt, onToken, options) => {
+    const payload = JSON.parse(prompt) as Payload;
+    if ('units' in ((options!.jsonSchema!.properties ?? {}) as object)) {
+      const verdict = supported(payload) as { points: unknown[]; units: { sourceId: number; status: string; pointIds: number[]; supersededBy: number[] }[] };
+      verdict.units = verdict.units.map(unit => unit.sourceId === 4 ? { ...unit, status: 'missing', pointIds: [] } : unit);
+      return generated(verdict);
+    }
+    return ordinary(prompt, onToken, options);
+  });
+  const ordinaryCount = tokenCount.getMockImplementation()!;
+  tokenCount.mockImplementation(async input => JSON.parse(input.userPrompt).sourceData ? 8192 : ordinaryCount(input));
   expect(await generateGroundedSummary('One. Two. Three. Four.', 'en')).toMatchObject({ incomplete: true, summaryDocument: null });
-  expect(model).not.toHaveBeenCalled();
+});
+
+test('Task4c greedy planner fills each verifier page with the largest fitting prefix in order', async () => {
+  const content = Array.from({ length: 6 }, (_, index) => `Fact ${index + 1}.`).join(' ');
+  const draft: SummaryDraft = { format: 'bullets', points: Array.from({ length: 6 }, (_, index) => ({ text: `Fact ${index + 1}.`, sourceIds: [index + 1] })) };
+  installModel(draft);
+  tokenCount.mockImplementation(async ({ userPrompt }) => {
+    const payload = JSON.parse(userPrompt) as Payload;
+    if (!payload.draftData) return 100;
+    const targets = payload.checkTargetsData!;
+    // At most five rows fit a page; the greedy planner must fill exactly five
+    // and keep the remaining rows in order instead of halving blindly.
+    return targets.pointIds.length + targets.sourceIds.length > 5 ? 9000 : 100;
+  });
+  expect(await generateGroundedSummary(content, 'en')).toMatchObject({ incomplete: false });
+  const pages = model.mock.calls.filter(([prompt]) => Boolean((JSON.parse(prompt) as Payload).draftData));
+  const targets = pages.map(([prompt]) => (JSON.parse(prompt) as Payload).checkTargetsData!);
+  expect(targets.map(target => target.pointIds.length + target.sourceIds.length)).toEqual([5, 5, 2]);
+  expect(targets.flatMap(target => target.pointIds)).toEqual([1, 2, 3, 4, 5, 6]);
+  expect(targets.flatMap(target => target.sourceIds)).toEqual([1, 2, 3, 4, 5, 6]);
+});
+
+test('Task4c an oversized first verifier row fails the whole plan without skipping it', async () => {
+  windowedModel();
+  const ordinary = tokenCount.getMockImplementation()!;
+  tokenCount.mockImplementation(async input => {
+    const payload = JSON.parse(input.userPrompt) as Payload;
+    if (payload.draftData && payload.checkTargetsData!.pointIds.includes(1)) return 8192;
+    return ordinary(input);
+  });
+  const result = await generateGroundedSummary('First. Second. Third.', 'en');
+  expect(result).toMatchObject({ incomplete: true, summaryDocument: null });
+  // No verifier request was ever attempted; the plan failed closed at the
+  // mandatory single-row probe instead of skipping the oversized first row.
+  expect(model.mock.calls.filter(([prompt]) => Boolean((JSON.parse(prompt) as Payload).draftData))).toHaveLength(0);
 });
 
 test('Task4c v1 artifact misses preserve 191 charged attempts and the spent repair', async () => {
