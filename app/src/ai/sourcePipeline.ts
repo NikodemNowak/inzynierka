@@ -454,10 +454,12 @@ const hasDirectRequiredTask = (text: string): boolean =>
 // A direct requirement does not need a deadline or a preceding cancellation.
 // Request whole-ID review only for finite affirmative action verbs; keeping
 // state unchanged, negated/quoted/conditional/reported requirements stay data.
-const hasStandaloneRequiredActionCandidate = (text: string): boolean => {
+// The deterministic structure split can leave a leading coordinating word on
+// the unit ("i muszę omówić..."); it does not change the requirement itself.
+export const hasStandaloneRequiredActionCandidate = (text: string): boolean => {
   if (hasUnsupportedRequiredTaskContext(text) || hasExplicitCancellation(text)) return false;
-  const english = "(?:(?:I|We|You|He|She|They|\\p{Lu}[\\p{Ll}'’-]*)\\s+)?(?:must|needs?\\s+to|ha(?:ve|s)\\s+to)\\s+(?:use|send|prepare|contact|call|submit|deliver|finish|complete|check|verify|test|review|update|book|arrange|pay|reserve|print|record)\\s+[^.!?]+[.]?";
-  const polish = "(?:\\p{Lu}[\\p{Ll}'’-]*\\s+)?(?:muszę|musi|musimy|musisz|musicie|muszą|należy|trzeba)\\s+(?:użyć|używać|wysłać|przygotować|skontaktować|zadzwonić|złożyć|dostarczyć|ukończyć|zakończyć|sprawdzić|zweryfikować|przetestować|zaktualizować|zarezerwować|zapłacić|nagrać|wydrukować)\\s+[^.!?]+[.]?";
+  const english = "(?:and\\s+)?(?:(?:I|We|You|He|She|They|\\p{Lu}[\\p{Ll}'’-]*)\\s+)?(?:must|needs?\\s+to|ha(?:ve|s)\\s+to)\\s+(?:use|send|prepare|contact|call|submit|deliver|finish|complete|check|verify|test|review|update|book|arrange|pay|reserve|print|record)\\s+[^.!?]+[.]?";
+  const polish = "(?:(?:i|oraz)\\s+)?(?:\\p{Lu}[\\p{Ll}'’-]*\\s+)?(?:muszę|musi|musimy|musisz|musicie|muszą|należy|trzeba)\\s+(?:użyć|używać|wysłać|przygotować|skontaktować|zadzwonić|złożyć|dostarczyć|ukończyć|zakończyć|sprawdzić|zweryfikować|przetestować|zaktualizować|zarezerwować|zapłacić|nagrać|wydrukować|omówić|pokazać)\\s+[^.!?]+[.]?";
   return new RegExp(`^(?:${english}|${polish})$`, "iu").test(text.trim()) &&
     !/(?:^|[^\p{L}])(?:might|would|could|may|example\p{L}*|hypothet\p{L}*|previous\p{L}*|earlier|old|historical\p{L}*|according|last\s+(?:year|week)|yesterday|wczoraj|dawniej|wcześniej|podobno|rzekomo|może|przykład\p{L}*|hipotet\p{L}*|warunk\p{L}*)(?!\p{L})/iu.test(text);
 };

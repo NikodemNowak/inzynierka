@@ -2,6 +2,7 @@ import { generate, getContextWindowSize, measureFormattedPromptTokens } from "./
 import {
   collectSourceEvidence,
   evidenceText,
+  hasStandaloneRequiredActionCandidate,
   prepareGlobalSource,
   selectGlobalEvidence,
   splitSourceByPromptBudget,
@@ -3307,4 +3308,54 @@ test("rejects a terminal assignment checkpoint that loses both its active eviden
   expect(warning).toHaveBeenCalledTimes(1);
   const restored = await checkpoint.read(key) as { unresolved: { id: number }[] };
   expect(restored.unresolved.map((issue) => issue.id)).toEqual([1]);
+});
+
+describe("standalone required actions survive a leading coordinating word", () => {
+  test.each([
+    "i muszę omówić co dalej z inżynierem",
+    "I muszę omówić co dalej z inżynierem",
+    "oraz muszę omówić co dalej z inżynierem",
+    "i muszę pokazać postępy w aplikacji",
+    "and I must review the invoice",
+    "and we must prepare the report",
+  ])("recognizes the omitted requirement despite its leading coordinator: %s", (text) => {
+    expect(hasStandaloneRequiredActionCandidate(text)).toBe(true);
+  });
+
+  test.each([
+    "i muszę omówić",
+    "i nie muszę omówić co dalej z inżynierem",
+    "i może muszę omówić co dalej z inżynierem",
+    '"i muszę omówić co dalej z inżynierem"',
+    "i muszę omówić co dalej z inżynierem jeśli dostanę zgodę",
+    "i muszę omówić co dalej z inżynierem wczoraj",
+    "i muszę omówić co dalej z inżynierem?",
+  ])("keeps qualified, negated, quoted or incomplete wording out of the gate: %s", (text) => {
+    expect(hasStandaloneRequiredActionCandidate(text)).toBe(false);
+  });
+
+  test.each([
+    "muszę przygotować raport",
+    "Muszę sprawdzić raport.",
+    "I must review the invoice.",
+  ])("keeps the established positive cases unchanged: %s", (text) => {
+    expect(hasStandaloneRequiredActionCandidate(text)).toBe(true);
+  });
+
+  test("requests the bounded whole-ID correction for the exact phone unit", async () => {
+    const source = "i muszę omówić co dalej z inżynierem";
+    model.mockResolvedValueOnce(generated('{"tasks":[]}'))
+      .mockResolvedValueOnce(generated('{"tasks":[{"id":1,"kind":"active"}]}'));
+    await expect(collectSourceEvidence(source, "tasks", "pl")).resolves.toEqual([
+      expect.objectContaining({ quote: source, task: source, kind: "active" }),
+    ]);
+    expect(model).toHaveBeenCalledTimes(2);
+    expect(model.mock.calls[1][0]).toContain(`[1] ${source}`);
+  });
+
+  test("keeps a bare coordinated modal without an object out of the correction path", async () => {
+    model.mockResolvedValue(generated('{"tasks":[]}'));
+    await expect(collectSourceEvidence("i muszę omówić", "tasks", "pl")).resolves.toEqual([]);
+    expect(model).toHaveBeenCalledTimes(1);
+  });
 });

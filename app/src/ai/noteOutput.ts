@@ -6,7 +6,9 @@ import type { Language } from "../i18n/language";
 // exercised without loading gigabytes of weights — they are the part that
 // changed most often, and the part most worth pinning down with tests.
 
-const BANNED_PREFIXES = [
+// Exported for the title-anchor repair, which must keep these openers out of
+// the vocabulary it offers to the model.
+export const BANNED_PREFIXES = [
   "notatka",
   "nagranie",
   "transkrypt",
@@ -59,7 +61,7 @@ export const stripModelArtifacts = (
     .replace(language === "pl" ? FILLER_OPENER : ENGLISH_FILLER_OPENER, "")
     .trim();
 
-const stripBannedOpener = (text: string, language: Language): string => {
+export const stripBannedOpener = (text: string, language: Language): string => {
   if (language === "en") {
     const next = text
       .replace(
