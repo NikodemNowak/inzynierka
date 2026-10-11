@@ -404,10 +404,25 @@ describe('Task4c finite paged wire protocol', () => {
     expect(schemaAccepts(wire.schema, raw)).toBe(true);
     // This legal but semantically unrelated edge is intentionally NOT rejected by geometry.
     expect(protocol.parseSummaryRelationPage(JSON.stringify(raw), units, [9], true)).toEqual(raw);
-    for (const relatedEarlier of [['P4'], [4], ['S9'], ['S4', 'S4']]) {
+    for (const relatedEarlier of [['P4'], [4], ['S9']]) {
       expect(protocol.parseSummaryRelationPage(JSON.stringify({ ...raw, rows: [{ ...raw.rows[0], relatedEarlier }] }), units, [9], true)).toBeNull();
     }
+    // b11429 does not enforce uniqueItems: repeated refs are deduped with
+    // first-occurrence order instead of dropping the whole page.
+    expect(protocol.parseSummaryRelationPage(JSON.stringify({ ...raw, rows: [{ ...raw.rows[0], relatedEarlier: ['S4', 'S4'] }] }), units, [9], true))
+      .toEqual({ ...raw, rows: [{ ...raw.rows[0], relatedEarlier: ['S4'] }] });
     expect(protocol.parseSummaryRelationPage(JSON.stringify({ ...raw, rows: [] }), units, [9], true)).toBeNull();
+  });
+  test('dedupes relatedEarlier duplicates preserving first-occurrence order', () => {
+    const context: readonly SummarySourceUnit[] = [
+      { id: 1, start: 0, end: 5, text: 'One.' },
+      { id: 2, start: 6, end: 11, text: 'Two.' },
+      { id: 3, start: 12, end: 17, text: 'Three.' },
+    ];
+    const raw = { format: 'bullets', rows: [{ source: 'S3', relatedEarlier: ['S1', 'S2', 'S1'], unresolved: false }] };
+    expect(protocol.parseSummaryRelationPage(JSON.stringify(raw), context, [3], true)).toEqual({
+      format: 'bullets', rows: [{ source: 'S3', relatedEarlier: ['S1', 'S2'], unresolved: false }],
+    });
   });
 });
 

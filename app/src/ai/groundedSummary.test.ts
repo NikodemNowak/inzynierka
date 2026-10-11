@@ -15,7 +15,7 @@ const generated = (value: unknown): GenerationResult => ({
   text: JSON.stringify(value), ttftMs: 1, tokensPerSecond: 20, wallMs: 20,
   promptMs: 5, predictedMs: 15, promptTokens: 20, predictedTokens: 20,
 });
-interface Payload { sourceData?: { source: string; text: string }[]; targetSources?: string[]; checkTargetsData?: { pointIds: number[]; sourceIds: number[] }; sourceCatalogData: string; draftData?: SummaryDraft; repairData?: unknown; reconciliationData?: SummaryDraft }
+interface Payload { sourceData?: { source: string; text: string }[]; targetSources?: string[]; checkTargetsData?: { pointIds: number[]; sourceIds: number[] }; sourceCatalogData: string; draftData?: SummaryDraft; repairData?: unknown; reconciliationData?: SummaryDraft; requiredUnitsData?: readonly { readonly id: number; readonly text: string }[] }
 const catalog = (payload: Payload): { id: number; text: string }[] =>
   payload.sourceCatalogData.split('\n').map(line => {
     const match = /^\[(\d+)\] (.*)$/u.exec(line)!;
@@ -166,6 +166,59 @@ test('P0-4b does not append missing non-essence small talk and stays fail-closed
   // repair could not close the gap, so acceptance stays fail-closed.
   expect(result).toMatchObject({ incomplete: true, summaryDocument: null });
   expect(result.summary).toBe('');
+});
+
+test('P0-4b never completes an essence unit already cited by a draft point', async () => {
+  // PC preview f1-346 r2: unit 2 was cited by a supported point while its unit
+  // verdict stayed uncertain, and the old completion appended a duplicate
+  // literal point. The cited guard keeps the draft unchanged and fail-closed.
+  const repairPrompts: Payload[] = [];
+  model.mockImplementation(async (prompt, _onToken, options) => {
+    const payload = JSON.parse(prompt) as Payload;
+    if ('units' in ((options!.jsonSchema!.properties ?? {}) as object)) {
+      return generated({
+        points: [{ pointId: 1, status: 'supported', issues: [] }, { pointId: 2, status: 'supported', issues: [] }],
+        units: [{ sourceId: 1, status: 'covered', pointIds: [1], supersededBy: [] },
+          { sourceId: 2, status: 'uncertain', pointIds: [], supersededBy: [] }],
+      });
+    }
+    if (payload.repairData) repairPrompts.push(payload);
+    return generated(completeDraft);
+  });
+  const result = await generateGroundedSummary(source, 'pl');
+  expect(result).toMatchObject({ incomplete: true, summaryDocument: null });
+  for (const [prompt] of model.mock.calls) {
+    const payload = JSON.parse(prompt) as Payload;
+    if (payload.draftData) expect(payload.draftData.points).toHaveLength(2);
+  }
+  // No duplicate literal point: the single repair was generative, without a
+  // requiredUnitsData list naming the already-cited unit.
+  expect(repairPrompts).toHaveLength(1);
+  expect(repairPrompts[0]).not.toHaveProperty('requiredUnitsData');
+});
+
+test('P0-4b names uncited essence units to the generative repair when verification is null', async () => {
+  // PC preview f1-346 r1: a null verification skipped the essence path and the
+  // repair echoed the identical draft. The repair must now carry the uncited
+  // essence unit explicitly; literal completion stays disabled.
+  const repairCalls: { readonly payload: Payload; readonly system: string }[] = [];
+  model.mockImplementation(async (prompt, _onToken, options) => {
+    const payload = JSON.parse(prompt) as Payload;
+    if ('units' in ((options!.jsonSchema!.properties ?? {}) as object)) {
+      return generated(payload.draftData!.points.some(point => point.sourceIds.includes(2))
+        ? supported(payload) : { invalid: true });
+    }
+    if (payload.repairData) repairCalls.push({ payload, system: options!.system ?? '' });
+    return generated(payload.repairData ? completeDraft : { format: 'bullets', points: [{ text: 'Poniedziałek: pokaz aplikacji.', sourceIds: [1] }] });
+  });
+  const result = await generateGroundedSummary(source, 'pl');
+  expect(result).toMatchObject({ incomplete: false });
+  expect(result.summary).toContain('Piątek: brak zajęć.');
+  expect(repairCalls).toHaveLength(1);
+  expect(repairCalls[0].payload.requiredUnitsData).toEqual([{ id: 2, text: 'W piątek nie mam zajęć.' }]);
+  expect(repairCalls[0].system).toContain('Te jednostki muszą być obecne w co najmniej jednym punkcie.');
+  // No literal completion: the final point text came from the model repair.
+  expect(result.summaryDocument?.points.map(point => point.text)).toEqual(['Poniedziałek: pokaz aplikacji.', 'Piątek: brak zajęć.']);
 });
 
 test('P0-4b labels appended essence points with Polish category groups in grouped drafts', async () => {

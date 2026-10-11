@@ -399,9 +399,21 @@ const checkedDraft = async (
   // P0-4b: verification units with status missing|uncertain that carry an
   // essence signal are completed or repaired explicitly. Units outside the
   // essence set still block acceptance through the unchanged gate below.
+  // A unit already cited by a draft point is judged through that point's
+  // verdict: literal completion must not append a duplicate point (PC preview
+  // f1-346 r2 duplicated an uncertain cited unit).
   const essence = essenceUnitIds(units, taskProof);
+  const citedIds = new Set<number>((draft?.points ?? []).flatMap(point => point.sourceIds));
   const required = draft && verification ? verification.units.filter(unit =>
-    (unit.status === 'missing' || unit.status === 'uncertain') && essence.has(unit.sourceId)) : [];
+    (unit.status === 'missing' || unit.status === 'uncertain') && essence.has(unit.sourceId) && !citedIds.has(unit.sourceId)) : [];
+  // A null verification (assembly or generation failure) used to skip the
+  // essence path entirely, so the repair ran with no required list and echoed
+  // the identical draft (PC preview f1-346 r1). Name every uncited essence unit
+  // to the generative repair; literal completion stays disabled without a
+  // verdict to justify it.
+  const uncitedEssence = draft && verification === null
+    ? units.filter(unit => essence.has(unit.id) && !citedIds.has(unit.id)).map(unit => ({ id: unit.id, text: unit.text }))
+    : [];
   const allPointsSupported = verification !== null && verification.points.every(point => point.status === 'supported');
   const noRejectedRiskIssues = verification !== null && verification.points.every(point => point.status === 'supported' ||
     !point.issues.some(issue => issue === 'correction' || issue === 'condition' || issue === 'uncertainty'));
@@ -418,9 +430,12 @@ const checkedDraft = async (
     return repaired && (!repairFormat || repaired.format === repairFormat) ? repaired : null;
   };
   if (!required.length) {
-    const literal = draft ? literalRepair(units, draft, verification, taskProof) : null;
-    if (literal) draft = literal;
-    else draft = await generateRepair(null);
+    if (uncitedEssence.length) draft = await generateRepair(uncitedEssence);
+    else {
+      const literal = draft ? literalRepair(units, draft, verification, taskProof) : null;
+      if (literal) draft = literal;
+      else draft = await generateRepair(null);
+    }
   } else if (draft && allPointsSupported && noRejectedRiskIssues) {
     // Deterministic literal completion without a model call: append every
     // unguarded required unit as its own anchored point. The single re-verify
