@@ -2,6 +2,8 @@ name: iOS unsigned device build
 
 on:
   workflow_dispatch:
+  push:
+    branches: [feat/ui-system]
 
 concurrency:
   group: ios-unsigned-${{ github.ref }}
@@ -9,6 +11,7 @@ concurrency:
 
 jobs:
   build:
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[build]')
     runs-on: macos-latest
     timeout-minutes: 90
     steps:
