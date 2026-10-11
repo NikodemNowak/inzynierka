@@ -457,6 +457,7 @@ export const useNotesStore = create<NotesState>((set, get) => ({
               },
               noteLanguageOrDefault(note.language),
               execution,
+              true,
             ),
           async (result) =>
             withNoteLock(id, async () => {
@@ -644,6 +645,7 @@ export const useNotesStore = create<NotesState>((set, get) => ({
               },
               noteLanguageOrDefault(note.language),
               execution,
+              true,
             ),
           async (generated) =>
             withNoteLock(id, async () => {

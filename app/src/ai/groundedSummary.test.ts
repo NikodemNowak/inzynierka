@@ -146,7 +146,7 @@ test.each(['superseded', 'reviewSpans'] as const)('P0-4b leaves a %s-guarded ess
   expect(model).toHaveBeenCalledTimes(2);
 });
 
-test('P0-4b does not append missing non-essence small talk and stays fail-closed', async () => {
+test('P0-4b does not append missing non-essence small talk and accepts the gap after repair', async () => {
   const content = 'Raport jest gotowy. Kawa była dobra.';
   const single: SummaryDraft = { format: 'bullets', points: [{ text: 'Raport gotowy.', sourceIds: [1] }] };
   model.mockImplementation(async (prompt, _onToken, options) => {
@@ -162,10 +162,10 @@ test('P0-4b does not append missing non-essence small talk and stays fail-closed
     return generated(single);
   });
   const result = await generateGroundedSummary(content, 'en');
-  // Small talk outside the essence set is never appended literally; the model
-  // repair could not close the gap, so acceptance stays fail-closed.
-  expect(result).toMatchObject({ incomplete: true, summaryDocument: null });
-  expect(result.summary).toBe('');
+  // Small talk outside the essence set is never appended literally. Once the
+  // single repair is spent it no longer blocks the note either.
+  expect(result).toMatchObject({ incomplete: false });
+  expect(result.summaryDocument?.points.map(point => point.text)).toEqual(['Raport gotowy.']);
 });
 
 test('P0-4b never completes an essence unit already cited by a draft point', async () => {
@@ -505,12 +505,12 @@ test('reconciles a distant non-task cancellation with both whole originals and l
   expect(result.summaryDocument?.points[0].sources).toEqual([{ start: 0, end: 25 }, { start: 74, end: 106 }]);
 });
 
-test('fails closed if the global overview cannot resolve relationships', async () => {
+test('continues without links when the global overview cannot resolve relationships', async () => {
   windowedModel();
   const ordinary = model.getMockImplementation()!;
   model.mockImplementation(async (prompt, onToken, options) => 'rows' in ((options!.jsonSchema!.properties ?? {}) as object)
     ? generated(relations(JSON.parse(prompt) as Payload, [], 'bullets', true)) : ordinary(prompt, onToken, options));
-  expect(await generateGroundedSummary('First. Second. Third. Fourth.', 'en')).toMatchObject({ incomplete: true, summaryDocument: null });
+  expect(await generateGroundedSummary('First. Second. Third. Fourth.', 'en')).toMatchObject({ incomplete: false });
 });
 
 test('fails closed without subdividing the context when one verifier row cannot fit', async () => {
@@ -783,7 +783,7 @@ test('Task4c raw discovery overflow falls back to bullets without relations, nev
   expect(model.mock.calls.some(([prompt]) => 'sourceData' in (JSON.parse(prompt) as Payload))).toBe(false);
 });
 
-test('Task4c relations overflow fallback still fails closed when the fallback draft cannot be verified', async () => {
+test('Task4c relations overflow fallback completes the flagged essence unit literally and accepts it', async () => {
   windowedModel();
   const ordinary = model.getMockImplementation()!;
   model.mockImplementation(async (prompt, onToken, options) => {
@@ -797,7 +797,7 @@ test('Task4c relations overflow fallback still fails closed when the fallback dr
   });
   const ordinaryCount = tokenCount.getMockImplementation()!;
   tokenCount.mockImplementation(async input => JSON.parse(input.userPrompt).sourceData ? 8192 : ordinaryCount(input));
-  expect(await generateGroundedSummary('One. Two. Three. Four.', 'en')).toMatchObject({ incomplete: true, summaryDocument: null });
+  expect(await generateGroundedSummary('One. Two. Three. Pay 40 euros on 5 May.', 'en')).toMatchObject({ incomplete: false });
 });
 
 test('Task4c greedy planner fills each verifier page with the largest fitting prefix in order', async () => {
@@ -1325,4 +1325,23 @@ test.each([1, 2])('fix1 I3 v%s task-expanded local orphan blocks discovery on re
     expect(checkpoint.data.has('summary:v1:final')).toBe(false);
     expect(checkpoint.data.get(`summary:v${version}:draft:1:4`)).toEqual(orphan);
   }
+});
+
+test('unverified fallback publishes the parsed draft only when explicitly allowed', async () => {
+  // A negation doubt on a point is never softened by literal trust, so the
+  // strict result stays incomplete and only the opt-in path shows the draft.
+  model.mockImplementation(async (prompt, _onToken, options) => {
+    const payload = JSON.parse(prompt) as Payload;
+    if (options?.jsonSchema?.properties && 'units' in (options.jsonSchema.properties as object)) {
+      const v = supported(payload) as { points: { pointId: number; status: string; issues: string[] }[]; units: unknown[] };
+      return generated({ ...v, points: v.points.map(point => ({ ...point, status: 'unsupported', issues: ['negation'] })) });
+    }
+    return generated(completeDraft);
+  });
+  expect(await generateGroundedSummary(source, 'pl')).toMatchObject({ incomplete: true, summaryDocument: null });
+  model.mockClear();
+  const soft = await generateGroundedSummary(source, 'pl', undefined, undefined, true);
+  expect(soft).toMatchObject({ incomplete: false, unverified: true });
+  expect(soft.summaryDocument?.points.map(point => point.text)).toEqual(['W poniedziałek pokażę aplikację.', 'W piątek nie mam zajęć.']);
+  expect(soft.warnings).toHaveLength(1);
 });

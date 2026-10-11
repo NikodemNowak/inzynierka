@@ -7,6 +7,11 @@ export interface TaskProposal {
   warnings: string[]
 }
 
+// A statement about the recording itself ("Test nowej notatki ...") is never a
+// task, even when the model marks it active.
+const isNoteMetaTask = (task: string): boolean =>
+  /^\s*(?:test|testuj|sprawdzam|sprawdzenie)[^.]*(?:notatk|nagrani|transkrypcj|aplikacj)/.test(task.toLowerCase())
+
 // Keep uncertainty beside the proposals so restoring a durable result cannot
 // turn an unresolved cancellation into an apparently verified task list.
 export const createTaskProposal = async (
@@ -23,5 +28,5 @@ export const createTaskProposal = async (
       execution?.onWarning?.(message)
     },
   })
-  return { tasks, warnings: [...warnings] }
+  return { tasks: tasks.filter((task) => !isNoteMetaTask(task)), warnings: [...warnings] }
 }

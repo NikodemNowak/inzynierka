@@ -305,7 +305,7 @@ test("recovers Polish literal tasks without copying two complete sentences into 
   expect(model).toHaveBeenCalledTimes(5);
 });
 
-test("rejects a draft when the independent verifier finds a missing important non-task fact", async () => {
+test("completes a missing important non-task fact literally instead of rejecting the draft", async () => {
   const tasks = ["Alice will prepare the report by Friday.", "Bob will contact the supplier by Tuesday.",
     "Clara will check the equipment by Wednesday.", "David will book the room by Thursday.",
     "Emma will update the schedule by Monday.", "Felix will print the invitations by Saturday.",
@@ -327,10 +327,10 @@ test("rejects a draft when the independent verifier finds a missing important no
     return verdict;
   };
   const result = await processNoteWithLlm(content, () => undefined, undefined, "en");
-  expect(result.summary).not.toContain(date);
-  expect(result.warnings).toContain("The summary could not be verified. Your complete transcript has been kept.");
-  expect(result.summaryDocument).toBeNull();
-  expect(result.failedFields).toContain("summary");
+  // The flagged essence facts are appended as their own literal points, so the
+  // cited units are covered even though the mocked verifier keeps saying missing.
+  expect(result.summary).toContain(date);
+  expect(result.failedFields ?? []).not.toContain("summary");
 });
 
 test.each([5, 7])("retains all %s final commitments and exact long source when full discovery exceeds context", async (count) => {

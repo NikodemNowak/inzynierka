@@ -19,11 +19,13 @@ export interface GroundedSummaryResult {
   readonly summary: string;
   readonly summaryDocument: SummaryDocument | null;
   readonly incomplete: boolean;
+  // True when the summary is source-linked but did not pass full verification.
+  readonly unverified?: boolean;
   readonly warnings: readonly string[];
 }
 
 type SummaryDecision = { readonly kind: 'document'; readonly document: SummaryDocument } |
-  { readonly kind: 'empty' } | { readonly kind: 'incomplete' };
+  { readonly kind: 'empty' } | { readonly kind: 'incomplete'; readonly fallback?: SummaryDocument };
 interface SummaryWindow { readonly units: readonly SummarySourceUnit[]; readonly firstId: number; readonly lastId: number }
 interface CheckedDraft { readonly draft: SummaryDraft; readonly verification: SummaryVerification }
 const overBudget = 'over-budget' as const;
@@ -134,6 +136,8 @@ const createSession = (content: string, language: Language, execution: Processin
   const plan = execution.sourceUnitPlan;
   const sourceUnitPlanIdentity = JSON.stringify(plan ?? null);
   const modelRuntimeIdentity = runtimeIdentity(execution);
+  // Latest parsed draft per scope; only used for the unverified fallback.
+  const drafts = new Map<string, SummaryDraft>();
   const taskProofIdentity = JSON.stringify(taskProof ?? null);
   let calls = 0;
   let repairUsed = false;
@@ -240,7 +244,7 @@ const createSession = (content: string, language: Language, execution: Processin
     return true;
   };
   return { fits, measure, fitDraft, runSummaryRequest, read, write, assertRuntime, consumeRepair, initialize, inspectOrphans,
-    repairWasUsed: (): boolean => repairUsed };
+    repairWasUsed: (): boolean => repairUsed, drafts };
 };
 type Session = ReturnType<typeof createSession>;
 
@@ -301,6 +305,117 @@ const planVerificationPages = async (scope: ReviewScope, language: Language, ses
   return planned?.map(page => ({ ...page.wire, targets: toTargets(page.targets), promptTokens: page.promptTokens })) ?? null;
 };
 const wireBinding = (wire: SummaryWireRequest) => ({ system: wire.request.system, prompt: wire.request.prompt(''), schema: wire.schema, reserve: wire.request.nPredict, reservePolicy: 'ascii-whitespace22-eos1-v2' });
+// A point that is just the text of its own cited sources cannot misstate them.
+// The 4B verifier still rejects such copies for soft reasons (actor/action),
+// which only loops the repair. Dates, numbers, negations, conditions,
+// uncertainty and corrections keep the verifier's verdict.
+const literalPoint = (point: SummaryDraft['points'][number], units: readonly SummarySourceUnit[]): boolean => {
+  const sources = point.sourceIds.map(id => units.find(unit => unit.id === id));
+  if (!sources.length || sources.some(unit => !unit)) return false;
+  const normalize = (text: string): string => text.toLowerCase().replace(/\s+/gu, ' ').trim();
+  const raw = normalize(sources.map(unit => unit!.text).join(' '));
+  const tidy = normalize(sources.map(unit => tidyLiteral(unit!.text)).join(' '));
+  const text = normalize(point.text);
+  return text === raw || text === tidy;
+};
+const softIssues: readonly string[] = ['actor', 'action', 'completion', 'other'];
+
+// Spoken numbers reach the draft as digits ("czternastej" -> "14:00"). The 4B
+// verifier misses wrong conversions, so every number in a point must occur in
+// its cited sources as digits or as a Polish number word.
+const numberWords: readonly (readonly [number, RegExp])[] = [
+  [11, /^jedenast/u], [12, /^dwunast/u], [13, /^trzynast/u], [14, /^czternast/u], [15, /^piętnast/u], [16, /^szesnast/u],
+  [17, /^siedemnast/u], [18, /^osiemnast/u], [19, /^dziewiętnast/u], [20, /^dwudziest/u], [30, /^trzydzie/u], [40, /^czterdzie/u],
+  [50, /^pięćdziesi/u], [60, /^sześćdziesi/u], [70, /^siedemdziesi/u], [80, /^osiemdziesi/u], [90, /^dziewięćdziesi/u], [100, /^sto(?:$|[^\p{L}])/u], [200, /^dwie[sś]c/u], [300, /^trzyst/u],
+  [400, /^czterysta/u], [500, /^pięćset/u], [600, /^sześćset/u], [700, /^siedemset/u], [800, /^osiemset/u], [900, /^dziewięćset/u], [1000, /^tysi/u],
+  [1, /^(?:jeden|jedn|pierwsz)/u], [2, /^(?:dwa|dwie|dwóch|dwu|drug)/u], [3, /^(?:trzy|trzech|trzeci)/u],
+  [4, /^(?:cztery|czterech|czwart)/u], [5, /^(?:pięć|pięci|piąt)/u], [6, /^(?:sześć|sześci|szóst)/u],
+  [7, /^(?:siedem|siedmi|siódm)/u], [8, /^(?:osiem|ośmi|ósm)/u], [9, /^(?:dziewięć|dziewięci|dziewiąt)/u],
+  [10, /^(?:dziesięć|dziesięci|dziesiąt)/u],
+];
+// Every number a text can express: digits, single number words and, for a run
+// of consecutive number words, each prefix sum ("pięćdziesiąt osiem" = 58).
+// `totals` keeps only digits and complete runs, i.e. what the text states.
+const spokenNumbers = (text: string): { readonly all: ReadonlySet<number>; readonly totals: ReadonlySet<number> } => {
+  const all = new Set<number>();
+  const totals = new Set<number>();
+  for (const token of text.match(/\d+/gu) ?? []) { const value = Number.parseInt(token, 10); all.add(value); totals.add(value); }
+  let sum = 0;
+  let last: number | null = null;
+  const closeRun = (): void => { if (last !== null) totals.add(last); sum = 0; last = null; };
+  for (const word of text.toLowerCase().match(/\p{L}+/gu) ?? []) {
+    const hit = numberWords.find(([, pattern]) => pattern.test(word));
+    if (!hit) { closeRun(); continue; }
+    all.add(hit[0]);
+    sum += hit[0];
+    all.add(sum);
+    last = sum;
+  }
+  closeRun();
+  return { all, totals };
+};
+const sourceNumbers = (text: string): ReadonlySet<number> => spokenNumbers(text).all;
+const hasUnsourcedNumber = (point: SummaryDraft['points'][number], units: readonly SummarySourceUnit[]): boolean => {
+  const found = new Set<number>();
+  for (const id of point.sourceIds) for (const value of sourceNumbers(units.find(unit => unit.id === id)?.text ?? '')) found.add(value);
+  return (point.text.match(/\d+/gu) ?? []).some(token => {
+    const value = Number.parseInt(token, 10);
+    return value !== 0 && !found.has(value);
+  });
+};
+
+// Deterministic coverage proof for a unit the verifier doubts: the citing
+// point must keep every number the unit states and its negation. A unit with
+// neither gives nothing to prove, so the doubt stands.
+const negationWord = /(?:^|[^\p{L}])(?:nie|nigdy|not|never)(?![\p{L}])/iu;
+const preservesUnitFacts = (unit: SummarySourceUnit, pointTexts: readonly string[]): boolean => {
+  const { totals } = spokenNumbers(unit.text);
+  const negated = negationWord.test(unit.text);
+  if (!totals.size && !negated) return false;
+  const have = new Set<number>(pointTexts.flatMap(text => [...spokenNumbers(text).all]));
+  return [...totals].every(value => value === 0 || have.has(value)) && (!negated || pointTexts.some(text => negationWord.test(text)));
+};
+
+const reconcileVerification = (
+  verification: SummaryVerification, draft: SummaryDraft, units: readonly SummarySourceUnit[],
+): SummaryVerification => ({
+  ...verification,
+  points: verification.points.map(check => {
+    const point = draft.points[check.pointId - 1];
+    if (!point) return check;
+    // Listing (nearly) every issue code carries no information; treat it as one soft doubt.
+    const issues = check.status !== 'supported' && new Set(check.issues).size >= 6 ? ['other' as const] : check.issues;
+    if (check.status !== 'supported' && issues.every(issue => softIssues.includes(issue)) && literalPoint(point, units))
+      return { pointId: check.pointId, status: 'supported' as const, issues: [] };
+    if (check.status === 'supported' && hasUnsourcedNumber(point, units))
+      return { pointId: check.pointId, status: 'unsupported' as const, issues: ['number' as const] };
+    return issues === check.issues ? check : { ...check, issues };
+  }),
+});
+
+// Once the single repair is spent, a unit the verifier still calls missing or
+// uncertain is settled deterministically instead of failing the whole note:
+// a unit cited by a supported point counts as covered by it, and a unit
+// without an essence signal (introductions, filler) counts as context. Essence
+// units that no point cites keep blocking, as do units touching a task review.
+const acceptNonEssenceGaps = (
+  verification: SummaryVerification, draft: SummaryDraft, units: readonly SummarySourceUnit[], taskProof?: FinalTaskEvidence,
+): SummaryVerification => {
+  const essence = essenceUnitIds(units, taskProof);
+  const supported = new Set(verification.points.filter(check => check.status === 'supported').map(check => check.pointId));
+  return { ...verification, units: verification.units.map(entry => {
+    if (entry.status !== 'missing' && entry.status !== 'uncertain') return entry;
+    const unit = units.find(item => item.id === entry.sourceId);
+    if (!unit || guardedEssenceUnit(unit, taskProof)) return entry;
+    const citing = draft.points.flatMap((point, index) => point.sourceIds.includes(unit.id) && supported.has(index + 1) ? [index + 1] : []);
+    const citedSafely = citing.length > 0 &&
+      (!essence.has(unit.id) || preservesUnitFacts(unit, citing.map(id => draft.points[id - 1].text)));
+    if (citedSafely) return { sourceId: entry.sourceId, status: 'covered' as const, pointIds: citing, supersededBy: [] };
+    if (essence.has(unit.id)) return entry;
+    return { sourceId: entry.sourceId, status: 'context' as const, pointIds: [], supersededBy: [] };
+  }) };
+};
+
 const verify = async (
   units: readonly SummarySourceUnit[], draft: SummaryDraft, language: Language, session: Session,
   taskProof?: FinalTaskEvidence, finalDraft?: SummaryDraft, pointIndices?: readonly number[],
@@ -329,21 +444,36 @@ const verify = async (
     }
     pages.push(parsed);
   }
-  return assembleSummaryVerification(pages, units, draft);
+  const assembled = assembleSummaryVerification(pages, units, draft);
+  if (!assembled) return null;
+  const reconciled = reconcileVerification(assembled, draft, units);
+  return session.repairWasUsed() ? acceptNonEssenceGaps(reconciled, draft, units, taskProof) : reconciled;
 };
 
+// A source sentence copied as a point starts mid-thought ("i muszę omówić...").
+// Drop the leading conjunction and capitalise; the words stay the speaker's own.
+const tidyLiteral = (text: string): string => {
+  const trimmed = text.trim();
+  const stripped = trimmed.replace(/^(?:i|oraz|a|and)\s+/iu, '');
+  const base = stripped.length ? stripped : trimmed;
+  return base.charAt(0).toUpperCase() + base.slice(1);
+};
+
+// Replace only the rejected points by the literal text of their own cited
+// sources. A literal copy cannot invent a fact, so unresolved task review spans
+// do not block it; points that touch a superseded (corrected) fact still do.
 const literalRepair = (
   units: readonly SummarySourceUnit[], draft: SummaryDraft, verification: SummaryVerification | null, taskProof?: FinalTaskEvidence,
 ): SummaryDraft | null => {
-  if (draft.format === 'grouped' || !verification || verification.units.some(unit => unit.status !== 'covered' && unit.status !== 'context') ||
-    taskProof?.reviewSpans?.length || taskProof?.superseded.length) return null;
+  if (draft.format === 'grouped' || !verification || verification.units.some(unit => unit.status !== 'covered' && unit.status !== 'context')) return null;
   const rejected = verification.points.filter(point => point.status !== 'supported');
   if (!rejected.length || rejected.some(point => point.issues.some(issue => ['correction', 'condition', 'uncertainty'].includes(issue)))) return null;
   const points = draft.points.map((point, index) => {
     if (!rejected.some(check => check.pointId === index + 1)) return point;
     const sources = units.filter(unit => point.sourceIds.includes(unit.id));
-    if (sources.some(unit => hasUnsupportedRequiredTaskContext(unit.text))) return null;
-    return { text: sources.map(unit => unit.text).join(' '), sourceIds: point.sourceIds };
+    if (sources.some(unit => hasUnsupportedRequiredTaskContext(unit.text) ||
+      taskProof?.superseded.some(pair => overlaps(unit, pair.earlier) || overlaps(unit, pair.later)))) return null;
+    return { text: sources.map(unit => tidyLiteral(unit.text)).join(' '), sourceIds: point.sourceIds };
   });
   if (points.some(point => point === null)) return null;
   return { format: draft.format, points: points.map(point => ({ text: point!.text, sourceIds: point!.sourceIds })) };
@@ -392,6 +522,7 @@ const checkedDraft = async (
       if (draft) await session.write(key, { scope: draftBinding, draft, verification: null });
     }
   }
+  if (draft) session.drafts.set(key, draft);
   let verification = initialVerification !== undefined ? initialVerification : draft ? await verify(units, draft, language, session, taskProof) : null;
   if (verification === overBudget) return overBudget;
   if (draft && verification && isCompleteSummaryVerification(verification, draft)) return { draft, verification };
@@ -461,6 +592,7 @@ const checkedDraft = async (
     draft = await generateRepair(requiredUnitsData);
   }
   if (!draft) return null;
+  session.drafts.set(key, draft);
   await session.write(key, { scope: draftBinding, draft, verification: null });
   verification = await verify(units, draft, language, session, taskProof);
   if (verification === overBudget) return overBudget;
@@ -477,6 +609,10 @@ type RelationsDiscovery =
   | { readonly kind: 'over-budget' }
   | { readonly kind: 'failed' };
 
+// Relations only link corrections that live in different windows. A page the
+// 4B model cannot answer (parse error, incomplete output or every row marked
+// unresolved) no longer fails the whole summary: that page contributes no
+// links and the draft/verify/final-audit gates still run on every window.
 const discoverRelations = async (
   units: readonly SummarySourceUnit[], language: Language, session: Session,
 ): Promise<RelationsDiscovery> => {
@@ -494,14 +630,14 @@ const discoverRelations = async (
     if (!result) {
       const raw = await session.runSummaryRequest(page.wire.request, page.wire.schema, 'summary-relations', unitChars(units));
       result = raw === null ? null : parseSummaryRelationPage(raw, units, page.targets, index === 0);
-      if (!result) return { kind: 'failed' };
+      if (!result) continue;
       await session.write(key, { scope: binding, relations: result });
     }
-    if (result.rows.some(row => row.unresolved)) return { kind: 'failed' };
     if (index === 0) format = result.format;
+    if (result.rows.some(row => row.unresolved)) continue;
     for (const row of result.rows) if (row.relatedEarlier.length) groups.push([Number(row.source.slice(1)), ...row.relatedEarlier.map(ref => Number(ref.slice(1)))]);
   }
-  return format ? { kind: 'ok', groups, format } : { kind: 'failed' };
+  return { kind: 'ok', groups, format: format ?? 'bullets' };
 };
 const correctionGroups = (verification: SummaryVerification): readonly (readonly number[])[] =>
   verification.units.filter(unit => unit.supersededBy.length).map(unit => [unit.sourceId, ...unit.supersededBy]);
@@ -533,10 +669,9 @@ const reviewScope = (
   return { units: units.filter(unit => selected.has(unit.id)), draft: { format: draft.format, points: pointIndices.map(index => draft.points[index]) }, pointIndices };
 };
 
-const generateAndCheckSummary = async (
-  units: readonly SummarySourceUnit[], content: string, language: Language, execution: ProcessingExecutionContext, taskProof?: FinalTaskEvidence,
+const checkSummary = async (
+  session: Session, units: readonly SummarySourceUnit[], content: string, language: Language, taskProof?: FinalTaskEvidence,
 ): Promise<SummaryDecision> => {
-  const session = createSession(content, language, execution, taskProof);
   await session.initialize();
   const windows = await budgetSummaryWindows(units, language, session);
   if (!windows.length) return incomplete;
@@ -630,16 +765,60 @@ const generateAndCheckSummary = async (
   return incomplete;
 };
 
+// Soft fallback: when full verification fails, still show a source-linked
+// summary built from the latest parsed drafts (or, failing that, the literal
+// essence sentences). The caller labels it as unverified.
+const fallbackDocument = (
+  session: Session, units: readonly SummarySourceUnit[], content: string, taskProof?: FinalTaskEvidence,
+): SummaryDocument | null => {
+  const drafts = [...session.drafts.values()];
+  const seen = new Set<string>();
+  const points = drafts.flatMap(draft => draft.points).filter(point => {
+    const key = [...point.sourceIds].sort((a, b) => a - b).join(',');
+    if (!point.text.trim() || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  const formats = new Set(drafts.map(draft => draft.format));
+  const format: SummaryDraft['format'] = formats.size === 1 ? drafts[0].format : 'bullets';
+  const candidate: readonly SummaryDraft['points'][number][] = points.length
+    ? points.map(point => format === 'grouped' ? point : { text: point.text, sourceIds: point.sourceIds })
+    : [...essenceUnitIds(units, taskProof).keys()].slice(0, 8).flatMap(id => {
+      const unit = units.find(item => item.id === id);
+      return unit ? [{ text: unit.text, sourceIds: [unit.id] }] : [];
+    });
+  if (!candidate.length) return null;
+  const ordered = [...candidate].sort((left, right) => Math.min(...left.sourceIds) - Math.min(...right.sourceIds));
+  return documentFromSummaryDraft(content, { format: points.length ? format : 'bullets', points: ordered }, units);
+};
+
+const generateAndCheckSummary = async (
+  units: readonly SummarySourceUnit[], content: string, language: Language, execution: ProcessingExecutionContext, taskProof?: FinalTaskEvidence,
+  allowUnverified = false,
+): Promise<SummaryDecision> => {
+  const session = createSession(content, language, execution, taskProof);
+  const decision = await checkSummary(session, units, content, language, taskProof);
+  if (decision.kind !== 'incomplete') return decision;
+  const fallback = allowUnverified ? fallbackDocument(session, units, content, taskProof) : null;
+  return fallback ? { kind: 'incomplete', fallback } : decision;
+};
+
 export const generateGroundedSummary = async (
   content: string, language: Language, execution?: ProcessingExecutionContext, taskProof?: FinalTaskEvidence,
+  allowUnverified = false,
 ): Promise<GroundedSummaryResult> => {
   throwIfProcessingAborted(execution);
   const view = sourceExecutionView(content, execution);
   const units = createSummarySources(content, view.sourceUnitPlan);
-  const candidate = units.length ? await generateAndCheckSummary(units, content, language, view, taskProof)
+  const candidate = units.length ? await generateAndCheckSummary(units, content, language, view, taskProof, allowUnverified)
     : taskProof?.tasks.length || taskProof?.evidence.some(item => item.kind === 'active') || taskProof?.reviewSpans?.length
       ? incomplete : { kind: 'empty' } as const;
   throwIfProcessingAborted(view);
+  if (candidate.kind === 'incomplete' && candidate.fallback) return {
+    summary: renderSummaryDocument(candidate.fallback), summaryDocument: candidate.fallback, incomplete: false, unverified: true,
+    warnings: [language === 'en'
+      ? 'The summary did not pass full verification. Compare it with the transcript.'
+      : 'Podsumowanie nie przeszło pełnej weryfikacji. Porównaj je z transkrypcją.'] };
   if (candidate.kind === 'incomplete') return { summary: '', summaryDocument: null, incomplete: true, warnings: [language === 'en'
     ? 'The summary could not be verified. Your complete transcript has been kept.'
     : 'Nie udało się sprawdzić podsumowania. Pełna transkrypcja została zachowana.'] };

@@ -122,6 +122,8 @@ export const processNoteWithLlm = async (
   onModelLoad?: (durationMs: number) => void,
   language: Language = "pl",
   execution?: ProcessingExecutionContext,
+  // App flows show a labeled unverified summary instead of failing the field.
+  allowUnverifiedSummary = false,
 ): Promise<NoteProcessingResult> => {
   execution = sourceExecutionView(content, execution);
   await ensureModelReady(onProgress, onModelLoad, execution);
@@ -243,13 +245,13 @@ export const processNoteWithLlm = async (
     throwIfProcessingAborted(execution);
     // Full original content and the adopted plan belong to the grounded engine.
     // Semantic incompleteness is a field result; infrastructure errors propagate.
-    const grounded = await generateGroundedSummary(content, language, execution, taskProof);
+    const grounded = await generateGroundedSummary(content, language, execution, taskProof, allowUnverifiedSummary);
     summary = grounded.summary;
     summaryDocument = grounded.summaryDocument;
     if (grounded.incomplete) {
       fail("summary");
       warnings.push(...grounded.warnings);
-    }
+    } else if (grounded.unverified) warnings.push(...grounded.warnings);
   };
   if (wordCount >= 30 && !canAnalyzeTasks) warnings.push(language === "en"
     ? "Tasks were not analysed because the source is one undivided statement. Review the complete source note."

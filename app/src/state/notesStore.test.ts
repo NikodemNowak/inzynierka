@@ -237,7 +237,7 @@ describe('notesStore background processing safeguards', () => {
     expect(applied).toBe(true)
     expect(useNotesStore.getState().notes[0].transcriptionIncomplete).toBe(false)
     await useNotesStore.getState().processWithLlm(note.id)
-    expect(mockedProcessNoteWithLlm).toHaveBeenCalledWith('Verified complete source', expect.any(Function), expect.any(Function), language, expect.anything())
+    expect(mockedProcessNoteWithLlm).toHaveBeenCalledWith('Verified complete source', expect.any(Function), expect.any(Function), language, expect.anything(), true)
     expect(useNotesStore.getState().notes[0].summary).toBe(generated.summary)
     expect(useNotesStore.getState().notes[0].durationMs).toBe(1_800_000)
     expect(useNotesStore.getState().notes[0].audioUri).toBe(note.audioUri)
