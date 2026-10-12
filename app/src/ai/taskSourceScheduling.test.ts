@@ -7,6 +7,10 @@ import { MODEL_CONFIG } from "./modelConfig";
 import { projectSourceUnitPlan } from "./sourceUnits";
 import type { NoteProcessingResult } from "./noteProcessing";
 import type { ProcessingExecutionContext, TaskEvidenceMemo } from "./processingContext";
+import { setSummaryEngineMode } from './summaryEngine';
+
+// These suites exercise the LLM-verified engine directly.
+setSummaryEngineMode('verified');
 
 jest.mock("./llm", () => ({
   generate: jest.fn(),

@@ -3,6 +3,10 @@ import { generateGroundedSummary } from './groundedSummary';
 import type { FinalTaskEvidence, ProcessingCheckpointStore, ProcessingExecutionContext } from './processingContext';
 import type { SummaryDraft } from './summaryProtocol';
 import { projectSourceUnitPlan } from './sourceUnits';
+import { setSummaryEngineMode } from './summaryEngine';
+
+// These suites exercise the LLM-verified engine directly.
+setSummaryEngineMode('verified');
 
 jest.mock('./llm', () => ({
   generate: jest.fn(), getLoadedModelInfo: jest.fn(() => null), getContextWindowSize: jest.fn(() => 8192),

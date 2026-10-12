@@ -4,6 +4,10 @@ import { processNoteWithLlm } from './noteProcessing';
 import { extractTaskEvidence } from './taskExtraction';
 import type { FinalTaskEvidence } from './processingContext';
 import { projectSourceUnitPlan } from './sourceUnits';
+import { setSummaryEngineMode } from './summaryEngine';
+
+// These suites exercise the LLM-verified engine directly.
+setSummaryEngineMode('verified');
 
 jest.mock('./llm', () => ({
   generate: jest.fn(),

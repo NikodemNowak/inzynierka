@@ -14,6 +14,9 @@ import {
   type SummaryDraft, type SummaryVerification, type SummaryWireRequest, type SummaryCheckTargets, type SummaryCheckPage,
 } from './summaryProtocol';
 import { planSummaryWindows } from './summaryWindowBudget';
+import { FAST_SUMMARY_MIN_UNITS, generateFastSummary } from './fastSummary';
+import { getSummaryEngineMode } from './summaryEngine';
+import { guardedEssenceUnit, hasUnsourcedNumber, negationWord, spokenNumbers, tidyLiteral } from './summaryChecks';
 
 export interface GroundedSummaryResult {
   readonly summary: string;
@@ -320,54 +323,10 @@ const literalPoint = (point: SummaryDraft['points'][number], units: readonly Sum
 };
 const softIssues: readonly string[] = ['actor', 'action', 'completion', 'other'];
 
-// Spoken numbers reach the draft as digits ("czternastej" -> "14:00"). The 4B
-// verifier misses wrong conversions, so every number in a point must occur in
-// its cited sources as digits or as a Polish number word.
-const numberWords: readonly (readonly [number, RegExp])[] = [
-  [11, /^jedenast/u], [12, /^dwunast/u], [13, /^trzynast/u], [14, /^czternast/u], [15, /^piętnast/u], [16, /^szesnast/u],
-  [17, /^siedemnast/u], [18, /^osiemnast/u], [19, /^dziewiętnast/u], [20, /^dwudziest/u], [30, /^trzydzie/u], [40, /^czterdzie/u],
-  [50, /^pięćdziesi/u], [60, /^sześćdziesi/u], [70, /^siedemdziesi/u], [80, /^osiemdziesi/u], [90, /^dziewięćdziesi/u], [100, /^sto(?:$|[^\p{L}])/u], [200, /^dwie[sś]c/u], [300, /^trzyst/u],
-  [400, /^czterysta/u], [500, /^pięćset/u], [600, /^sześćset/u], [700, /^siedemset/u], [800, /^osiemset/u], [900, /^dziewięćset/u], [1000, /^tysi/u],
-  [1, /^(?:jeden|jedn|pierwsz)/u], [2, /^(?:dwa|dwie|dwóch|dwu|drug)/u], [3, /^(?:trzy|trzech|trzeci)/u],
-  [4, /^(?:cztery|czterech|czwart)/u], [5, /^(?:pięć|pięci|piąt)/u], [6, /^(?:sześć|sześci|szóst)/u],
-  [7, /^(?:siedem|siedmi|siódm)/u], [8, /^(?:osiem|ośmi|ósm)/u], [9, /^(?:dziewięć|dziewięci|dziewiąt)/u],
-  [10, /^(?:dziesięć|dziesięci|dziesiąt)/u],
-];
-// Every number a text can express: digits, single number words and, for a run
-// of consecutive number words, each prefix sum ("pięćdziesiąt osiem" = 58).
-// `totals` keeps only digits and complete runs, i.e. what the text states.
-const spokenNumbers = (text: string): { readonly all: ReadonlySet<number>; readonly totals: ReadonlySet<number> } => {
-  const all = new Set<number>();
-  const totals = new Set<number>();
-  for (const token of text.match(/\d+/gu) ?? []) { const value = Number.parseInt(token, 10); all.add(value); totals.add(value); }
-  let sum = 0;
-  let last: number | null = null;
-  const closeRun = (): void => { if (last !== null) totals.add(last); sum = 0; last = null; };
-  for (const word of text.toLowerCase().match(/\p{L}+/gu) ?? []) {
-    const hit = numberWords.find(([, pattern]) => pattern.test(word));
-    if (!hit) { closeRun(); continue; }
-    all.add(hit[0]);
-    sum += hit[0];
-    all.add(sum);
-    last = sum;
-  }
-  closeRun();
-  return { all, totals };
-};
-const sourceNumbers = (text: string): ReadonlySet<number> => spokenNumbers(text).all;
-const hasUnsourcedNumber = (point: SummaryDraft['points'][number], units: readonly SummarySourceUnit[]): boolean => {
-  const found = new Set<number>();
-  for (const id of point.sourceIds) for (const value of sourceNumbers(units.find(unit => unit.id === id)?.text ?? '')) found.add(value);
-  return (point.text.match(/\d+/gu) ?? []).some(token => {
-    const value = Number.parseInt(token, 10);
-    return value !== 0 && !found.has(value);
-  });
-};
 
 // Deterministic coverage proof for a unit the verifier doubts: the citing
 // point must keep every number the unit states and its negation. A unit with
 // neither gives nothing to prove, so the doubt stands.
-const negationWord = /(?:^|[^\p{L}])(?:nie|nigdy|not|never)(?![\p{L}])/iu;
 const preservesUnitFacts = (unit: SummarySourceUnit, pointTexts: readonly string[]): boolean => {
   const { totals } = spokenNumbers(unit.text);
   const negated = negationWord.test(unit.text);
@@ -450,14 +409,6 @@ const verify = async (
   return session.repairWasUsed() ? acceptNonEssenceGaps(reconciled, draft, units, taskProof) : reconciled;
 };
 
-// A source sentence copied as a point starts mid-thought ("i muszę omówić...").
-// Drop the leading conjunction and capitalise; the words stay the speaker's own.
-const tidyLiteral = (text: string): string => {
-  const trimmed = text.trim();
-  const stripped = trimmed.replace(/^(?:i|oraz|a|and)\s+/iu, '');
-  const base = stripped.length ? stripped : trimmed;
-  return base.charAt(0).toUpperCase() + base.slice(1);
-};
 
 // Replace only the rejected points by the literal text of their own cited
 // sources. A literal copy cannot invent a fact, so unresolved task review spans
@@ -485,13 +436,6 @@ const essenceCategoryGroups: Readonly<Record<EssenceCategory, string>> = {
   decision: 'Ustalenia', task: 'Zadania', 'amount-date': 'Kwoty i daty', correction: 'Poprawki', availability: 'Dostępność',
 };
 
-// Per-unit guard for literal completion: never resurrect a unit that a task
-// correction superseded, a review flagged, or whose task context is unsupported.
-// literalRepair keeps its whole-scope refusal for the rejected-points path.
-const guardedEssenceUnit = (unit: SummarySourceUnit, taskProof?: FinalTaskEvidence): boolean =>
-  hasUnsupportedRequiredTaskContext(unit.text) ||
-  (taskProof?.superseded.some(pair => overlaps(unit, pair.earlier) || overlaps(unit, pair.later)) ?? false) ||
-  (taskProof?.reviewSpans?.some(span => overlaps(unit, span)) ?? false);
 
 const checkedDraft = async (
   units: readonly SummarySourceUnit[], language: Language, session: Session, taskProof?: FinalTaskEvidence,
@@ -810,6 +754,19 @@ export const generateGroundedSummary = async (
   throwIfProcessingAborted(execution);
   const view = sourceExecutionView(content, execution);
   const units = createSummarySources(content, view.sourceUnitPlan);
+  if (getSummaryEngineMode() === 'auto' && units.length >= FAST_SUMMARY_MIN_UNITS) {
+    const fast = await generateFastSummary(units, content, language, view, taskProof);
+    throwIfProcessingAborted(view);
+    if (fast.document) return {
+      summary: renderSummaryDocument(fast.document), summaryDocument: fast.document, incomplete: false,
+      warnings: fast.budgetExceeded ? [language === 'en'
+        ? 'Part of this note was summarized with verbatim sentences to save time.'
+        : 'Część notatki ujęto dosłownymi zdaniami, aby skrócić czas przetwarzania.'] : [] };
+    const needed = Boolean(taskProof?.tasks.length || taskProof?.evidence.some(item => item.kind === 'active') || taskProof?.reviewSpans?.length);
+    return { summary: '', summaryDocument: null, incomplete: needed, warnings: needed ? [language === 'en'
+      ? 'The summary could not be verified. Your complete transcript has been kept.'
+      : 'Nie udało się sprawdzić podsumowania. Pełna transkrypcja została zachowana.'] : [] };
+  }
   const candidate = units.length ? await generateAndCheckSummary(units, content, language, view, taskProof, allowUnverified)
     : taskProof?.tasks.length || taskProof?.evidence.some(item => item.kind === 'active') || taskProof?.reviewSpans?.length
       ? incomplete : { kind: 'empty' } as const;

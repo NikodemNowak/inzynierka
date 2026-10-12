@@ -379,6 +379,8 @@ export const runBenchmarkSuite = async (
                 undefined,
                 language,
                 execution,
+                // Same as the app: show a source-linked summary even when unverified.
+                true,
               )
               output = {
                 title: note.title,

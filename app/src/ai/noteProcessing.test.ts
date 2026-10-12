@@ -6,6 +6,10 @@ import { summaryRelationPageRequest } from "./summaryProtocol";
 import { createSummarySources } from "./summarySources";
 import type { GenerationOptions, GenerationResult } from "./llm";
 import type { FinalTaskEvidence } from "./processingContext";
+import { setSummaryEngineMode } from './summaryEngine';
+
+// These suites exercise the LLM-verified engine directly.
+setSummaryEngineMode('verified');
 
 jest.mock("./llm", () => ({
   generate: jest.fn(),

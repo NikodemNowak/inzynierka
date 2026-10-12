@@ -13,6 +13,10 @@ import { isCompletedActionReview } from "./sourcePipeline";
 import { processNoteWithLlm } from "./noteProcessing";
 import { ENGLISH_AUDIO_FIXTURE_DATA } from "./benchmarkAudioFixturesData";
 import type { ProcessingCheckpointStore, SourceReviewSpan } from "./processingContext";
+import { setSummaryEngineMode } from './summaryEngine';
+
+// These suites exercise the LLM-verified engine directly.
+setSummaryEngineMode('verified');
 
 jest.mock("./llm", () => ({
   generate: jest.fn(),

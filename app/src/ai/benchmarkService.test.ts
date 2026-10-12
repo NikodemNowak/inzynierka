@@ -616,7 +616,7 @@ test.each(['en-audio-3min-v1', 'en-audio-10min-v1', 'en-audio-30min-v1'])(
     expect(run.succeeded).toBe(false)
     expect(run.output?.warnings).toEqual([expect.stringMatching(/speech transcript needs review/i)])
     expect(saveBenchmarkRun).toHaveBeenLastCalledWith(run)
-    expect(processNoteWithLlm).toHaveBeenCalledWith(actual, expect.any(Function), undefined, 'en', expect.any(Object))
+    expect(processNoteWithLlm).toHaveBeenCalledWith(actual, expect.any(Function), undefined, 'en', expect.any(Object), true)
   },
 )
 
@@ -647,7 +647,7 @@ test.each([
     expect(run.audio?.windows).toHaveLength(windowCount)
     expect(run.audio?.windows?.at(-1)).toMatchObject({ startMs: (windowCount - 1) * 30000,
       durationMs: durationMs - (windowCount - 1) * 30000 })
-    expect(processNoteWithLlm).toHaveBeenNthCalledWith(index + 1, actual, expect.any(Function), undefined, 'en', expect.any(Object))
+    expect(processNoteWithLlm).toHaveBeenNthCalledWith(index + 1, actual, expect.any(Function), undefined, 'en', expect.any(Object), true)
     expect(extractTasks).toHaveBeenNthCalledWith(index + 1, actual, expect.any(Function), 'en', expect.any(Object))
     expect(saveBenchmarkRun).toHaveBeenNthCalledWith(index * 2 + 2, run)
     expect(run.succeeded).toBe(true)
@@ -766,6 +766,7 @@ test('persists the real iPhone suffix-only STT as review-required in both fresh 
     undefined,
     'en',
     expect.any(Object),
+    true,
   )
   expect(processNoteWithLlm).toHaveBeenNthCalledWith(
     2,
@@ -774,6 +775,7 @@ test('persists the real iPhone suffix-only STT as review-required in both fresh 
     undefined,
     'en',
     expect.any(Object),
+    true,
   )
   expect(extractTasks).toHaveBeenNthCalledWith(
     1,
@@ -808,6 +810,7 @@ test('accepts lexical completeness with the declared equivalent numeric formats 
     undefined,
     'en',
     expect.any(Object),
+    true,
   )
 })
 
@@ -911,6 +914,7 @@ test('persists actual native window diagnostics while scoring and processing onl
       undefined,
       'en',
       expect.any(Object),
+      true,
     )
     expect(saveBenchmarkRun).toHaveBeenLastCalledWith(run)
   } finally {
@@ -1044,6 +1048,7 @@ test('uses fresh English STT in both cold and warm audio runs independently of t
     undefined,
     'en',
     expect.any(Object),
+    true,
   )
   expect(extractTasks).toHaveBeenNthCalledWith(
     2,
@@ -1992,7 +1997,7 @@ test('persists low-WER lost-owner critical diagnostics while still processing ex
     expect(run.assessment).toMatchObject({ faithfulSummary: null, completeTasks: null, acceptableLanguage: null })
   }
   expect(nativeCapture!.transcribeWindow).toHaveBeenCalledTimes(2)
-  expect(processNoteWithLlm).toHaveBeenCalledWith(actual, expect.any(Function), undefined, 'en', expect.any(Object))
+  expect(processNoteWithLlm).toHaveBeenCalledWith(actual, expect.any(Function), undefined, 'en', expect.any(Object), true)
   expect(extractTasks).toHaveBeenCalledWith(actual, expect.any(Function), 'en', expect.any(Object))
   expect(saveBenchmarkRun).toHaveBeenLastCalledWith(runs[1])
 })
