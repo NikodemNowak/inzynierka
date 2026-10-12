@@ -26,6 +26,13 @@ let active: ActiveGeneration | null = null
 let modelLifecycle: Promise<unknown> = Promise.resolve()
 let transitioning = false
 
+// Speed experiments only; the app itself always loads with the defaults.
+export interface RuntimeTuning {
+  flashAttn?: 'auto' | 'on' | 'off'
+  cacheType?: 'f16' | 'q8_0'
+  nBatch?: number
+  nUbatch?: number
+}
 export interface LoadedModelInfo {
   modelPath: string
   model: ModelConfig
@@ -37,6 +44,7 @@ export interface LoadedModelInfo {
   systemInfo: string
   // Backend lines logged while the context was created (Metal tensor API, flash attention).
   nativeInitLog?: string[]
+  tuning?: RuntimeTuning
   metadata: Record<string, unknown>
 }
 export interface ModelLoadOptions {
@@ -44,11 +52,12 @@ export interface ModelLoadOptions {
   execution?: ModelExecutionProfile
   model?: ModelConfig
   speculative?: boolean
+  tuning?: RuntimeTuning
   signal?: AbortSignal
 }
 export type LoadModelOptions = ModelLoadOptions
-const NATIVE_LOG_PATTERN = /tensor|flash|metal|simdgroup|bfloat|gpu|ubatch|compute buffer|kv/i
-const NATIVE_LOG_LIMIT = 60
+const NATIVE_LOG_PATTERN = /tensor|flash|metal|simdgroup|bfloat|gpu|batch|compute buffer|kv cache|kv self|cache_type/i
+const NATIVE_LOG_LIMIT = 80
 
 // Diagnostic only: it must never fail or slow down loading the model.
 const captureNativeInitLog = async (): Promise<() => Promise<string[]>> => {
@@ -59,7 +68,11 @@ const captureNativeInitLog = async (): Promise<() => Promise<string[]>> => {
       return async () => lines
     subscription = addNativeLogListener((_level, text) => {
       const line = text.trim()
-      if (lines.length < NATIVE_LOG_LIMIT && NATIVE_LOG_PATTERN.test(line))
+      if (
+        lines.length < NATIVE_LOG_LIMIT &&
+        !line.startsWith('llama_model_loader') &&
+        NATIVE_LOG_PATTERN.test(line)
+      )
         lines.push(line.slice(0, 200))
     })
     await toggleNativeLog(true)
@@ -110,8 +123,10 @@ const sameModel = (
   model: ModelConfig,
   execution: ModelExecutionProfile,
   speculative: boolean,
+  tuning?: RuntimeTuning,
 ): boolean =>
   loadedInfo !== null &&
+  JSON.stringify(loadedInfo.tuning ?? null) === JSON.stringify(tuning ?? null) &&
   loadedInfo.modelPath === path &&
   loadedInfo.execution === execution &&
   loadedInfo.speculative === speculative &&
@@ -130,6 +145,7 @@ export const isModelLoadedFor = (
     options.model ?? MODEL_CONFIG,
     options.execution ?? 'foreground',
     options.speculative ?? false,
+    options.tuning,
   )
 
 // Called inside the shared job queue. Reusing requires the same file, backend
@@ -166,7 +182,8 @@ const performModelLoad = async (
   const model = options.model ?? MODEL_CONFIG
   const execution = options.execution ?? 'foreground'
   const speculative = options.speculative ?? false
-  if (sameModel(modelPath, model, execution, speculative)) return
+  const tuning = options.tuning
+  if (sameModel(modelPath, model, execution, speculative, tuning)) return
   if (active)
     throw new Error(
       translate(
@@ -205,6 +222,12 @@ const performModelLoad = async (
         n_parallel: 1,
         ctx_shift: false,
         n_gpu_layers: cpuOnly ? 0 : model.nGpuLayers,
+        ...(tuning?.flashAttn ? { flash_attn_type: tuning.flashAttn } : {}),
+        ...(tuning?.cacheType
+          ? { cache_type_k: tuning.cacheType, cache_type_v: tuning.cacheType }
+          : {}),
+        ...(tuning?.nBatch ? { n_batch: tuning.nBatch } : {}),
+        ...(tuning?.nUbatch ? { n_ubatch: tuning.nUbatch } : {}),
         // Empty devices is discarded by llama.rn 0.12.3; a nonempty CPU list
         // reaches native model params and prevents default GPU enumeration.
         ...(cpuOnly
@@ -263,6 +286,7 @@ const performModelLoad = async (
       reasonNoGPU: next.reasonNoGPU,
       systemInfo: next.systemInfo,
       nativeInitLog,
+      ...(tuning ? { tuning } : {}),
       metadata: next.model.metadata as Record<string, unknown>,
     }
     scheduleIdleUnload()

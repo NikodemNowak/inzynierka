@@ -31,6 +31,7 @@ import {
 } from '../../ai/benchmarkModels'
 import { runBenchmarkSuite } from '../../ai/benchmarkService'
 import { QUICK_SUITE_TEXTS, runQuickSuite } from '../../ai/benchmarkQuickSuite'
+import { runSpeedProbe, type SpeedProbeResult } from '../../ai/speedProbe'
 import { runSpeechWindowBenchmarkSuite, shareSpeechWindowBenchmarks, type SpeechWindowBenchmarkReport } from '../../stt/speechWindowBenchmark'
 import {
   listBenchmarkRunSummaries,
@@ -313,6 +314,19 @@ export default function BenchmarkScreen() {
       })
     })
   }
+  const [probe, setProbe] = useState<SpeedProbeResult[]>([])
+  const startProbe = (): void => {
+    void perform(async (signal) => {
+      setProbe([])
+      const report = await runSpeedProbe({
+        signal,
+        onProgress: (message) => {
+          if (mounted.current) setStatus(message)
+        },
+      })
+      if (mounted.current) setProbe(report.results)
+    })
+  }
   const startQuick = (): void => {
     void perform(async (signal) => {
       await runQuickSuite({
@@ -395,6 +409,18 @@ export default function BenchmarkScreen() {
           title={t('Eksportuj wyniki', 'Export results')}
           onPress={() => void perform(async () => { await shareBenchmarkRuns() })}
         />
+        <Button
+          disabled={busy || !present[BENCHMARK_QWEN3.filename]}
+          title={t('Sonda ustawień modelu (ok. 5 min)', 'Model settings probe (~5 min)')}
+          onPress={startProbe}
+        />
+        {probe.map((item) => (
+          <Text key={item.id} style={styles.small}>
+            {item.error
+              ? `${item.id}: ${item.error}`
+              : `${item.id}: prefill ${item.prefillTokensPerSecond} tok/s · decode ${item.longDecodeTokensPerSecond} (długi) / ${item.shortDecodeTokensPerSecond} (krótki) tok/s${item.sameTextAsBase === null ? '' : item.sameTextAsBase ? ' · ten sam tekst' : ' · inny tekst'}`}
+          </Text>
+        ))}
         {busy ? <Text style={styles.copy}>{status}</Text> : null}
         {error ? <Text style={styles.error}>{error}</Text> : null}
       </View>
