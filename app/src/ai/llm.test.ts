@@ -2,6 +2,8 @@ import {
   initLlama,
   releaseAllLlama,
   getBackendDevicesInfo,
+  addNativeLogListener,
+  toggleNativeLog,
   type LlamaContext,
 } from 'llama.rn'
 import {
@@ -20,6 +22,8 @@ jest.mock('llama.rn', () => ({
   getBackendDevicesInfo: jest.fn(async () => [
     { type: 'CPU', deviceName: 'CPU' },
   ]),
+  addNativeLogListener: jest.fn(() => ({ remove: jest.fn() })),
+  toggleNativeLog: jest.fn(async () => undefined),
 }))
 jest.mock('../i18n/translate', () => ({
   translate: (_pl: string, en: string) => en,
@@ -103,6 +107,21 @@ describe('LLM runtime protocol', () => {
     expect(result.completion?.status).toBe(expected)
     expect(result.draftTokens).toBe(8)
     expect(result.draftTokensAccepted).toBe(6)
+  })
+
+  it('keeps backend lines logged during init and switches native logging off', async () => {
+    jest.mocked(addNativeLogListener).mockImplementation((listener) => {
+      listener('info', 'ggml_metal_device_init: tensor API disabled for pre-M5 and pre-A19 devices')
+      listener('info', 'unrelated chatter')
+      return { remove: jest.fn() }
+    })
+    await loadModel('/one.gguf')
+    expect(getLoadedModelInfo()?.nativeInitLog).toEqual([
+      'ggml_metal_device_init: tensor API disabled for pre-M5 and pre-A19 devices',
+    ])
+    expect(toggleNativeLog).toHaveBeenNthCalledWith(1, true)
+    expect(toggleNativeLog).toHaveBeenLastCalledWith(false)
+    jest.mocked(addNativeLogListener).mockImplementation(() => ({ remove: jest.fn() }))
   })
 
   it('counts and submits the same formatted prompt with thinking disabled', async () => {

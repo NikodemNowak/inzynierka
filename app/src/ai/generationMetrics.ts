@@ -36,6 +36,7 @@ export const runtimeMetricMetadata = (
     gpu: info?.gpu,
     devices: info?.devices,
     systemInfo: info?.systemInfo,
+    nativeInitLog: info?.nativeInitLog,
     speculative: info?.speculative,
     os: Platform.OS,
     osVersion: String(Platform.Version),

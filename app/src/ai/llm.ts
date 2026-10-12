@@ -2,6 +2,8 @@ import {
   initLlama,
   releaseAllLlama,
   getBackendDevicesInfo,
+  addNativeLogListener,
+  toggleNativeLog,
   type CompletionParams,
   type CompletionResponseFormat,
   type LlamaContext,
@@ -33,6 +35,8 @@ export interface LoadedModelInfo {
   devices: string[]
   reasonNoGPU: string
   systemInfo: string
+  // Backend lines logged while the context was created (Metal tensor API, flash attention).
+  nativeInitLog?: string[]
   metadata: Record<string, unknown>
 }
 export interface ModelLoadOptions {
@@ -43,6 +47,36 @@ export interface ModelLoadOptions {
   signal?: AbortSignal
 }
 export type LoadModelOptions = ModelLoadOptions
+const NATIVE_LOG_PATTERN = /tensor|flash|metal|simdgroup|bfloat|gpu|ubatch|compute buffer|kv/i
+const NATIVE_LOG_LIMIT = 60
+
+// Diagnostic only: it must never fail or slow down loading the model.
+const captureNativeInitLog = async (): Promise<() => Promise<string[]>> => {
+  const lines: string[] = []
+  let subscription: { remove: () => void } | null = null
+  try {
+    if (typeof addNativeLogListener !== 'function' || typeof toggleNativeLog !== 'function')
+      return async () => lines
+    subscription = addNativeLogListener((_level, text) => {
+      const line = text.trim()
+      if (lines.length < NATIVE_LOG_LIMIT && NATIVE_LOG_PATTERN.test(line))
+        lines.push(line.slice(0, 200))
+    })
+    await toggleNativeLog(true)
+  } catch {
+    /* logging is optional */
+  }
+  return async () => {
+    try {
+      await toggleNativeLog(false)
+      subscription?.remove()
+    } catch {
+      /* logging is optional */
+    }
+    return lines
+  }
+}
+
 export const isModelLoaded = (): boolean => context !== null
 export const getLoadedModelInfo = (): LoadedModelInfo | null => loadedInfo
 export const getContextWindowSize = (): number =>
@@ -162,6 +196,8 @@ const performModelLoad = async (
         ),
       )
     }
+    const stopNativeLog = await captureNativeInitLog()
+    let nativeInitLog: string[] = []
     const next = await initLlama(
       {
         model: modelPath,
@@ -189,6 +225,15 @@ const performModelLoad = async (
         use_mmap: true,
       },
       (percent) => onProgress?.(percent),
+    ).then(
+      async (created) => {
+        nativeInitLog = await stopNativeLog()
+        return created
+      },
+      async (error: unknown) => {
+        await stopNativeLog()
+        throw error
+      },
     )
     const selectedDevices = next.devices ?? []
     if (
@@ -217,6 +262,7 @@ const performModelLoad = async (
       devices: [...selectedDevices],
       reasonNoGPU: next.reasonNoGPU,
       systemInfo: next.systemInfo,
+      nativeInitLog,
       metadata: next.model.metadata as Record<string, unknown>,
     }
     scheduleIdleUnload()

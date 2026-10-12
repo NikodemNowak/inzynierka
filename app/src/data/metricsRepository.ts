@@ -8,6 +8,7 @@ export interface RuntimeMetricMetadata {
   gpu?: boolean
   devices?: string[]
   systemInfo?: string
+  nativeInitLog?: string[]
   os?: string
   osVersion?: string
   appVersion?: string
