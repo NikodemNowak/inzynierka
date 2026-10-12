@@ -1428,6 +1428,25 @@ export const collectSourceEvidence = async (
     unresolved: TaskSemanticIssue[],
   ): Promise<SourceEvidence[]> => {
     assertRuntime();
+    // An unresolved statement that is plainly a first-person or required action
+    // is kept as a proposal (the review warning stays) instead of being dropped.
+    if (mode === "tasks" && unresolved.length && execution?.recoverUnresolvedTasks) {
+      const have = new Set(evidence.map((entry) => entry.id));
+      const units = taskSourceUnits(range.text, range.unitPlan, range.start);
+      const recovered: SourceEvidence[] = [];
+      for (const issue of unresolved) {
+        const unit = units.find((entry) => entry.id === issue.id);
+        if (!unit || hasExplicitMainNegation(unit.text)) continue;
+        if (!(hasDirectRequiredTask(unit.text) || hasPolishFirstPersonActionCandidate(unit.text) ||
+          hasJoinedCurrentActionCandidate(unit.text))) continue;
+        const id = `facts:${range.start}:${range.end}:${unit.id - 1}`;
+        if (have.has(id)) continue;
+        have.add(id);
+        recovered.push({ id, start: range.start + unit.start, end: range.start + unit.end, quote: unit.text,
+          task: unit.text, kind: "active", importance: 2 });
+      }
+      if (recovered.length) evidence = [...evidence, ...recovered].sort((a, b) => a.start - b.start);
+    }
     const warnings = unresolved.length
       ? [
           language === "en"

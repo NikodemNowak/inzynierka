@@ -345,6 +345,7 @@ export const processNoteWithLlm = async (
     }
   };
   const useSharedCategoryPrefix = execution.sourceUnitPlan !== undefined && source === content;
+  if (allowUnverifiedSummary) execution.recoverUnresolvedTasks = true;
   const taskProof = canAnalyzeTasks
     ? await extractTaskEvidence(content, () => undefined, language, execution,
         useSharedCategoryPrefix ? generateSharedCategories : undefined)

@@ -249,6 +249,7 @@ export function NoteTasks({
               reportStatus,
               snapshotLanguage,
               execution,
+              true,
             )
           },
           async () => {

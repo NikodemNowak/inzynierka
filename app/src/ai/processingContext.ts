@@ -51,6 +51,8 @@ export interface ProcessingExecutionContext {
   runtimeOptions?: LoadModelOptions;
   taskEvidenceMemo?: TaskEvidenceMemo;
   onWarning?: (message: string) => void;
+  // App flows keep plainly action-shaped statements the model left unresolved.
+  recoverUnresolvedTasks?: boolean;
   onSourceReview?: (span: SourceReviewSpan) => void;
   onProgress?: (progress: {
     phase: "fragment" | "reduction" | "tasks";

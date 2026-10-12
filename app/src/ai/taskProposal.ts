@@ -19,10 +19,12 @@ export const createTaskProposal = async (
   onStatus: (status: string) => void,
   language: Language,
   execution?: ProcessingExecutionContext,
+  recoverUnresolved = false,
 ): Promise<TaskProposal> => {
   const warnings = new Set<string>()
   const tasks = await extractTasks(source, onStatus, language, {
     ...execution,
+    ...(recoverUnresolved ? { recoverUnresolvedTasks: true } : {}),
     onWarning: (message) => {
       warnings.add(message)
       execution?.onWarning?.(message)
