@@ -345,10 +345,24 @@ export const processNoteWithLlm = async (
     }
   };
   const useSharedCategoryPrefix = execution.sourceUnitPlan !== undefined && source === content;
+  // Opportunistic: after a single-range task pass the native KV still holds the
+  // numbered source, so categories skip a second prefill. Any failure falls
+  // back to the late call below, which also has the title and summary.
+  const generateEarlyCategories = async (): Promise<void> => {
+    if (categoriesGenerated) return;
+    onProgress({ phase: "tags" });
+    try {
+      tags = await classifyNoteCategories(source, language, execution, content, undefined, "tasks");
+      categoriesGenerated = true;
+    } catch {
+      throwIfProcessingAborted(execution);
+    }
+  };
   if (allowUnverifiedSummary) execution.recoverUnresolvedTasks = true;
   const taskProof = canAnalyzeTasks
     ? await extractTaskEvidence(content, () => undefined, language, execution,
-        useSharedCategoryPrefix ? generateSharedCategories : undefined)
+        useSharedCategoryPrefix ? generateSharedCategories
+          : source === content ? generateEarlyCategories : undefined)
     : undefined;
   throwIfProcessingAborted(execution);
   if (canAnalyzeTasks && useSharedCategoryPrefix) await generateSharedCategories();

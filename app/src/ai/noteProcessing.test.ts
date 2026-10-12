@@ -162,8 +162,8 @@ test("reuses actual two-statement task evidence independently of summary compres
   const content = statements.join(" ");
   const execution = { taskEvidenceMemo: {} };
   fields.mockResolvedValueOnce(generated('{"tasks":[{"id":1,"kind":"active"},{"id":2,"kind":"active"}]}'))
-    .mockResolvedValueOnce(generated("Report"))
-    .mockResolvedValueOnce(generated("Praca"));
+    .mockResolvedValueOnce(generated("Praca"))
+    .mockResolvedValueOnce(generated("Report"));
   scriptedSummary([
     { text: 'Report with measurements and observations by Friday.', quotes: [statements[0]] },
     { text: 'Alice: report check on Monday with the approved checklist and original measurements.', quotes: [statements[1]] },
@@ -289,8 +289,8 @@ test("recovers Polish literal tasks without copying two complete sentences into 
   const content = statements.join(" ");
   const execution = { taskEvidenceMemo: {} };
   fields.mockResolvedValueOnce(generated('{"tasks":[{"id":1,"kind":"active"},{"id":2,"kind":"active"}]}'))
-    .mockResolvedValueOnce(generated("Raport"))
-    .mockResolvedValueOnce(generated("Praca"));
+    .mockResolvedValueOnce(generated("Praca"))
+    .mockResolvedValueOnce(generated("Raport"));
   scriptedSummary([
     { text: 'Do piątku: raport z pomiarami i ograniczeniami aplikacji dla promotora i zespołu.', quotes: [statements[0]] },
     { text: 'Alicja: tabela czasów do czwartku z oryginalnych wyników; zapis zauważonych różnic.', quotes: [statements[1]] },
@@ -959,11 +959,10 @@ test("restores the physical v10 terminal assignment through model correction whi
   const onWarning = jest.fn();
   const execution = { checkpoint, onWarning, taskEvidenceMemo: {} };
   fields.mockResolvedValueOnce(generated('{"tasks":[{"id":17,"kind":"active"},{"id":25,"kind":"cancelled"},{"id":26,"kind":"active"},{"id":27,"kind":"active"},{"id":28,"kind":"uncertain"}]}'));
-  // This smaller physical source falls below the measured prefix-cost gate;
-  // retain the original complete task-proof-before-summary sequence.
+  // Categories run right after the first task pass, while the source is cached.
+  fields.mockResolvedValueOnce(generated("Nauka"));
   fields.mockResolvedValueOnce(generated('{"tasks":[{"id":2,"kind":"uncertain"},{"id":6,"kind":"active"},{"id":25,"kind":"active"}]}'));
   fields.mockResolvedValueOnce(generated("Community Podcast Planning"));
-  fields.mockResolvedValueOnce(generated("Nauka"));
   summaryDraft = () => null;
   const result = await processNoteWithLlm(physicalV10Source, () => undefined, undefined, "en", execution);
   const required = [
