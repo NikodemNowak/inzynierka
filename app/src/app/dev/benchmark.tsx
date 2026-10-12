@@ -30,6 +30,7 @@ import {
   isBenchmarkModelPresent,
 } from '../../ai/benchmarkModels'
 import { runBenchmarkSuite } from '../../ai/benchmarkService'
+import { QUICK_SUITE_TEXTS, runQuickSuite } from '../../ai/benchmarkQuickSuite'
 import { runSpeechWindowBenchmarkSuite, shareSpeechWindowBenchmarks, type SpeechWindowBenchmarkReport } from '../../stt/speechWindowBenchmark'
 import {
   listBenchmarkRunSummaries,
@@ -312,6 +313,25 @@ export default function BenchmarkScreen() {
       })
     })
   }
+  const startQuick = (): void => {
+    void perform(async (signal) => {
+      await runQuickSuite({
+        deviceLabel: device,
+        signal,
+        onProgress: (message) => {
+          if (mounted.current) setStatus(message)
+        },
+        onResult: (run) => {
+          if (mounted.current) {
+            clearDetails()
+            listRequest.current++
+            const summary = projectBenchmarkRun(run)
+            setRuns((previous) => [summary, ...previous].sort((a, b) => b.createdAt - a.createdAt).slice(0, 30))
+          }
+        },
+      })
+    })
+  }
   const assess = async (
     run: BenchmarkRunSummary,
     key: BenchmarkAssessmentKey,
@@ -349,6 +369,35 @@ export default function BenchmarkScreen() {
           'Measure transcription and note processing: title, summary, categories and tasks. The screen stays awake during the test. Keep the app open. Leaving the app or memory pressure cancels the attempt.',
         )}
       </Text>
+      <View style={styles.card}>
+        <Text style={styles.heading}>{t('Szybki test szybkości', 'Quick speed test')}</Text>
+        <Text style={styles.copy}>
+          {t(
+            `Jeden przycisk: trzy stałe polskie notatki (${QUICK_SUITE_TEXTS.map((text) => text.words).join(', ')} słów) przechodzą pełne przetwarzanie. Czasy faz i log Metal zapisują się w wynikach. Zostaw ekran włączony; całość trwa kilka minut.`,
+            `One button: three fixed Polish notes (${QUICK_SUITE_TEXTS.map((text) => text.words).join(', ')} words) go through the full processing. Phase timings and the Metal log are saved with the results. Keep the screen on; it takes a few minutes.`,
+          )}
+        </Text>
+        {!present[BENCHMARK_QWEN3.filename] ? (
+          <Text style={styles.copy}>
+            {t(
+              'Najpierw pobierz model Qwen3 poniżej (jednorazowo).',
+              'First download the Qwen3 model below (once).',
+            )}
+          </Text>
+        ) : null}
+        <Button
+          disabled={busy || !present[BENCHMARK_QWEN3.filename]}
+          title={t('Uruchom pełny test', 'Run full test')}
+          onPress={startQuick}
+        />
+        <Button
+          disabled={busy}
+          title={t('Eksportuj wyniki', 'Export results')}
+          onPress={() => void perform(async () => { await shareBenchmarkRuns() })}
+        />
+        {busy ? <Text style={styles.copy}>{status}</Text> : null}
+        {error ? <Text style={styles.error}>{error}</Text> : null}
+      </View>
       <View style={styles.card}>
         <Text style={styles.heading}>{t('GPU w tle', 'Background GPU')}</Text>
         <Text style={styles.copy}>
