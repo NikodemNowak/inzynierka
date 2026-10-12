@@ -3359,3 +3359,33 @@ describe("standalone required actions survive a leading coordinating word", () =
     expect(model).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("task output budget", () => {
+  const dense = (count: number): string =>
+    Array.from({ length: count }, (_, index) => `Please review document number ${index + 1} today.`).join(" ");
+
+  test("keeps the base budget for short sources", async () => {
+    model.mockResolvedValue(generated('{"tasks":[]}'));
+    await collectSourceEvidence(dense(10), "tasks", "en");
+    expect(model.mock.calls[0][2]?.nPredict).toBe(512);
+  });
+
+  test("gives dense ranges headroom so one call does not truncate and split", async () => {
+    model.mockResolvedValue(generated('{"tasks":[]}'));
+    await collectSourceEvidence(dense(60), "tasks", "en");
+    expect(model.mock.calls[0][2]?.nPredict).toBe(60 * 11 + 48);
+  });
+
+  test("never grows past the room left in the context window", async () => {
+    model.mockResolvedValue(generated('{"tasks":[]}'));
+    measurePrompt.mockImplementation(async () => contextSize() - 600);
+    try {
+      await collectSourceEvidence(dense(60), "tasks", "en");
+    } finally {
+      measurePrompt.mockImplementation(async ({ systemPrompt, userPrompt }) =>
+        Math.ceil(Array.from(systemPrompt + userPrompt).length / 4) + 12);
+    }
+    const first = model.mock.calls[0][2]?.nPredict ?? 0;
+    expect(first).toBeLessThanOrEqual(Math.max(512, 600 - 24));
+  });
+});

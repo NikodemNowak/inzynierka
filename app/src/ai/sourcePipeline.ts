@@ -84,6 +84,10 @@ class SemanticTaskEvidenceError extends Error {
 
 const RESERVE = 24;
 const OUTPUT_TOKENS = 512;
+// A dense task answer costs ~10 tokens per classified statement; a truncated
+// answer forces a split and a second full prefill, so large ranges get headroom.
+const TASK_OUTPUT_TOKENS_PER_UNIT = 11;
+const TASK_OUTPUT_TOKENS_MAX = 1024;
 const MAX_FACT_SELECTIONS = 12;
 const MAX_CALLS = 2048;
 const MAX_DEPTH = 24;
@@ -289,7 +293,21 @@ export const taskEvidenceRequest = (language: Language, plan?: SourceUnitPlan): 
   prompt: (text) => evidencePrompt(text, "tasks", language, plan),
 });
 
-export const isIncompleteGeneration = (result: GenerationResult): boolean => {
+// Input planning keeps the base budget; only the generation call may grow, and
+// never beyond the room left in the context window after the prompt.
+const taskOutputBudget = async (
+  range: SourceRange,
+  system: string,
+  prompt: string,
+): Promise<number> => {
+  const units = taskSourceUnits(range.text, range.unitPlan, range.start).length;
+  const wanted = Math.min(TASK_OUTPUT_TOKENS_MAX, units * TASK_OUTPUT_TOKENS_PER_UNIT + 48);
+  if (wanted <= OUTPUT_TOKENS) return OUTPUT_TOKENS;
+  const promptTokens = await measureFormattedPromptTokens({ systemPrompt: system, userPrompt: prompt });
+  return Math.max(OUTPUT_TOKENS, Math.min(wanted, getContextWindowSize() - promptTokens - RESERVE));
+};
+
+export const isIncompleteGeneration =(result: GenerationResult): boolean => {
   const completion = result.completion;
   return (
     completion !== undefined &&
@@ -1605,9 +1623,13 @@ export const collectSourceEvidence = async (
       let result: GenerationResult;
       assertRuntime();
       try {
+        const nPredict =
+          mode === "tasks" && !rejectedTasks
+            ? await taskOutputBudget(range, attempt === 0 ? request.system : system, prompt)
+            : OUTPUT_TOKENS;
         result = await generate(prompt, () => undefined, {
           system: attempt === 0 ? request.system : system,
-          nPredict: OUTPUT_TOKENS,
+          nPredict,
           signal: execution?.signal,
           ...(mode === "tasks"
             ? {
