@@ -60,7 +60,7 @@ const MAX_LEAD_WORDS = 80
 const MAX_POINT_WORDS = 40
 const MAX_POINTS = 14
 const TITLE_N_PREDICT = 40
-const REPAIR_N_PREDICT = 24
+const REPAIR_N_PREDICT = 40
 
 // ------------------------------------------------------------------ prompts
 
@@ -72,6 +72,7 @@ const EN_SYSTEM =
 const PL_TITLE_RULES = `Tytuł: 2-5 słów, fraza rzeczownikowa w mianowniku, bez czasownika. Ma nazywać temat całej notatki – to, czego dotyczy większość nagrania. Używaj konkretnych rzeczowników z początku nagrania i z punktów (nazwa klienta, miejsce, choroba, osoba, okazja, przedmiot), nie ogólnych zamienników: „rocznica”, nie „uroczystość”; „angina”, nie „leczenie”. Gdy początek wprost nazywa temat, użyj jego słów. Pojedynczy szczegół lub poboczna osoba nie jest tematem. Gdy notatka obejmuje kilka niezależnych spraw, wymień dwie lub trzy najważniejsze. Gdy początek mówi, że to dziennik lub wieczorny zapis dnia, tytuł ma postać „Dziennik: sprawa i sprawa”. Imiona i nazwy zapisuj w poprawnej formie.
 Źle (zbyt ogólne): „Spotkania i zadania”, „Sprawy domowe”, „Pomoc”, „Plan”, „Leczenie i leki”.
 Dobrze: „Remont kuchni i hydraulik”, „Kurs prawa jazdy”, „Szczepienie psa u weterynarza”, „Kredyt, auto i weterynarz”.
+Nie używaj czasownika ani polecenia („Wyślij umowę”) – podaj rzeczownik („Wysłanie umowy”).
 Bez liczb, dat, dni tygodnia i miesięcy.`
 const PL_CATEGORY_RULES =
   'Kategoria: numer jednej głównej dziedziny notatki. Dodatkowe: numery innych dziedzin tylko wtedy, gdy duża, osobna część notatki ich dotyczy (najwyżej 2), inaczej 0. Pojedyncza wzmianka (kwota, termin, osoba, szef) nie wystarcza. Praca tylko dla pracy zawodowej (nie studia, nie sprawy rodzinne, nie urlop). Planowanie tylko dla planu wielu niezwiązanych spraw.'
@@ -273,6 +274,8 @@ interface Vocabulary {
   fallbackStop: ReadonlySet<string>
   fallbackStopHead: ReadonlySet<string>
   isVerbLike: (word: string) => boolean
+  // First word of a title that is an order or an infinitive.
+  isCommandWord: (word: string) => boolean
 }
 
 const set = (...items: string[]): ReadonlySet<string> => new Set(items)
@@ -296,7 +299,7 @@ const PL_ABSTRACT = ['zadani', 'spraw', 'rzecz', 'plan', 'spotkani', 'decyzj', '
   'osobist', 'wspomni', 'wieczorn', 'zapis', 'dziennik', 'zdrow', 'związan', 'różnych', 'ważn', 'najważniejsz', 'główn', 'ogóln', 'inne', 'innych']
 const PL_EXAMPLES = set('remont kuchni i hydraulik', 'kurs prawa jazdy', 'szczepienie psa u weterynarza', 'plan przeprowadzki',
   'kredyt, auto i weterynarz', 'wizyta u weterynarza', 'remont kuchni', 'rozmowa o kredycie',
-  'spotkania i zadania', 'sprawy domowe', 'decyzje i plany', 'leczenie i leki')
+  'spotkania i zadania', 'sprawy domowe', 'decyzje i plany', 'leczenie i leki', 'wysłanie umowy')
 const PL_SENTENCE_MARKERS = set('to', 'jest', 'są', 'był', 'była', 'było', 'się', 'mam', 'mamy', 'masz', 'taki', 'taka', 'takie',
   'bardziej', 'że', 'bo', 'nie', 'jak', 'co', 'który', 'która', 'które', 'ja', 'ty', 'on', 'ona',
   'my', 'wy', 'oni', 'trzeba', 'muszę', 'może', 'będzie', 'tak', 'no', 'więc', 'znaczy', 'czyli',
@@ -314,6 +317,13 @@ const PL_DATE_WORD = new RegExp(
     'sierp|wrze[sś]|pa[zź]dziern|listopad|grud|poniedzia|wtor|czwart|pi[aą]t|sobot|niedziel|[sś]rod(?:a|ą|ę|y|zie)$)',
   'u',
 )
+// A title is a noun phrase: an order ("Pokaż promotorowi ...") or an infinitive ("Pokazać ...") up front is wrong.
+const PL_IMPERATIVE = new RegExp(
+  '^(?:pokaż|popraw|sprawdź|zadzwoń|kup|wyślij|zapłać|odbierz|zrób|napisz|zamów|umów|zabierz|oddaj|dokończ|wymień|odłóż|załatw|dopisz|zmierz|' +
+    'przejrzyj|ćwicz|wpadnij|pomóż|ustaw|zapisz|usuń|dodaj|przełóż|przesuń|poproś|przepisz|wyciągnij|pamiętaj|zobacz|przygotuj|zaplanuj|skopiuj|zarezerwuj|\\p{L}{4,}uj)$',
+  'u',
+)
+const PL_INFINITIVE = /^\p{L}{5,}(?:ać|eć|ić|yć|ąć|uć)$/u
 const PL_END_BAD = union(PL_STOP, set('jak', 'że', 'bo', 'który', 'która', 'oraz', 'się'))
 const PL_FALLBACK_STOP = union(PL_SENTENCE_MARKERS, PL_STOP, PL_GENERIC, set(
   'potem', 'trzeba', 'kiedy', 'gdzie', 'jakieś', 'jakiś', 'wszystko', 'wtedy', 'teraz', 'dzisiaj', 'jutro', 'rano',
@@ -379,6 +389,7 @@ const VOCABULARY: Record<Language, Vocabulary> = {
     fallbackStop: PL_FALLBACK_STOP,
     fallbackStopHead: PL_FALLBACK_STOP_HEAD,
     isVerbLike: (word) => PL_VERB_END.test(word),
+    isCommandWord: (word) => PL_IMPERATIVE.test(word) || PL_INFINITIVE.test(word),
   },
   en: {
     stop: EN_STOP,
@@ -399,6 +410,7 @@ const VOCABULARY: Record<Language, Vocabulary> = {
     fallbackStop: union(EN_SENTENCE_MARKERS, EN_STOP, EN_GENERIC),
     fallbackStopHead: union(EN_SENTENCE_MARKERS, EN_STOP, set('decision', 'first', 'then', 'next', 'maybe')),
     isVerbLike: () => false,
+    isCommandWord: () => false,
   },
 }
 
@@ -421,6 +433,7 @@ export const titleProblems = (title: string, sources: readonly string[], languag
   else if (content.length === 1 && vocabulary.generic.has(content[0])) problems.push('generic')
   if (low.some((word) => vocabulary.sentenceMarkers.has(word))) problems.push('sentence-word')
   if (low.some(vocabulary.isPersonalVerb) || low.some(vocabulary.isPastVerb)) problems.push('personal-verb')
+  if (low.length > 0 && vocabulary.isCommandWord(low[0])) problems.push('imperative')
   if (words.length >= 2 && vocabulary.vacuousHead.has(low[0])) problems.push('vacuous-head')
   // "... i zadania": the last conjunct is a lone abstract word.
   const lastJoin = low.length - 2
@@ -463,6 +476,7 @@ const REASONS: readonly ReasonText[] = [
   { keys: ['vacuous-head'], pl: 'zaczyna się od pustego słowa – zacznij od konkretnego tematu', en: 'starts with an empty word – start with a specific topic' },
   { keys: ['vague-tail'], pl: 'kończy się zbyt ogólnym członem – zastąp go konkretnym tematem z notatki', en: 'ends with a too generic part – replace it with a specific topic from the note' },
   { keys: ['abstract', 'generic', 'vacuous'], pl: 'składa się z samych ogólnych słów – nazwij konkretny temat', en: 'consists only of generic words – name a specific topic' },
+  { keys: ['imperative'], pl: 'zaczyna się od czasownika (polecenia) – podaj frazę rzeczownikową, np. rzeczownik odczasownikowy', en: 'starts with a verb – give a noun phrase' },
   { keys: ['sentence', 'personal-verb', 'dangling'], pl: 'jest fragmentem zdania – podaj frazę rzeczownikową', en: 'is a sentence fragment – give a noun phrase' },
   { keys: ['enumeration'], pl: 'jest wyliczanką – wybierz dwa lub trzy najważniejsze tematy', en: 'is a list – pick the two or three most important topics' },
   { keys: ['words='], pl: 'ma złą liczbę słów (wymagane 2-6)', en: 'has the wrong number of words (2-6 required)' },

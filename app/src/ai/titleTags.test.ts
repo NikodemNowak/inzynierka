@@ -262,7 +262,7 @@ describe('generateTitleAndTags', () => {
     const [first] = model.mock.calls[0]
     const [repair, , options] = model.mock.calls[1]
     expect(repair).toBe(titleRepairPrompt(first, answer('Spotkania i zadania', '2'), 'Spotkania i zadania', ['abstract', 'prompt-example'], 'pl'))
-    expect(options).toMatchObject({ nPredict: 24, temperature: 0.1, system: titleTagsSystem('pl') })
+    expect(options).toMatchObject({ nPredict: 40, temperature: 0.1, system: titleTagsSystem('pl') })
     expect(metrics).toHaveBeenCalledTimes(2)
   })
 
@@ -443,5 +443,44 @@ describe('word forms and soft problems', () => {
       content: `No dobra, nagrywam. ${filler}. No więc chodzi o urodziny taty. Koniec.`,
     }, 'pl')
     expect(model.mock.calls[0][0]).toMatch(/… No więc chodzi o urodziny taty\.”/u)
+  })
+})
+
+describe('command-like titles', () => {
+  const source = ['Rano pokazuję promotorowi najnowszą wersję aplikacji. Poprawię ekran eksportu.']
+
+  it.each([
+    ['Pokaż promotorowi aplikację i popraw ekran'],
+    ['Pokazać promotorowi aplikację'],
+    ['Wyślij link do repozytorium'],
+    ['Przygotuj prezentację'],
+  ])('flags %s', title => {
+    expect(titleProblems(title, source, 'pl')).toContain('imperative')
+  })
+
+  it.each([
+    ['Pokaz aplikacji promotorowi'],
+    ['Spotkanie z promotorem'],
+    ['Zakupy i wartość pracy'],
+    ['Pamięć podręczna'],
+  ])('accepts %s', title => {
+    expect(titleProblems(title, source, 'pl')).not.toContain('imperative')
+  })
+
+  it('asks for a noun phrase when repairing an imperative title', () => {
+    expect(repairReason(['imperative'], 'pl')).toContain('frazę rzeczownikową')
+  })
+
+  it('repairs an imperative title with a longer continuation budget', async () => {
+    model.mockReset()
+    model.mockResolvedValueOnce(response(answer('Pokaż promotorowi aplikację i popraw ekran', '2')))
+    model.mockResolvedValueOnce(response('Tytuł: Pokaz aplikacji promotorowi'))
+    const result = await generateTitleAndTags({
+      opening: 'Krótka notatka na poniedziałek.',
+      points: ['Pokazać promotorowi najnowszą wersję aplikacji', 'Poprawić ekran eksportu'],
+      content: 'Krótka notatka na poniedziałek. Rano pokazuję promotorowi najnowszą wersję aplikacji. Poprawię ekran eksportu.',
+    }, 'pl')
+    expect(result.title).toBe('Pokaz aplikacji promotorowi')
+    expect(model.mock.calls[1][2]).toMatchObject({ nPredict: 40 })
   })
 })

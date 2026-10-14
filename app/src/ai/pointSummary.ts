@@ -239,6 +239,12 @@ const plannedAsDone = (text: string, src: string): boolean => {
   }
   return false;
 };
+const sharedTail = (a: string, b: string): number => {
+  let n = 0;
+  while (n < a.length && n < b.length && a[a.length - 1 - n] === b[b.length - 1 - n]) n += 1;
+  return n;
+};
+const INVENTED_VERB = /(?:łem|łam|liśmy|łyśmy|ał|ała|ało|ili|yli|uję|ujemy|ują|ować|dę|de)$/u;
 const NIE = rx(String.raw`(?<![^\W\d_])nie(?![^\W\d_])`, 'gi');
 // "czy dowód nie traci ważności", "dopóki prawnicy nie przejrzą" are not negated facts;
 // "nie razem z antybiotykiem, tylko dwie godziny po": the positive part may stand alone.
@@ -324,13 +330,20 @@ const checkPointPl = (
   const wanted = words(text).filter(w => w.length >= 4 && !SUMMARY_VOCAB.has(w) && !DATE_PREFIX.some(p => p.test(w)));
   const haveStems = new Set(stems(src));
   const noteStems = new Set(stems(noteText));
+  const noteWords = new Set(words(noteText));
   if (wanted.length) {
     const missing = wanted.filter(w => !haveStems.has(w.slice(0, STEM)));
-    const weight = missing.reduce((sum, w) => sum + (noteStems.has(w.slice(0, STEM)) ? 0.5 : 1), 0);
+    // An invented verb form ("przepłaciłem", "dojde") shares no long prefix with any word of the note.
+    const noteList = [...noteWords];
+    const invented = missing.filter(w => w.length >= 5 && INVENTED_VERB.test(w) &&
+      !noteList.some(n => n.startsWith(w.slice(0, Math.min(6, w.length - 1)))));
+    // "zakończyć" for the speaker's "dokończyć": same tail, other prefix.
+    const swapped = missing.filter(w => w.length >= 7 && !invented.includes(w) &&
+      [...words(src)].some(o => o.length >= 7 && o.slice(0, 3) !== w.slice(0, 3) && sharedTail(o, w) >= 6));
+    const weight = missing.reduce((sum, w) => sum + (noteStems.has(w.slice(0, STEM)) ? 0.5 : 1), 0) + invented.length + swapped.length;
     if (weight > Math.max(1, Math.trunc(wanted.length * (1 - minOverlap)))) issues.push(`words:${missing.slice(0, 4).join(',')}`);
   }
   // proper names must occur in the note (any sentence)
-  const noteWords = new Set(words(noteText));
   const names = [...text.matchAll(rx(`${NAME_AT}([${UPPER}][^\\W\\d_]{1,})`, 'g'))].map(m => m[1]);
   const first = rx(`^([${UPPER}][^\\W\\d_]{2,})`).exec(text);
   // A sentence-initial word counts as a name only when the note capitalises it mid-sentence too.
@@ -645,6 +658,7 @@ export const cleanLiteral = (input: string, language: Language = 'pl', dropBo = 
   let t = input.trim();
   if (pl) t = fixCorrection(t);
   t = t.replace(lead, '');
+  if (pl) t = t.replace(ENUM_LABEL, '');
   t = t.replace(pl ? INNER_FILLERS_PL : INNER_FILLERS_EN, match => {
     const trimmed = match.trim();
     return trimmed.startsWith(',') && trimmed.endsWith(',') ? ', ' : ' ';
@@ -763,9 +777,11 @@ export const parsePoints = (text: string, allowed: ReadonlySet<number>): Summary
 // ---------------------------------------------------------------- finalize
 const FILLER_LEAD = rx(String.raw`^(?:no\s+(?:więc|dobra|i)|dobra|aha(?:\s+i\s+jeszcze)?|znaczy|i\s+jeszcze)\s*[,:]?\s+`, 'i');
 
+// "Druga sprawa: prezentacja" -> "prezentacja": the speaker's numbering is not content.
+const ENUM_LABEL = rx(String.raw`^(?:(?:pierwsza|druga|trzecia|czwarta|piąta|szósta|siódma|ósma|dziewiąta|dziesiąta|kolejna|ostatnia)\s+sprawa|sekcja\s+[^\W\d_]+)\s*:\s*(?=\S)`, 'i');
 const tidy = (text: string, language: Language): string => {
   let t = text.trim();
-  if (language === 'pl') t = t.replace(FILLER_LEAD, '');
+  if (language === 'pl') t = t.replace(FILLER_LEAD, '').replace(ENUM_LABEL, '');
   t = stripChars(t.replace(/\s+/gu, ' ').trim(), ' ;,').replace(/\.+$/u, '');
   return capitalize(t);
 };
@@ -788,7 +804,7 @@ const fixVocative = (text: string, noteWords: ReadonlySet<string>): string =>
 const DECISION_OPENER = rx(String.raw`^(?:postanowi(?:łem|łam|liśmy|łyśmy)|postanawiam|postanawiamy|zdecydowałem|zdecydowałam|zdecydowaliśmy|postanowił(?=\s+(?:do|że|nie|przez|od|na)(?![^\W\d_])))(?![^\W\d_])(?:\s*,)?(?:\s*,?\s+(?:dzisiaj|dziś|tak|serio|teraz|już|ostatecznie|jednak|postanowiłem|postanowiłam|postanawiam))*\s*,?\s*(?:że\s+)?`, 'i');
 // "..., więc postanawiam od dzisiaj, że X": the decision is what follows.
 const DECISION_INSIDE = rx(String.raw`^[^.]{10,}?,\s*(?:więc\s+|i\s+)?(?:postanowiłem|postanowiłam|postanawiam|zdecydowałem|zdecydowałam)(?![^\W\d_])(?:\s*,)?(?:\s*,?\s+(?:dzisiaj|dziś|od\s+dzisiaj|od\s+dziś|teraz|już|ostatecznie))*\s*,?\s*(?:że\s+)?`, 'i');
-const MODAL_OPENER = rx(String.raw`^(?:muszę|musimy|mam|mamy|trzeba|powinienem|powinnam|powinniśmy)\s+(?:(?:jeszcze|też|także|koniecznie|kiedyś|na\s+pewno|w\s+końcu)\s+)?(?!(?:być|mieć)(?![^\W\d_]))([^\W\d_]{3,}ć)(?![^\W\d_])`, 'i');
+const MODAL_OPENER = rx(String.raw`^(?:muszę|musimy|mam|mamy|trzeba|powinienem|powinnam|powinniśmy)\s+(?:(?:jeszcze|też|także|koniecznie|kiedyś|na\s+pewno|w\s+końcu)\s+)?(?!(?:być|mieć)(?![^\W\d_]))([^\W\d_]{3,}(?<!ę)ć)(?![^\W\d_])`, 'i');
 const FIRST_FUTURE = rx(String.raw`^([^\W\d_]{3,})ię(?![^\W\d_])`, 'i');
 const NOT_VERBS = new Set(['ramię', 'wymię', 'plemię', 'brzemię', 'strzemię', 'nasienię']);
 const FIRST_PERSON_NEGATED = rx(String.raw`(?<![^\W\d_])nie\s+([^\W\d_]{4,})am(?![^\W\d_])`, 'gi');
@@ -829,7 +845,7 @@ const requestToTask = (input: string): string => {
 const SUBJECT_BEFORE_MODAL = rx(String.raw`^(?:to\s+)?(?:ja|my)\s+(?=(?:mam|muszę|mamy|musimy|trzeba)(?![^\W\d_]))`, 'i');
 const CLITICS = String.raw`(?:(?:mu|jej|go|ją|je|im|się|to|ich|mi|nam|sobie)\s+){0,2}`;
 // "W sobotę rano mam mu ją oddać, ..." / "W niedzielę zadzwonię do babci" -> the task first, the time after it.
-const TIME_LEAD = rx(String.raw`^((?:w|we|do|na|od|przed|po|jutro|dziś|dzisiaj|pojutrze|wieczorem|rano|potem|później|jeszcze)(?:\s+[^\W\d_]+){0,2}?)\s+(?:(?:muszę|musimy|mam|mamy|trzeba)\s+(${CLITICS})([^\W\d_]{3,}ć)|([^\W\d_]{4,}ię))(?![^\W\d_])([\s\S]*)$`, 'i');
+const TIME_LEAD = rx(String.raw`^((?:w|we|do|na|od|przed|po|jutro|dziś|dzisiaj|pojutrze|wieczorem|rano|potem|później|jeszcze)(?:\s+[^\W\d_]+){0,2}?)\s+(?:(?:muszę|musimy|mam|mamy|trzeba)\s+(${CLITICS})([^\W\d_]{3,}(?<!ę)ć)|([^\W\d_]{4,}ię))(?![^\W\d_])([\s\S]*)$`, 'i');
 // "Pracuję zdalnie, muszę przesunąć dwa spotkania" -> "Pracuję zdalnie – przesunąć dwa spotkania".
 const FACT_THEN_MODAL = rx(String.raw`^([^\W\d_]+(?:ę|m)(?:\s+[^\W\d_]+){0,2}),\s*(?:muszę|musimy|mam|mamy|trzeba)\s+(?!(?:być|mieć)(?![^\W\d_]))(${CLITICS}[^\W\d_]{3,}ć)(?![^\W\d_])([\s\S]*)$`, 'i');
 const timeFirst = (m: RegExpExecArray): string => {
@@ -851,12 +867,64 @@ const completeTruncated = (text: string, noteWords: ReadonlySet<string>): string
     return longer === undefined ? word : `${word}${longer.slice(lower.length)}`;
   });
 
+// "Pokaż promotorowi" / "Przygotuj raport" -> "Pokazać promotorowi" / "Przygotować raport":
+// a point is a note, not an order addressed to the reader.
+const IMPERATIVES: Readonly<Record<string, string>> = {
+  pokaż: 'pokazać', popraw: 'poprawić', sprawdź: 'sprawdzić', zadzwoń: 'zadzwonić', kup: 'kupić', wyślij: 'wysłać', zapłać: 'zapłacić',
+  odbierz: 'odebrać', zrób: 'zrobić', napisz: 'napisać', zamów: 'zamówić', umów: 'umówić', zabierz: 'zabrać', oddaj: 'oddać',
+  dokończ: 'dokończyć', wymień: 'wymienić', odłóż: 'odłożyć', załatw: 'załatwić', dopisz: 'dopisać', zmierz: 'zmierzyć',
+  przejrzyj: 'przejrzeć', ćwicz: 'ćwiczyć', wpadnij: 'wpaść', pomóż: 'pomóc', zaplanuj: 'zaplanować', ustaw: 'ustawić',
+  zapisz: 'zapisać', usuń: 'usunąć', dodaj: 'dodać', przełóż: 'przełożyć', przesuń: 'przesunąć', poproś: 'poprosić',
+  przepisz: 'przepisać', wyciągnij: 'wyciągnąć', skopiuj: 'skopiować', przygotuj: 'przygotować', zarezerwuj: 'zarezerwować',
+};
+const imperativeToInfinitive = (text: string): string => {
+  const m = /^\p{L}+/u.exec(text);
+  if (!m) return text;
+  const word = m[0].toLowerCase();
+  const infinitive = IMPERATIVES[word] ?? (/^\p{L}{4,}uj$/u.test(word) ? `${word.slice(0, -2)}ować` : null);
+  return infinitive ? capitalize(infinitive) + text.slice(m[0].length) : text;
+};
+
+// "Jadę pociągiem w sobotę" -> "Wyjazd pociągiem w sobotę": diary-style motion verbs become nouns.
+const MOTION_NOUNS: Readonly<Record<string, string>> = {
+  jadę: 'Wyjazd', jedziemy: 'Wyjazd', wyjeżdżam: 'Wyjazd', wyjeżdżamy: 'Wyjazd', lecę: 'Lot', lecimy: 'Lot', wylatuję: 'Lot',
+  wracam: 'Powrót', wracamy: 'Powrót', odpoczywam: 'Odpoczynek', przyjeżdżam: 'Przyjazd', przyjeżdżamy: 'Przyjazd',
+};
+const MOTION_AFTER_TIME = rx(String.raw`^((?:w|we)\s+[^\W\d_]+(?:\s+(?:rano|wieczorem))?)\s+(jadę|jedziemy|lecę|lecimy|wracam|wracamy|odpoczywam)(?:\s+(\S[\s\S]*))?$`, 'i');
+const motionToNoun = (text: string): string => {
+  const lead = MOTION_AFTER_TIME.exec(text);
+  if (lead) {
+    const noun = MOTION_NOUNS[lead[2].toLowerCase()];
+    const rest = lead[3] ?? '';
+    const head = rest.split(',')[0];
+    const tail = rest.slice(head.length).replace(/,\s*(?:wrócę|wracam|wracamy)(?![\p{L}])/iu, ', powrót');
+    return `${noun}${head ? ` ${head}` : ''} ${lead[1].charAt(0).toLowerCase()}${lead[1].slice(1)}${tail}`;
+  }
+  const m = /^(\p{L}+)\s+(?=\S)/u.exec(text);
+  const noun = m ? MOTION_NOUNS[m[1].toLowerCase()] : undefined;
+  return m && noun ? noun + text.slice(m[1].length) : text;
+};
+
+// "Zajęć w piątek nie, więc ..." -> "Brak zajęć w piątek, więc ...": the model copied spoken word order.
+const NOUN_THEN_NIE = rx(String.raw`^([^\W\d_]+)\s+((?:w|we|na|do)\s+[^\W\d_]+)\s+nie(?=\s*[,.;]|\s*$)`, 'i');
+// "rozdział czwartym" -> "rozdział czwarty": an ordinal after a bare noun is nominative.
+const ORDINAL_AFTER_NOUN = rx(String.raw`(?<![^\W\d_])(rozdział|slajd|punkt|etap|krok|moduł|ekran)\s+(pierwsz|drug|czwart|piąt|szóst|siódm|ósm|dziewiąt|dziesiąt|trzec)(ym|im)(?![^\W\d_])`, 'gi');
+// "o 10:30 poniedziałek" -> "o 10:30 w poniedziałek"; "..., ją oddać" -> "..., trzeba ją oddać".
+const TIME_THEN_DAY = rx(String.raw`(\d{1,2}:\d{2})\s+(?=(?:poniedziałek|wtorek|środę|czwartek|piątek|sobotę|niedzielę)(?![^\W\d_]))`, 'gi');
+const BARE_CLITIC_INFINITIVE = rx(String.raw`,\s+((?:ją|go|je|ich)\s+[^\W\d_]{3,}(?<!ę)ć)(?![^\W\d_])`, 'g');
+const fixWordOrderAndCase = (text: string): string =>
+  text.replace(NOUN_THEN_NIE, (_, noun: string, place: string) => `Brak ${noun.toLowerCase()} ${place}`)
+    .replace(TIME_THEN_DAY, (_, time: string) => `${time} w `)
+    .replace(BARE_CLITIC_INFINITIVE, ', trzeba $1')
+    .replace(ORDINAL_AFTER_NOUN, (_, noun: string, stem: string, end: string) => `${noun} ${stem}${end === 'im' ? 'i' : 'y'}`);
+
 export const impersonalize = (input: string, noteWords: ReadonlySet<string>): string => {
   let text = input.replace(/ть(?![\p{L}])/gu, 'ć').replace(/[аеорсху]/gu, c => CYRILLIC_TWINS[c] ?? c);
   // "nie składaj" where the speaker said "nie składam"
   text = text.replace(/(?<![\p{L}])([\p{L}]{4,})aj(?![\p{L}])/gu, (match, stem: string) =>
     (!noteWords.has(match.toLowerCase()) && noteWords.has(`${stem.toLowerCase()}am`) ? `${stem}am` : match));
   text = capitalize(requestToTask(text).replace(THOUGHT_OPENER, '').replace(SUBJECT_BEFORE_MODAL, ''));
+  text = fixWordOrderAndCase(motionToNoun(imperativeToInfinitive(text)));
   text = text.replace(REMIND_THAT_NOT, '$1 żeby $2');
   text = completeTruncated(text, noteWords);
   const decision = DECISION_OPENER.exec(text) ?? DECISION_INSIDE.exec(text);
@@ -889,6 +957,47 @@ export const impersonalize = (input: string, noteWords: ReadonlySet<string>): st
   });
   return text;
 };
+
+// ---------------------------------------------------------------- weekday self-corrections
+// "Termin: środa. Poprawka: nie środa, tylko czwartek" -> a point that kept the old
+// weekday gets the corrected one, in the case it already uses.
+const WEEKDAY_FORMS: readonly (readonly [RegExp, readonly string[]])[] = [
+  [/^poniedział/iu, ['poniedziałek', 'poniedziałku', 'poniedziałkowi', 'poniedziałek', 'poniedziałkiem', 'poniedziałku']],
+  [/^wtor/iu, ['wtorek', 'wtorku', 'wtorkowi', 'wtorek', 'wtorkiem', 'wtorku']],
+  [/^środ/iu, ['środa', 'środy', 'środzie', 'środę', 'środą', 'środzie']],
+  [/^czwart/iu, ['czwartek', 'czwartku', 'czwartkowi', 'czwartek', 'czwartkiem', 'czwartku']],
+  [/^piąt/iu, ['piątek', 'piątku', 'piątkowi', 'piątek', 'piątkiem', 'piątku']],
+  [/^sobot/iu, ['sobota', 'soboty', 'sobocie', 'sobotę', 'sobotą', 'sobocie']],
+  [/^niedziel/iu, ['niedziela', 'niedzieli', 'niedzieli', 'niedzielę', 'niedzielą', 'niedzieli']],
+];
+const DAY_ALT = String.raw`poniedział\w*|wtor\w*|środ\w*|czwart\w*|piąt\w*|sobot\w*|niedziel\w*`;
+const DAY_CORRECTION = rx(String.raw`\bnie,?\s+(?:(?:w|we|na|do)\s+)?(${DAY_ALT}),?\s*(?:tylko|lecz|a)\s+(?:(?:w|we|na|do)\s+)?(${DAY_ALT})`, 'gi');
+const DAY_WORD = rx(String.raw`(?<![^\W\d_])(?:${DAY_ALT})(?![^\W\d_])`, 'gi');
+const dayForms = (word: string): readonly string[] | undefined => WEEKDAY_FORMS.find(([pattern]) => pattern.test(word))?.[1];
+
+export const fixStaleWeekday = (text: string, cited: string): string => {
+  if (CHANGE_MARK.test(text)) return text;
+  let result = text;
+  for (const m of cited.matchAll(DAY_CORRECTION)) {
+    const oldForms = dayForms(m[1]);
+    const newForms = dayForms(m[2]);
+    if (!oldForms || !newForms || oldForms === newForms) continue;
+    if (words(result).some(w => dayForms(w) === newForms)) continue;
+    result = result.replace(DAY_WORD, word => {
+      if (dayForms(word) !== oldForms) return word;
+      const index = oldForms.findIndex(form => form.toLowerCase() === word.toLowerCase());
+      return index < 0 ? word : (word === capitalize(word.toLowerCase()) && index === 0 ? capitalize(newForms[index]) : newForms[index]);
+    });
+  }
+  return result;
+};
+
+// Cited sentences plus the sentence right after them when it opens with a correction.
+const correctionContext = (ids: readonly number[], byId: ReadonlyMap<number, Unit>): string =>
+  ids.flatMap(id => {
+    const next = byId.get(id + 1);
+    return [byId.get(id)?.text ?? '', ...(next && CORRECTION_START.test(next.text) ? [next.text] : [])];
+  }).join(' ');
 
 // A point about the recording itself ("Nagrywam to") is not part of the note.
 const META_POINT = rx(String.raw`^(?:nagrywam|nagrywamy|dyktuję|dyktuje)(?![^\W\d_])(?:\s*,|\s+(?:to|się|notatk\w+|dla|bo|że)(?![^\W\d_]))|^(?:nagrywam|dyktuję)\s*$|(?<![^\W\d_])test\s+mikrofonu`, 'i');
@@ -974,6 +1083,14 @@ export const finalizePoints = (
   for (const raw of points) {
     const text = convert(tidy(raw.text, language), language);
     const prepared: WorkPoint = { text: language === 'pl' ? impersonalize(fixVocative(text, noteWords), noteWords) : text, sourceIds: [...raw.sourceIds] };
+    if (language === 'pl') {
+      const fixed = fixStaleWeekday(prepared.text, correctionContext(prepared.sourceIds, byId));
+      // The corrected value comes from the correction sentence, which the point now cites too.
+      if (fixed !== prepared.text) {
+        prepared.text = fixed;
+        prepared.sourceIds = withIds(prepared, prepared.sourceIds.flatMap(id => (CORRECTION_START.test(byId.get(id + 1)?.text ?? '') ? [id + 1] : []))).sourceIds;
+      }
+    }
     if (language === 'pl' && isMetaPoint(prepared.text)) continue;
     const { point, issues } = repairPoint(prepared, byId, units, language);
     if (issues.length) rejected.push({ text: point.text, sourceIds: point.sourceIds, issues });
@@ -996,23 +1113,59 @@ export const finalizePoints = (
   return { points: orderPoints(kept), rejected };
 };
 
-// Note order, without near-duplicates citing the same sentences.
+// Two points about one dated event: the same clock time (or weekday) near each
+// other in the note and overlapping content words.
+const CLOCK_TIME = /\d{1,2}:\d{2}/gu;
+const WHEN_DISTANCE = 4;
+const sharesEvent = (a: WorkPoint, b: WorkPoint): boolean => {
+  const near = a.sourceIds.some(x => b.sourceIds.some(y => Math.abs(x - y) <= WHEN_DISTANCE));
+  if (!near) return false;
+  const times = new Set(a.text.match(CLOCK_TIME) ?? []);
+  const sharedTime = (b.text.match(CLOCK_TIME) ?? []).some(t => times.has(t));
+  const day = (text: string): Set<string> => new Set(DATE_SEARCH.flatMap(p => (p.test(text) ? [p.source] : [])));
+  const dayA = day(a.text);
+  const sharedDay = [...day(b.text)].some(d => dayA.has(d));
+  const sim = similarity(a.text, b.text);
+  return (sharedTime && (sim >= 0.34 || sharedDay)) || (sharedDay && sim >= 0.6);
+};
+
+// Note order, without near-duplicates citing the same sentences or one event.
 const orderPoints = (points: readonly WorkPoint[]): WorkPoint[] => {
   const ordered = points.map((point, index) => ({ point, index }))
     .sort((a, b) => Math.min(...a.point.sourceIds) - Math.min(...b.point.sourceIds) || a.index - b.index)
     .map(entry => entry.point);
   const out: WorkPoint[] = [];
   for (const point of ordered) {
-    const duplicate = out.some(other => point.sourceIds.some(id => other.sourceIds.includes(id)) && similarity(point.text, other.text) >= 0.6);
-    if (!duplicate) out.push(point);
+    const twin = out.findIndex(other =>
+      (point.sourceIds.some(id => other.sourceIds.includes(id)) && similarity(point.text, other.text) >= 0.6) || sharesEvent(point, other));
+    if (twin < 0) out.push(point);
+    // The fuller wording wins and the point cites both.
+    else if (words(point.text).length > words(out[twin].text).length) out[twin] = withIds(point, out[twin].sourceIds);
+    else out[twin] = withIds(out[twin], point.sourceIds);
   }
   return out;
+};
+
+// When the model writes more points than the note deserves, the least
+// substantial ones go (note order is kept).
+const priority = (point: WorkPoint, byId: ReadonlyMap<number, Unit>): number =>
+  Math.max(substanceScore(point.text), ...unitsOf(point, byId).map(unit => substanceScore(unit.text))) +
+  (INFINITIVE_START.test(point.text) ? 1 : 0) + (hasNumber(point.text) ? 0.5 : 0) + (hasDate(point.text) ? 0.5 : 0) + (point.issues?.includes('missed') ? 1 : 0) +
+  (point.literal && !point.issues?.includes('missed') ? -0.5 : 0);
+export const capPoints = (points: readonly WorkPoint[], units: readonly Unit[], limit: number): WorkPoint[] => {
+  if (points.length <= limit) return [...points];
+  const byId = new Map(units.map(unit => [unit.id, unit]));
+  const dropped = new Set(points.map((point, index) => ({ index, score: priority(point, byId) }))
+    .sort((a, b) => a.score - b.score || b.index - a.index)
+    .slice(0, points.length - limit).map(entry => entry.index));
+  return points.filter((_, index) => !dropped.has(index));
 };
 
 // A sentence with a plan or a dated event that no point cites was most likely
 // skipped by the model; its cleaned words are added (at most 15% of the
 // points), so appointments and obligations do not depend on sampling luck.
 const RECOVER_SHARE = 0.15;
+const RECOVER_SHARE_CUT = 0.3;
 const BIG_NUMBER = 10;
 const hasDate = (text: string): boolean => DATE_SEARCH.some(pattern => pattern.test(text));
 const COMMITMENT = rx(String.raw`(?<![^\W\d_])(?:postanowi(?:ł\w*|my|ć)|postanaw\w*|zdecyduj\w*|musz\w*|musi\w*|trzeba|mam(?:y)?\s+(?:\w+\s+){0,2}\w+ć|powinn?\w*|zamierz\w*|planuj\w*|termin\w*)(?![^\W\d_])`, 'i');
@@ -1023,9 +1176,10 @@ export const isEventUnit = (text: string): boolean => {
   return (hasDate(text) && hasNumber(text)) || (PLAN_SIGNAL.test(text) && (hasDate(text) || SOON.test(text)));
 };
 
-export const recoverMissed = (points: readonly WorkPoint[], units: readonly Unit[]): WorkPoint[] => {
+// A chunk cut by the token limit loses its tail, so more of the skipped sentences are brought back.
+export const recoverMissed = (points: readonly WorkPoint[], units: readonly Unit[], cut = false): WorkPoint[] => {
   const covered = new Set(points.flatMap(point => point.sourceIds));
-  const budget = Math.max(1, Math.round(points.length * RECOVER_SHARE));
+  const budget = Math.max(1, Math.round(points.length * (cut ? RECOVER_SHARE_CUT : RECOVER_SHARE)));
   const byId = new Map(units.map(unit => [unit.id, unit]));
   const noteWords = new Set(units.flatMap(unit => words(unit.text)));
   const added: WorkPoint[] = [];
@@ -1033,7 +1187,7 @@ export const recoverMissed = (points: readonly WorkPoint[], units: readonly Unit
     if (added.length >= budget) break;
     if (covered.has(unit.id) || !isEventUnit(unit.text)) continue;
     const quoted = convert(clauseLiteral({ text: unit.text, sourceIds: [unit.id] }, byId, 'pl'), 'pl');
-    const literal = capitalize(shortenLiteral(impersonalize(quoted, noteWords)));
+    const literal = fixStaleWeekday(capitalize(shortenLiteral(impersonalize(quoted, noteWords))), correctionContext([unit.id], byId));
     if (isMetaPoint(literal)) continue;
     added.push({ text: literal, sourceIds: [unit.id], literal: true, issues: ['missed'] });
   }
@@ -1074,14 +1228,14 @@ Wynik:
 
 const RULES_PL = [
   'Zasady:',
-  '1. Styl telegraficzny jak w dobrej aplikacji do notatek: punkt ma 4–14 słów. Bez „mam”, „muszę”, „trzeba” – zadania w bezokoliczniku („Umyć okna na balkonie”), fakty równoważnikiem zdania („Pociąg do Lublina w sobotę rano”).',
+  '1. Styl telegraficzny jak w dobrej aplikacji do notatek: punkt ma 4–14 słów. Bez „mam”, „muszę”, „trzeba” – zadania w bezokoliczniku („Umyć okna na balkonie”), fakty równoważnikiem zdania („Pociąg do Lublina w sobotę rano”). Nie pisz w pierwszej osobie ani w trybie rozkazującym („Jadę…”, „Kupiłem…”, „Pokaż…”): zamiast „Jadę autobusem o ósmej” napisz „Autobus o ósmej”.',
   '2. Jeden punkt = jedna sprawa. Zdania o tej samej sprawie połącz w jeden punkt i podaj numery wszystkich.',
   '3. Liczby, godziny, daty i kwoty przepisz dokładnie tymi słowami, jakie są w zdaniu („trzeciego marca”, „o ósmej piętnaście”, „sto dwadzieścia złotych”) – nie zamieniaj ich na cyfry i nic nie przeliczaj. Nie dopisuj miesiąca, roku, dnia tygodnia, waluty, osoby ani miejsca, których nie ma w zdaniach.',
   '4. Gdy mówiący się poprawia („nie, czekaj”, „jednak”, „przełożyłem”), podaj tylko ostateczną wersję.',
   '5. Zachowaj zaprzeczenia („nie”, „bez”), warunki („jeśli pada – kino”) i niepewność („chyba”, „może”).',
   '6. Gdy coś robi inna osoba, napisz kto („Iga kupuje bilety”).',
   '7. Pomiń wstępy, wypełniacze („no więc”, „znaczy”, „aha i jeszcze”), dygresje, wspomnienia, anegdoty, pogodę, emocje i komentarze bez decyzji.',
-  '8. Pisz poprawną polszczyzną, słowami z notatki.',
+  '8. Pisz poprawną polszczyzną, naturalnym szykiem zdania („Brak zajęć w piątek”, nie „Zajęć w piątek nie”), słowami z notatki. Nie wymyślaj słów ani form czasowników.',
 ].join('\n');
 
 const HEAD_PL = 'ZADANIE: streszczenie notatki jako lista najważniejszych punktów.\n\nFormat: każda linia to "- treść [numery zdań]". Numery to numery zdań źródła, z których wynika punkt.';
@@ -1149,7 +1303,7 @@ Wynik:
 - Decyzja: od poniedziałku wstawać o szóstej i chodzić na spacer przed pracą, na próbę dwa tygodnie [6]
 - Zapłacić rachunek za internet do piątku, sto dziesięć złotych [7]`;
 
-const RULE1_V2 = '1. Styl telegraficzny jak w dobrej aplikacji do notatek: punkt ma 4–14 słów. Bez „mam”, „muszę”, „trzeba” – zadania zawsze z czasownikiem w bezokoliczniku („Umyć okna na balkonie”, nie „Okna na balkonie”), fakty równoważnikiem zdania („Pociąg do Lublina w sobotę rano”).';
+const RULE1_V2 = '1. Styl telegraficzny jak w dobrej aplikacji do notatek: punkt ma 4–14 słów. Bez „mam”, „muszę”, „trzeba” – zadania zawsze z czasownikiem w bezokoliczniku („Umyć okna na balkonie”, nie „Okna na balkonie”), fakty równoważnikiem zdania („Pociąg do Lublina w sobotę rano”). Nie pisz w pierwszej osobie ani w trybie rozkazującym („Jadę…”, „Kupiłem…”, „Pokaż…”): zamiast „Jadę autobusem o ósmej” napisz „Autobus o ósmej”.';
 const RULE7_V2 = '7. Pomiń wstępy, wypełniacze („no więc”, „znaczy”, „aha i jeszcze”), dygresje, wspomnienia, anegdoty, pogodę, jedzenie, filmy i opisy zdarzeń dnia, z których nic nie wynika (żadnego zadania, decyzji, terminu ani ustalenia).';
 const EXAMPLE_SHORT_PL = `
 
@@ -1173,25 +1327,34 @@ export const pointSummarySystem = (language: Language, variant: PromptVariant = 
   ? `${noteSourceSystem('pl')}\n\nWzorzec streszczenia (gdy zadanie prosi o streszczenie):\n${EXAMPLES_PL}${variant === 'base' ? '' : EXAMPLE_DIARY_PL}${variant === 'v3' ? EXAMPLE_SHORT_PL : ''}`
   : `${noteSourceSystem('en')}\n\nSummary pattern (when the task asks for a summary):\n${EXAMPLES_EN}`;
 
+// "1 punkt", "3 punkty", "5 punktów".
+const countPl = (n: number, one: string, few: string, many: string): string =>
+  `${n} ${n === 1 ? one : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14) ? few : many}`;
+
 export const pointSummaryInstructions = (language: Language, maxPoints: number, variant: PromptVariant = 'base'): string => language === 'pl'
   ? [
     HEAD_PL, variant !== 'base' ? RULES_PL.replace(/^1\. .*$/mu, RULE1_V2).replace(/^7\. .*$/mu, RULE7_V2) : RULES_PL,
-    `9. Najwyżej ${maxPoints} punktów, w kolejności z notatki. Ważne sprawy (zadania, terminy, decyzje, kwoty, zmiany planów) mają pierwszeństwo przed szczegółami.${variant !== 'base' ? `\n${RULE_TOPIC_V2}` : ''}`,
-    'Postępuj jak we wzorcu z instrukcji systemowej. Teraz streść notatkę z SOURCE_START…SOURCE_END. Zwróć wyłącznie listę.',
+    `9. Najwyżej ${countPl(maxPoints, 'punkt', 'punkty', 'punktów')} (${countPl(maxPoints, 'linia', 'linie', 'linii')}, nie więcej): wybierz najważniejsze sprawy tej części, drobne połącz lub pomiń, w kolejności z notatki. Ważne sprawy (zadania, terminy, decyzje, kwoty, zmiany planów) mają pierwszeństwo przed szczegółami.${variant !== 'base' ? `\n${RULE_TOPIC_V2}` : ''}`,
+    `Postępuj jak we wzorcu z instrukcji systemowej. Teraz streść notatkę z SOURCE_START…SOURCE_END. Zwróć wyłącznie listę, najwyżej ${countPl(maxPoints, 'linia', 'linie', 'linii')}.`,
   ].join('\n\n')
   : [
     HEAD_EN, RULES_EN,
-    `9. At most ${maxPoints} points, in the order of the note. Important matters (tasks, deadlines, decisions, amounts, plan changes) take precedence over details.`,
-    'Follow the pattern from the system instructions. Now summarize the note between SOURCE_START and SOURCE_END. Return only the list.',
+    `9. At most ${maxPoints} points (${maxPoints} lines, no more): pick the most important matters of this part, merge or skip minor ones, in the order of the note. Important matters (tasks, deadlines, decisions, amounts, plan changes) take precedence over details.`,
+    `Follow the pattern from the system instructions. Now summarize the note between SOURCE_START and SOURCE_END. Return only the list, at most ${maxPoints} lines.`,
   ].join('\n\n');
 
 // ---------------------------------------------------------------- chunking and budgets
 // Points for a whole note: roughly one per three sentences, more slowly for
 // long notes. The model follows the limit inside a chunk but ignores it above
 // ~25 sentences, so long notes are split and each chunk gets its share.
-export const maxPointsFor = (unitCount: number, longSlope = 0.35, cap = 20): number =>
+export const maxPointsFor = (unitCount: number, longSlope = 0.35, cap = 16): number =>
   Math.max(3, Math.min(cap, Math.round(2 + 0.35 * Math.min(unitCount, 22) + longSlope * Math.max(0, unitCount - 22))));
-export const outputTokensFor = (points: number): number => Math.min(640, 28 * points + 40);
+// A Polish point with its ids takes 25-40 tokens; the budget leaves room for the model to finish on its own.
+export const outputTokensFor = (points: number): number => Math.min(640, 38 * points + 48);
+
+// Points above the note's budget by more than this are dropped, least substantial first.
+const CAP_SLACK = 0;
+const CHUNK_ASK_FACTOR = 1.2;
 
 export interface PointSummaryOptions {
   readonly chunkMaxUnits: number;
@@ -1254,10 +1417,13 @@ export const generatePointSummaryDetailed = async (
     const rambling = isRambling(units) && unnarrated.length >= options.minUnitsForModel;
     const shown = rambling ? unnarrated : units;
     const noteWeight = shown.reduce((sum, unit) => sum + unitWeight(unit, rambling), 0);
-    for (const chunk of splitIntoChunks(shown, options.chunkMaxUnits)) {
+    const chunks = splitIntoChunks(shown, options.chunkMaxUnits);
+    for (const chunk of chunks) {
       throwIfProcessingAborted(execution);
       const weightOf = (list: readonly Unit[]): number => list.reduce((sum, unit) => sum + unitWeight(unit, rambling), 0);
-      const maxPoints = Math.max(rambling ? 2 : 3, Math.round(options.pointsForNote(Math.round(noteWeight)) * weightOf(chunk) / noteWeight));
+      // With several chunks each asks for a little extra; the surplus is trimmed after the checks.
+      const share = options.pointsForNote(Math.round(noteWeight)) * weightOf(chunk) / noteWeight;
+      const maxPoints = Math.max(rambling ? 2 : 3, chunks.length > 1 ? Math.ceil(share * CHUNK_ASK_FACTOR) : Math.round(share));
       const nPredict = outputTokensFor(maxPoints);
       const prompt = sourceFirstPrompt(renderSummarySources(chunk), pointSummaryInstructions(language, maxPoints, options.promptVariant));
       const result = await generate(prompt, () => undefined, {
@@ -1273,7 +1439,8 @@ export const generatePointSummaryDetailed = async (
     }
     if (cut) warnings.push('Summary model output was cut off; the last points may be missing.');
     const finalized = finalizePoints(language === 'pl' ? dropNarration(rawPoints, units) : rawPoints, units, language);
-    finalPoints = language === 'pl' ? recoverMissed(finalized.points, units) : finalized.points;
+    const recovered = language === 'pl' ? recoverMissed(finalized.points, units, cut) : finalized.points;
+    finalPoints = capPoints(recovered, units, options.pointsForNote(Math.round(noteWeight)) + CAP_SLACK);
     rejected = finalized.rejected;
   }
   const points = finalPoints.map(point => ({ text: point.text, sourceIds: point.sourceIds }));

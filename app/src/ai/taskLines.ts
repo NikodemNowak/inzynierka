@@ -374,6 +374,31 @@ const dueIsCount = (due: string): boolean => {
 }
 
 // ---------------------------------------------------------------- parsing
+// The model sometimes writes an imperative or gerund title ('Wyślij wyniki', 'Wzywając serwisanta').
+const IMPERATIVES: Readonly<Record<string, string>> = {
+  wyślij: 'wysłać', pokaż: 'pokazać', zrób: 'zrobić', sprawdź: 'sprawdzić', zadzwoń: 'zadzwonić',
+  napisz: 'napisać', zapłać: 'zapłacić', kup: 'kupić', popraw: 'poprawić', odbierz: 'odebrać',
+  zamów: 'zamówić', umów: 'umówić', wymień: 'wymienić', oddaj: 'oddać', wpłać: 'wpłacić',
+  zabierz: 'zabrać', weź: 'wziąć', dokończ: 'dokończyć', skończ: 'skończyć', ćwicz: 'ćwiczyć',
+  odłóż: 'odłożyć', usuń: 'usunąć', dopisz: 'dopisać', zapisz: 'zapisać', ustaw: 'ustawić',
+  odnów: 'odnowić', przelej: 'przelać', przepisz: 'przepisać', przejrzyj: 'przejrzeć', wydrukuj: 'wydrukować',
+  piszę: 'pisać', pisze: 'pisać', przygotuj: 'przygotować', zarezerwuj: 'zarezerwować', skopiuj: 'skopiować', wyślę: 'wysłać',
+}
+export const toInfinitive = (title: string): string => {
+  const space = title.indexOf(' ')
+  const first = space < 0 ? title : title.slice(0, space)
+  const tail = space < 0 ? '' : title.slice(space)
+  const lower = first.toLowerCase()
+  let verb = IMPERATIVES[lower]
+  if (!verb && lower.length >= 6 && /^\p{L}+$/u.test(lower)) {
+    if (/ując$/u.test(lower)) verb = `${lower.slice(0, -4)}ować`
+    else if (/ając$/u.test(lower)) verb = `${lower.slice(0, -4)}ać`
+    else if (/(?:uj|aj)$/u.test(lower)) verb = lower.endsWith('uj') ? `${lower.slice(0, -2)}ować` : `${lower.slice(0, -2)}ać`
+  }
+  if (!verb) return title
+  return verb.charAt(0).toUpperCase() + verb.slice(1) + tail
+}
+
 export const splitTitleDue = (text: string): { title: string; due: string | null } => {
   const body = stripChars(stripChars(text.trim(), '"„”'), '.', false, true).trim()
   let title: string
@@ -409,6 +434,7 @@ const repairPlaceholder = (t: TaskDraft): TaskDraft => {
 export const cleanDue = (t: TaskDraft): TaskDraft => {
   if (!t.due) return t
   const d = stripChars(t.due.trim(), ',;')
+  if (/\btemu\b/iu.test(d)) return { ...t, due: null }
   if (COND.test(d)) return { ...t, title: `${t.title}, ${d}`, due: null }
   if (TEMPORAL.test(d) || lettersOnly(d).some((w) => wordValue(w) !== null)) return { ...t, due: d }
   if (/\d/u.test(d)) return { ...t, title: `${t.title} ${d}`, due: null }
@@ -438,7 +464,7 @@ export const parseTaskLines = (text: string, allowed: ReadonlySet<number>): Task
 const BARE_MONTH = /^(?:styczeń|luty|marzec|kwiecień|maj|czerwiec|lipiec|sierpień|wrzesień|październik|listopad|grudzień)$/iu
 
 export const tidyTask = (t: TaskDraft): TaskDraft => {
-  let title = fixGlued(t.title.replace(/[\s—–\-:,;]+$/u, '').trim())
+  let title = toInfinitive(fixGlued(t.title.replace(/[\s—–\-:,;]+$/u, '').trim()))
   title = title.replace(rx(String.raw`\s+\b(z|u|do|na|w|we|o|dla|i)$`, 'i'), '')
   let due: string | null = t.due ? stripChars(t.due, ' -—–.,') || null : null
   if (due && dueIsCount(due)) {
@@ -483,7 +509,8 @@ const mergeSimilar = (tasks: readonly TaskDraft[]): TaskDraft[] => {
       if (!ts.size || !os.size) continue
       const inter = [...ts].filter((x) => os.has(x)).length
       const sameVerb = lettersOnly(t.title)[0] === lettersOnly(o.title)[0]
-      if ((inter / Math.min(ts.size, os.size) >= 0.67 && sameVerb) || isSubset(ts, os) || isSubset(os, ts)) {
+      const sharedAmount = taskNumbers(t.title).some((n) => n >= 10 && taskNumbers(o.title).includes(n))
+      if ((inter / Math.min(ts.size, os.size) >= 0.67 && sameVerb) || (sharedAmount && inter >= 1) || isSubset(ts, os) || isSubset(os, ts)) {
         const [keep, drop] = os.size >= ts.size ? [o, t] : [t, o]
         out[index] = {
           ...o,
@@ -500,11 +527,30 @@ const mergeSimilar = (tasks: readonly TaskDraft[]): TaskDraft[] => {
   return out
 }
 
+// 'Pokazać 3 rzeczy', 'Zakończyć zadania': the object says nothing.
+const VAGUE_WORDS = new Set(['rzeczy', 'rzecz', 'sprawy', 'sprawę', 'zadania', 'zadanie', 'kilka', 'kilku', 'parę'])
+export const isVagueTitle = (title: string): boolean => {
+  if (/^\p{L}+,\s*(?:jeśli|jeżeli|gdy|gdyby)\b/iu.test(title)) return true
+  const w = lettersOnly(title).slice(1)
+  return w.length > 0 && w.every((x) => VAGUE_WORDS.has(x) || wordValue(x) !== null) && w.some((x) => VAGUE_WORDS.has(x))
+}
+// 'Spotkanie z Oliwią, dentysta i serwisant': a summary of several events, each stated on its own elsewhere.
+export const isMergedEvents = (title: string): boolean => {
+  const first = lettersOnly(title)[0] ?? ''
+  return APPT_NOUNS.includes(first) && (title.match(/,|\s(?:i|oraz)\s/gu) ?? []).length >= 2
+}
+
+// 'Wracam w niedzielę', 'Jadę do rodziców': a plan stated in the first person, not a task phrased as one.
+const FINITE_VERB = /^(?:wracam|jadę|idę|robię|piszę|wysyłam|poprawiam|kończę|odpoczywam|ćwiczę|ograniczam|wzywam|zaczynam)$/iu
+
 export const finalizeTasks = (tasks: readonly TaskDraft[]): GuardResult => {
   const kept: TaskDraft[] = []
   const rejected: RejectedTask[] = []
   for (const t of tasks) {
-    if (isActionish(t.title)) kept.push(t)
+    if (isVagueTitle(t.title)) rejected.push({ title: t.title, due: t.due, reason: 'vague' })
+    else if (isMergedEvents(t.title)) rejected.push({ title: t.title, due: t.due, reason: 'merged events' })
+    else if (FINITE_VERB.test(t.title.split(/\s+/u)[0] ?? '')) rejected.push({ title: t.title, due: t.due, reason: 'finite verb' })
+    else if (isActionish(t.title)) kept.push(t)
     else rejected.push({ title: t.title, due: t.due, reason: 'not an action' })
   }
   return { kept: mergeSimilar(kept), rejected }
@@ -573,6 +619,43 @@ export const applyCorrections = (task: TaskDraft, units: readonly Unit[]): TaskD
   return t
 }
 
+const CORRECTION_LEAD = rx(String.raw`^\s*(?:poprawka|korekta)\b`, 'i')
+// A bare date sentence or a spoken correction ('Poprawka: nie środa, tylko czwartek') can carry a task's deadline.
+export const isDateCarrier = (text: string): boolean => CORRECTION_LEAD.test(text) || isDateOnlySentence(text)
+
+// 'Termin: środa do osiemnastej.' - a short sentence that says only when.
+export const isDateOnlySentence = (text: string): boolean => {
+  const words = lettersOnly(text)
+  if (words.length > 8) return false
+  const content = words.filter(
+    (w) => w.length >= 4 && !STOP.has(w) && !GENERIC.has(w) && wordValue(w) === null && groupHits([w], [...DAYS, ...REL, ...MONTH_GROUPS]).size === 0,
+  )
+  return content.length <= 1
+}
+
+const SPOKEN_FIX = rx(
+  String.raw`^\s*(?:poprawka|korekta|jednak)?\W*nie,?\s+(poniedział\w*|wtor\w*|środ\w*|czwart\w*|piąt(?:ek|ku)|sobot\w*|niedziel\w*),?\s+(?:tylko|a)\s+(poniedział\w*|wtor\w*|środ\w*|czwart\w*|piąt(?:ek|ku)|sobot\w*|niedziel\w*)`,
+  'i',
+)
+
+// 'Termin: środa. Poprawka: nie środa, tylko czwartek.' - the correction sits in the sentence after the task.
+export const applyNextSentenceFix = (task: TaskDraft, units: readonly Unit[]): TaskDraft => {
+  if (!task.due) return task
+  const dueMatch = new RegExp(DAY_RE.source, 'iu').exec(task.due)
+  const dueDay = dueMatch ? dayKey(dueMatch[1]!) : null
+  if (!dueDay) return task
+  const byId = new Map(units.map((u) => [u.id, u.text]))
+  const last = Math.max(0, ...task.sourceIds)
+  for (const id of [...task.sourceIds, last + 1, last + 2]) {
+    const m = SPOKEN_FIX.exec(byId.get(id) ?? '')
+    if (!m || dayKey(m[1]!) !== dueDay) continue
+    const nominative = DAY_NOM.find(([key]) => key === dayKey(m[2]!))
+    if (!nominative) continue
+    return { ...task, due: task.due.replace(new RegExp(DAY_RE.source, 'iu'), nominative[1]) }
+  }
+  return task
+}
+
 export const validateTasks = (tasks: readonly TaskDraft[], units: readonly Unit[]): GuardResult => {
   const byId = new Map(units.map((u) => [u.id, u.text]))
   const kept: TaskDraft[] = []
@@ -580,6 +663,17 @@ export const validateTasks = (tasks: readonly TaskDraft[], units: readonly Unit[
   const join = (ids: readonly number[]): string => ids.map((i) => byId.get(i) ?? '').join(' ')
   const neighbours = (ids: readonly number[]): number[] =>
     sortedUnique(ids.flatMap((i) => [i - 1, i + 1]).filter((j) => byId.has(j) && !ids.includes(j)))
+  // Date sentences right after (or before) the cited ones, up to two in a row.
+  const dateChain = (ids: readonly number[]): number[] => {
+    const out: number[] = []
+    for (const [start, step] of [[Math.max(...ids), 1], [Math.min(...ids), -1]] as const) {
+      for (let j = start + step; out.length < 4 && byId.has(j) && !ids.includes(j) && Math.abs(j - start) <= 2; j += step) {
+        if (!isDateCarrier(byId.get(j)!)) break
+        out.push(j)
+      }
+    }
+    return sortedUnique(out)
+  }
   const reject = (t: TaskDraft, reason: string): void => {
     rejected.push({ title: t.title, due: t.due, reason })
   }
@@ -619,17 +713,29 @@ export const validateTasks = (tasks: readonly TaskDraft[], units: readonly Unit[
         ids = sortedUnique([...ids, ...neighbours(ids)])
         cited = wider
       } else {
-        reject(t, 'title value not in source')
-        continue
+        // 'Zapłacić czynsz 1050 zł' with an invented amount: keep the action, recoverAmount restores the real one.
+        const bare = title.replace(/\s*\d[\d\s.,]*\s*(?:zł|złotych|euro|€)(?![\p{L}\p{N}_])/giu, '').trim()
+        if (bare === title || numbersAnchored(bare, cited).length + dateWordsUnanchored(bare, cited).length > 0) {
+          reject(t, 'title value not in source')
+          continue
+        }
+        title = bare
       }
     }
     if (due) {
       const unanchored = (text: string, source: string): number =>
         numbersAnchored(text, source).length + dateWordsUnanchored(text, source).length + clockUnanchored(text, source).length
       if (unanchored(due, cited)) {
-        const wider = join(sortedUnique([...ids, ...neighbours(ids)]))
-        if (unanchored(due, wider) === 0) ids = sortedUnique([...ids, ...neighbours(ids)])
-        else due = null
+        // Only a bare date sentence next door may supply the deadline, never another task's sentence.
+        const dateOnly = dateChain(ids)
+        const wider = join(sortedUnique([...ids, ...dateOnly]))
+        if (unanchored(due, wider) === 0) ids = sortedUnique([...ids, ...dateOnly])
+        else {
+          // An invented clock time is dropped, the day stays when the source states it.
+          const day = stripChars(due.replace(new RegExp(CLOCK_IN_DUE.source, 'gu'), '').trim(), ' ,;-')
+          due = day && unanchored(day, wider) === 0 ? day : null
+          if (due) ids = sortedUnique([...ids, ...dateOnly])
+        }
       }
     }
     kept.push({ title, due, sourceIds: ids, modelIds: t.modelIds.length ? t.modelIds : t.sourceIds })
@@ -637,9 +743,35 @@ export const validateTasks = (tasks: readonly TaskDraft[], units: readonly Unit[
   return { kept, rejected }
 }
 
+// A deadline stays only when the sentence(s) that carry the task's own words state it (or a bare date sentence).
+export const dueFromOwnSentence = (task: TaskDraft, units: readonly Unit[]): TaskDraft => {
+  if (!task.due) return task
+  const byId = new Map(units.map((u) => [u.id, u.text]))
+  const ids = (task.modelIds.length ? task.modelIds : task.sourceIds).filter((i) => byId.has(i))
+  const objectStems = new Set(
+    lettersOnly(task.title.split(/\s+/u).slice(1).join(' ')).filter((w) => w.length >= 4 && !STOP.has(w)).map((w) => w.slice(0, 4)),
+  )
+  const own = ids.filter((i) => lettersOnly(byId.get(i)!).some((w) => w.length >= 4 && objectStems.has(w.slice(0, 4))))
+  if (!own.length) return task
+  const dueStems = lettersOnly(task.due).filter((w) => w.length >= 4 && wordValue(w) === null).map((w) => w.slice(0, 4))
+  const bad = (source: string): number => {
+    const have = new Set(lettersOnly(source).filter((w) => w.length >= 4).map((w) => w.slice(0, 4)))
+    return (
+      numbersAnchored(task.due!, source).length +
+      dateWordsUnanchored(task.due!, source).length +
+      clockUnanchored(task.due!, source).length +
+      dueStems.filter((s) => !have.has(s)).length
+    )
+  }
+  if (bad(own.map((i) => byId.get(i)!).join(' ')) === 0) return task
+  const bare = task.sourceIds.filter((i) => !own.includes(i) && byId.has(i) && isDateCarrier(byId.get(i)!))
+  if (bare.length && bad([...own, ...bare].map((i) => byId.get(i)!).join(' ')) === 0) return task
+  return { ...task, due: null }
+}
+
 const OTHER_SUBJ = rx(
   String.raw`(?:^|[,.:;]\s*|\b(?:a|i|ale|więc|że)\s+)(?:(?!Ja\b)[A-ZŁŚŻŹĆ][a-ząćęłńóśźż]+|mama|tata|szef\w*|ona|on|oni|one)` +
-    String.raw`(?:\s+\w+){0,4}?\s+(?:(?:ma|mają)\s+(?:\w+\s+){0,2}?\w+(?:ć|c)\b|zrobi|przygotuje|odbierze|przejmuje|przywiezie|kupi|roześle|wpuści|zamówi|zadzwoni|zarezerwuje|podeśle|zajmuje się|zajmie się|zajmują się|bierze|biorą|załatwi|załatwia|ogarnia|ogarnie|pilnuje|przyniesie|zawiezie|pójdzie|przyjdzie)\b` +
+    String.raw`(?:\s+\w+){0,4}?\s+(?:(?:ma|mają)\s+(?:\w+\s+){0,2}?\w+(?:ć|c)\b|zrobi|przygotuje|odbierze|przejmuje|przywiezie|kupi|roześle|wpuści|zamówi|zadzwoni|zarezerwuje|podeśle|zajmuje się|zajmie się|zajmują się|bierze|biorą|załatwi|załatwia|ogarnia|ogarnie|pilnuje|przyniesie|zawiezie|pójdzie|przyjdzie|sprawdzi|sprawdzą|przejrzy|poprawi|przyśle|wyśle|napisze|przeczyta|oceni|dokończy|skończy|odpowie|obejrzy|zatwierdzi|zorganizuje)\b` +
     String.raw`|^(?:(?!Ja\b)[A-ZŁŚŻŹĆ][a-ząćęłńóśźż]+|Mama|Tata)\s*:`,
 )
 const FIRST_PERSON = rx(
@@ -899,10 +1031,12 @@ export const splitCompound = (t: TaskDraft): TaskDraft[] => {
       starts.push(i)
   }
   if (starts.length < 2) return [t]
-  return starts.map((from, k) => {
-    const part = words.slice(from, starts[k + 1] ?? words.length).join(' ').replace(/[\s,]+$/u, '').replace(/\s+(?:i|oraz)$/iu, '')
-    return { ...t, title: part.charAt(0).toUpperCase() + part.slice(1) }
-  })
+  const parts = starts.map((from, k) =>
+    words.slice(from, starts[k + 1] ?? words.length).join(' ').replace(/[\s,]+$/u, '').replace(/\s+(?:i|oraz)$/iu, ''),
+  )
+  // 'Przygotować i wysłać podsumowanie': a verb without its own object shares the next one.
+  if (parts.slice(0, -1).some((part) => part.split(/\s+/u).length < 2)) return [t]
+  return parts.map((part) => ({ ...t, title: part.charAt(0).toUpperCase() + part.slice(1) }))
 }
 
 const VAGUE_OBJECT = /^(\p{L}+)\s+(?:wszystko|to|te rzeczy|resztę|całość)$/iu
@@ -1154,7 +1288,7 @@ export const postprocessTaskLines = (raw: readonly TaskDraft[], units: readonly 
   tasks = take(validateTasks(tasks, units))
   tasks = take(groundTasks(tasks, units))
   tasks = take(ownerFilter(tasks, units))
-  tasks = take(supersededFilter(tasks, units))
+  tasks = take(supersededFilter(tasks, units)).map((t) => applyNextSentenceFix(dueFromOwnSentence(t, units), units))
   tasks = take(cancelledFilter(tasks, units))
   tasks = tasks.map((t) => recoverAmount(repairVerb(dropClosingDue(t, units), units), units))
   return { kept: dedupeTasks(mergeVague(tasks)), rejected }
@@ -1166,7 +1300,7 @@ const INF = String.raw`(?:^|[,.;:]\s*|\b(?:i|a|no i|aha i|to)\s+)(\w+(?:ć|c))\b
 const DATE = String.raw`\b(jutr\w*|dziś|dzisiaj|pojutrze|weekend\w*|poniedział\w*|wtor\w*|środ\w*|czwart\w*|piąt(?:ek|ku)|sobot\w*|niedziel\w*|do końca|najpóźniej|przed\s+\w+|tygodni\w*|stycz\w*|luty|lutego|lutym|marz\w*|marca|marcu|kwietni\w*|maj(?:a|u|em)?|czerw\w*|lip(?:iec|ca|cu)|sierp\w*|wrze\w*|paździer\w*|listopad\w*|grud\w*|o\s+\w+(?:ej|ą)\b)`
 const APPT = String.raw`\b(spotkani|wizyt|kontrol|dentyst|lekar|wymian|termin|rezerwac|umówi|szczepien)\w*`
 const SHOP = String.raw`\b(kupi\w*|lista|zakup\w*|potrzeb\w*)`
-const FIRST_PERSON_FUT = String.raw`\b(zadzwonię|napiszę|zrobię|oddam|pójdę|przyjadę|przedłużę|wyślę|kupię|zapłacę|wpłacę|sprawdzę|zapytam|anuluję|wpłacam|zamawiam|przelewam|porównuję|wysyłam|dzwonię|piszę|biorę|odkładam|ustawiam|wpiszę|załatwię|zorganizuję|odbiorę|zmieniam|eskaluję)\b`
+const FIRST_PERSON_FUT = String.raw`\b(pokazuję|prezentuję|oddaję|składam|zgłaszam|odbieram|zadzwonię|napiszę|zrobię|oddam|pójdę|przyjadę|przedłużę|wyślę|kupię|zapłacę|wpłacę|sprawdzę|zapytam|anuluję|wpłacam|zamawiam|przelewam|porównuję|wysyłam|dzwonię|piszę|biorę|odkładam|ustawiam|wpiszę|załatwię|zorganizuję|odbiorę|zmieniam|eskaluję)\b`
 const HEUR_COND = String.raw`\b(jeśli|jeżeli|jak będzie|gdyby|do tego|tylko jak)\b`
 const NO_TASK = rx(String.raw`^\s*(dobra|okej|ok|no|aha|matko|kurczę|chyba)\b[^.]{0,25}[.!?]?\s*$`)
 const CANDIDATE_PATTERNS = [MODAL, FIRST_PERSON_FUT, INF, APPT, SHOP, DATE, HEUR_COND].map((source) => rx(source))
@@ -1178,8 +1312,66 @@ export const isTaskCandidate = (text: string): boolean => {
   return CANDIDATE_PATTERNS.some((pattern) => pattern.test(t))
 }
 
+// Narration of the past ('Zapłaciłem...', 'Promotor powiedział...') carries no task unless it also looks
+// forward (obligation, plan, request, an appointment change).
+const PAST = rx(
+  String.raw`\b(?:\w+(?:łem|łam|łeś|łaś|liśmy|łyśmy)|\w{2,}(?:ał|ił|ył|ął|eł)[aoi]?|przyszło|było|był|była|byli|były)\b`,
+  'i',
+)
+const FORWARD = [MODAL, FIRST_PERSON_FUT, INF, HEUR_COND, String.raw`\b(żebym|żebyśmy|jednak|czekaj|poprawk\w*|zamiast|przesunęli|przełożyli|przesunięt\w*|przełożon\w*)\b`].map((source) => rx(source))
+// 'Druga sprawa: prezentacja na poniedziałek.' - a heading the speaker reads out, not a task.
+const HEADING = rx(String.raw`^(?:\p{L}+\s+)?(?:sprawa|sekcja|część|punkt)(?:\s+\p{L}+)?\s*:`, 'i')
+export const isHeading = (text: string): boolean => HEADING.test(text.trim()) && text.trim().split(/\s+/u).length <= 9
+const LABEL_LEAD = /^\s*\p{L}+\s*:/u
+const NO_CHANGE = rx(String.raw`\bbez zmian\b`, 'i')
+// Present-tense facts ('Kontrola jest we wtorek') and appointments stay candidates even with a past clause,
+// except a past meeting ('miałem spotkanie').
+const PRESENT = rx(String.raw`\b(jest|są|będzie|będą|mam|mamy|ma|mają|najpóźniej|dziennie|co\s+\w+\s+(?:godzin|dni))\b`)
+const APPT_RX = rx(APPT)
+const PAST_EVENT = rx(String.raw`\b(?:miał\w*|byłe[mś]|byłam|byliśmy|spotkałe[mś]|spotkałam|rozmawiał\w*)\b`)
+export const isPastNarration = (text: string): boolean => {
+  // A past verb in a trailing reason ('..., bo mama kupiła ostatnio') does not make the sentence narration.
+  const t = text.toLowerCase().replace(REASON_TAIL, '')
+  if (!PAST.test(t) || FORWARD.some((pattern) => pattern.test(t)) || PRESENT.test(t)) return false
+  return !(APPT_RX.test(t) && !PAST_EVENT.test(t))
+}
+
+// Obligation and plan sentences outrank bare date mentions when a long note has to be trimmed.
+const STRONG = [MODAL, FIRST_PERSON_FUT, String.raw`\b(żebym|żebyśmy|muszą|musisz|musicie|powinny|powinna|powinni)\b`].map((source) => rx(source))
+const MAM = rx(String.raw`\bmam\b`)
+const DEADLINE = rx(String.raw`\b(do|przed|najpóźniej)\s+\p{L}+`)
+const PLAN = rx(String.raw`\b(poprawiam|robię|kończę|jadę|wracam|odpoczywam|ćwiczę|idę|ograniczam|wzywam|ustawiam|wpadnę|wydrukuję|piszę|wysyłam|zaczynam|dokańczam|odbieram|składam|płacę|zamawiam)\b`)
+const MEDIUM = [APPT, SHOP, INF].map((source) => rx(source))
+const DATE_RX = rx(DATE)
+const CHANGE = rx(String.raw`\b(poprawk\w*|jednak|czekaj|przesunęli|przełożyli|nowy termin|termin\w*|płatn\w*)\b`)
+export const candidateScore = (text: string): number => {
+  const t = text.toLowerCase()
+  const date = DATE_RX.test(t)
+  const lead = STRONG.some((p) => p.test(t)) ? 4 : PLAN.test(t) || (date && MAM.test(t)) ? 3 : 0
+  const medium = MEDIUM.some((p) => p.test(t)) ? (lead > 0 || date ? 2 : 1) : 0
+  return lead + medium + (date ? 1 : 0) + (DEADLINE.test(t) ? 1 : 0) + (MONEY_CUE.test(t) ? 2 : 0) + (CHANGE.test(t) ? 3 : 0)
+}
+// A long note gets a tighter budget: only its most binding sentences go to the model.
+export const MAX_CANDIDATES = 40
+export const MAX_CANDIDATES_LONG = 26
+export const LONG_NOTE_WORDS = 1000
+export const isLongNote = (units: readonly { text: string }[]): boolean =>
+  units.reduce((total, unit) => total + unit.text.split(/\s+/u).length, 0) > LONG_NOTE_WORDS
+export const candidateLimit = (units: readonly { text: string }[]): number => (isLongNote(units) ? MAX_CANDIDATES_LONG : MAX_CANDIDATES)
+export const limitCandidates = <T extends { text: string }>(units: readonly T[], max = MAX_CANDIDATES): T[] => {
+  if (units.length <= max) return [...units]
+  const keep = new Set(
+    units
+      .map((unit, index) => ({ index, score: candidateScore(unit.text) }))
+      .sort((a, b) => b.score - a.score || a.index - b.index)
+      .slice(0, max)
+      .map((x) => x.index),
+  )
+  return units.filter((_unit, index) => keep.has(index))
+}
+
 // A nominal list ('ryż, szynka, mleko') carries items to buy only after a shopping cue nearby.
-const LIST_CUE = rx(String.raw`\b(lista|listę|listy|liście|zakup\w*|kupi\w*|kupować|potrzeb\w*|brakuje|skończy\w*)\b`, 'i')
+const LIST_CUE = rx(String.raw`\b(lista|listę|listy|liście|zakup\w*|kupi(?!ł)\w*|kupować|potrzeb\w*|brakuje|skończy\w*)\b`, 'i')
 const LIST_MORE = rx(String.raw`^\s*(do tego|jeszcze|oraz|plus|i też|a także|i)\b`, 'i')
 const LIST_LOOKBACK = 3
 const isListFragment = (text: string): boolean => {
@@ -1190,13 +1382,16 @@ const isListFragment = (text: string): boolean => {
 // Pre-filter plus context: nominal list sentences right after a shopping cue are candidates too.
 export const selectCandidates = <T extends { text: string }>(units: readonly T[]): T[] =>
   units.filter((unit, index) => {
-    if (isTaskCandidate(unit.text)) return true
+    if (isTaskCandidate(unit.text)) return !isPastNarration(unit.text) && !isHeading(unit.text) && !(isOtherOwned(unit.text) && !LABEL_LEAD.test(unit.text)) && !NO_CHANGE.test(unit.text)
     if (!isListFragment(unit.text) || NO_TASK.test(unit.text.toLowerCase())) return false
     return units.slice(Math.max(0, index - LIST_LOOKBACK), index).some((prev) => LIST_CUE.test(prev.text))
   })
 
 // A verbless list right after a shopping cue ('ryż, szynka, ser') needs no model: it becomes 'Kupić: ...'.
-const NOMINAL_STOP = rx(String.raw`\b(nie|jest|są|było|były|będzie|mam|ma|mamy|mają|trzeba|muszę|chcę|może|bo|że|ale|żeby|czy|jak|gdy|tak|chyba|tyle|idę|jadę|wracam|okej|dobra)\b|\w+(?:łem|łam|liśmy|ałem|ałam)\b`, 'i')
+const NOMINAL_STOP = rx(String.raw`\b(nie|jest|są|było|były|będzie|mam|ma|mamy|mają|trzeba|muszę|chcę|może|bo|że|ale|żeby|czy|jak|gdy|tak|chyba|tyle|idę|jadę|wracam|okej|dobra|chce)\b|\w+(?:łem|łam|liśmy|ałem|ałam)\b`, 'i')
+// A past verb in the list itself ('kosztował', 'prosiła') means narration; one in a trailing reason ('bo został') does not.
+const NOMINAL_PAST = rx(String.raw`\w{2,}(?:ał|ił|ył|ął|eł)[aoy]?\b|\bprzyszło\b|\bżebym\b`, 'i')
+const REASON_TAIL = rx(String.raw`,?\s+(?:bo|ponieważ|więc)\s+.*$`, 'i')
 const LEAD_FILLER = rx(String.raw`^(?:(?:aha|no|dobra|i|też|do tego|jeszcze|plus|oraz)\b[,\s]*)+`, 'i')
 const isNominalList = (text: string): boolean => {
   const body = text.replace(LEAD_FILLER, '')
@@ -1205,6 +1400,7 @@ const isNominalList = (text: string): boolean => {
   return (
     body.trim().split(/\s+/u).length <= 20 &&
     !NOMINAL_STOP.test(body) &&
+    !NOMINAL_PAST.test(body.replace(REASON_TAIL, '')) &&
     parts.every((part) => part.trim().split(/\s+/u).length <= 6) &&
     (parts.length >= 3 || additive)
   )
@@ -1246,10 +1442,11 @@ Przy poprawce ("nie, czekaj", "jednak", "przesunęli na") obowiązuje późniejs
 Dla każdego zdania z listy napisz jedną linię, w tej samej kolejności i z tym samym numerem:
 - gdy zdanie nie zawiera zadania autora: numer i myślnik, np. [5] -
 - gdy zawiera: numer, czynność, a po " — " termin, np. [6] Zapłacić za internet 60 zł — do piątku
+Nie twórz zadań z opisu przeszłości, z liczb, cen i godzin podanych jako informacja ani z ogólnych planów typu "pokażę trzy rzeczy".
 Czynność: 2–8 słów, zawsze bezokolicznik z czasownikiem ze zdania (Kupić…, Zadzwonić do…, Wysłać…; nie "zadzwonię"), dla wizyty/spotkania rzeczownik (Wizyta u…, Spotkanie z…). Bez "muszę/trzeba" i bez uzasadnień. Kwoty, liczby (cyframi), miejsca i warunek ("jeśli…") wpisz w czynność, np. Kupić 12 jajek.
 Lista rzeczy do kupienia (same rzeczowniki po "lista zakupów", "potrzebuję", "kupić") to jedno zadanie, także bez czasownika: "Kupić: " i wszystkie pozycje po przecinku, z ilościami.
-Po " — " wpisz tylko termin: dzień, datę, godzinę albo "do…/przed…/jutro", i tylko jeśli padł w notatce; liczby i godziny cyframi; nie dodawaj miesięcy ani dat. Bez terminu nie pisz " — ".
-Dwa zadania w jednym zdaniu rozdziel znakiem |
+Po " — " wpisz tylko termin: dzień, datę, godzinę albo "do…/przed…/jutro", i tylko jeśli padł W TYM SAMYM zdaniu (nie bierz terminu z sąsiedniego zdania); liczby i godziny cyframi; nie dodawaj miesięcy ani dat. Bez terminu nie pisz " — ".
+Dwa zadania w jednym zdaniu rozdziel znakiem |; nie łącz różnych wydarzeń w jedno zadanie.
 
 Przykład (inna notatka):
 ZDANIA:
@@ -1265,6 +1462,8 @@ ZDANIA:
 [10] Hania prosiła, żebym jej oddał książkę w sobotę.
 [11] Lista zakupów na jutro.
 [12] Ryż, szynka w plastrach, dwa opakowania ręczników papierowych.
+[13] Muszę poprawić ekran logowania.
+[14] Kasia sprawdzi tekst do środy.
 ODPOWIEDŹ:
 [1] Oddać projekt — czwartek
 [2] -
@@ -1277,11 +1476,18 @@ ODPOWIEDŹ:
 [9] Zakraplać krople do oczu 3 razy dziennie
 [10] Oddać Hani książkę — sobota
 [11] -
-[12] Kupić: ryż, szynkę w plastrach, 2 opakowania ręczników papierowych`
+[12] Kupić: ryż, szynkę w plastrach, 2 opakowania ręczników papierowych
+[13] Poprawić ekran logowania
+[14] -`
 
 const BATCH_SIZES = [64, 24, 12, 6, 3, 1]
 const OUTPUT_BASE_TOKENS = 40
-const OUTPUT_TOKENS_PER_SENTENCE = 22
+const OUTPUT_TOKENS_PER_SENTENCE = 18
+// A whole note's answer stays near this size (decode is the slow part on a phone).
+const MAX_OUTPUT_TOKENS = 560
+const MAX_OUTPUT_TOKENS_LONG = 360
+// Continuations of cut answers may spend at most this much more in total.
+const CONTINUATION_TOKENS = 320
 const CONTEXT_MARGIN = 24
 // The same answer line three times in a row means the model started looping.
 export const isDegenerate = (text: string): boolean => {
@@ -1290,6 +1496,13 @@ export const isDegenerate = (text: string): boolean => {
     .map((line) => line.replace(/^\s*\[\d+\]\s*/u, '').trim())
     .filter((b) => b.length > 3)
   return bodies.some((b, i) => i >= 2 && b === bodies[i - 1] && b === bodies[i - 2])
+}
+export const cutAnswer = (text: string, cut: boolean): string =>
+  cut && !/\n\s*$/u.test(text) ? text.slice(0, Math.max(0, text.lastIndexOf('\n'))) : text
+// Number of batch sentences a (cut) answer got through, by its last "[id]" line.
+export const answeredCount = (answer: string, batch: readonly { id: number }[]): number => {
+  const ids = [...answer.matchAll(/^\s*\[(\d+)\]/gmu)].map((m) => Number(m[1]))
+  return ids.length ? batch.findIndex((unit) => unit.id === ids[ids.length - 1]) + 1 : 0
 }
 const emptyResult = (): TaskLinesResult => ({ tasks: [], rendered: [], warnings: [] })
 const renderTask = (t: TaskLine): string => (t.due ? `${t.title} — ${t.due}` : t.title)
@@ -1302,18 +1515,21 @@ export const extractTaskLines = async (
   if (language !== 'pl') return emptyResult()
   const nominal = nominalListTasks(units)
   const nominalIds = new Set(nominal.flatMap((t) => t.sourceIds))
-  const candidates = selectCandidates(units.filter((unit) => !nominalIds.has(unit.id)))
+  const candidates = limitCandidates(selectCandidates(units.filter((unit) => !nominalIds.has(unit.id))), candidateLimit(units))
   if (!candidates.length && !nominal.length) return emptyResult()
   const system = noteSourceSystem(language)
   const numbered = units.map((unit) => `[${unit.id}] ${unit.text}`).join('\n')
   const head = `${TASK_LINES_PROMPT}\n\nTeraz zdania tej notatki.\nZDANIA:\n`
   const promptFor = (batch: readonly Unit[]): string =>
     sourceFirstPrompt(numbered, `${head}${batch.map((unit) => `[${unit.id}] ${unit.text}`).join('\n')}\nODPOWIEDŹ:\n`)
+  const maxOutput = isLongNote(units) ? MAX_OUTPUT_TOKENS_LONG : MAX_OUTPUT_TOKENS
   const warnings: string[] = []
   const raw: TaskDraft[] = []
   let cut = false
   let rest = candidates
   let maxBatch = Infinity
+  let continuation = CONTINUATION_TOKENS
+  let continuing = false
   while (rest.length) {
     throwIfProcessingAborted(execution)
     // Largest batch whose prompt plus answer fits the context window.
@@ -1328,7 +1544,7 @@ export const extractTaskLines = async (
       const text = promptFor(candidate)
       const tokens = await measureFormattedPromptTokens({ systemPrompt: system, userPrompt: text })
       const free = getContextWindowSize() - tokens - CONTEXT_MARGIN
-      const wanted = OUTPUT_BASE_TOKENS + OUTPUT_TOKENS_PER_SENTENCE * candidate.length
+      const wanted = Math.min(maxOutput, OUTPUT_BASE_TOKENS + OUTPUT_TOKENS_PER_SENTENCE * candidate.length)
       if (free >= wanted || (candidate.length === 1 && free >= OUTPUT_BASE_TOKENS)) {
         batch = candidate
         prompt = text
@@ -1339,6 +1555,10 @@ export const extractTaskLines = async (
     if (!batch) {
       warnings.push('Notatka jest zbyt długa, aby wyodrębnić zadania z jej dalszej części.')
       break
+    }
+    if (continuing) {
+      nPredict = Math.min(nPredict, continuation)
+      continuation -= nPredict
     }
     const result = await generate(prompt, () => undefined, {
       system,
@@ -1352,13 +1572,28 @@ export const extractTaskLines = async (
     recordGeneration('task-lines', prompt.length, result, numbered.length)
     throwIfProcessingAborted(execution)
     if (result.completion?.interrupted) throw new Error('Generation interrupted')
-    if (result.completion?.truncated || result.completion?.stoppedLimit) cut = true
+    const stopped = !!(result.completion?.truncated || result.completion?.stoppedLimit)
     if (isDegenerate(result.text) && batch.length > 3) {
       maxBatch = Math.max(3, Math.floor(batch.length / 2))
       continue
     }
-    raw.push(...parseTaskLines(result.text, new Set(batch.map((unit) => unit.id))))
-    rest = rest.slice(batch.length)
+    // A cut answer ends in a half-written line; drop it.
+    const answer = cutAnswer(result.text, stopped)
+    raw.push(...parseTaskLines(answer, new Set(batch.map((unit) => unit.id))))
+    if (!stopped) {
+      rest = rest.slice(batch.length)
+      continue
+    }
+    // Cut off: the unanswered sentences go to a follow-up call with the same
+    // source prefix (cheap prefill) while the continuation budget lasts.
+    const done = answeredCount(answer, batch)
+    if (done === 0 || continuation < OUTPUT_BASE_TOKENS) {
+      cut = true
+      rest = rest.slice(batch.length)
+      continue
+    }
+    continuing = true
+    rest = rest.slice(done)
   }
   if (cut) warnings.push('Odpowiedź modelu została ucięta; część zadań mogła zostać pominięta.')
   const kept = dedupeTasks(mergeSimilar(mergeVague([...postprocessTaskLines(raw, units).kept, ...nominal]))).sort((a, b) => a.sourceIds[0]! - b.sourceIds[0]!)

@@ -8,6 +8,8 @@ import {
   finalizePoints,
   impersonalize,
   isEventUnit,
+  capPoints,
+  fixStaleWeekday,
   dropNarration,
   isMetaPoint,
   isNarrated,
@@ -47,9 +49,9 @@ describe('maxPointsFor', () => {
     expect(maxPointsFor(1)).toBe(3);
   });
 
-  test('caps at 20 by default', () => {
-    expect(maxPointsFor(100)).toBe(20);
-    expect(maxPointsFor(1000)).toBe(20);
+  test('caps at 16 by default', () => {
+    expect(maxPointsFor(100)).toBe(16);
+    expect(maxPointsFor(1000)).toBe(16);
   });
 
   test('grows gradually for short notes', () => {
@@ -72,19 +74,19 @@ describe('maxPointsFor', () => {
 
 describe('outputTokensFor', () => {
   test('grows linearly with points', () => {
-    expect(outputTokensFor(1)).toBe(68);
-    expect(outputTokensFor(2)).toBe(96);
-    expect(outputTokensFor(5)).toBe(180);
+    expect(outputTokensFor(1)).toBe(86);
+    expect(outputTokensFor(2)).toBe(124);
+    expect(outputTokensFor(5)).toBe(238);
   });
 
   test('caps at 640 tokens', () => {
-    expect(outputTokensFor(20)).toBe(600);
-    expect(outputTokensFor(25)).toBe(640);
+    expect(outputTokensFor(15)).toBe(618);
+    expect(outputTokensFor(16)).toBe(640);
     expect(outputTokensFor(100)).toBe(640);
   });
 
-  test('computes correct formula: min(640, 28 * points + 40)', () => {
-    expect(outputTokensFor(10)).toBe(Math.min(640, 28 * 10 + 40));
+  test('computes correct formula: min(640, 38 * points + 48)', () => {
+    expect(outputTokensFor(10)).toBe(Math.min(640, 38 * 10 + 48));
   });
 });
 
@@ -569,5 +571,114 @@ describe('date removal', () => {
     const units = [{ id: 1, text: 'Analiza matematyczna, egzamin dwunastego lutego.' }];
     const { points } = finalizePoints([{ text: 'Analiza matematyczna 9 stycznia, egzamin 12 lutego', sourceIds: [1] }], units, 'pl');
     expect(points[0].text).toContain('matematyczna');
+  });
+});
+
+describe('round 4 point fixes', () => {
+  const noteWords = new Set<string>();
+
+  test('imperatives become infinitives', () => {
+    expect(impersonalize('Pokaż promotorowi najnowszą wersję aplikacji', noteWords)).toBe('Pokazać promotorowi najnowszą wersję aplikacji');
+    expect(impersonalize('Przygotuj raport na piątek', noteWords)).toBe('Przygotować raport na piątek');
+  });
+
+  test('first-person motion verbs become nouns', () => {
+    expect(impersonalize('Jadę pociągiem w sobotę o 9:40', noteWords)).toBe('Wyjazd pociągiem w sobotę o 9:40');
+    expect(impersonalize('Wracam w niedzielę wieczorem', noteWords)).toBe('Powrót w niedzielę wieczorem');
+    expect(impersonalize('W sobotę jadę do rodziców, wrócę w niedzielę wieczorem', noteWords)).toBe('Wyjazd do rodziców w sobotę, powrót w niedzielę wieczorem');
+    expect(impersonalize('W niedzielę odpoczywam', noteWords)).toBe('Odpoczynek w niedzielę');
+  });
+
+  test('spoken word order and case slips are repaired', () => {
+    expect(impersonalize('Zajęć w piątek nie, więc zostaję dłużej na uczelni', noteWords)).toBe('Brak zajęć w piątek, więc zostaję dłużej na uczelni');
+    expect(impersonalize('Dopisać rozdział czwartym o lokalnym przetwarzaniu mowy', noteWords)).toBe('Dopisać rozdział czwarty o lokalnym przetwarzaniu mowy');
+    expect(impersonalize('Spotkanie z promotorem o 10:30 poniedziałek', noteWords)).toBe('Spotkanie z promotorem o 10:30 w poniedziałek');
+    expect(impersonalize('Kuba pożyczył książkę, ją oddać do końca miesiąca', noteWords)).toBe('Kuba pożyczył książkę, trzeba ją oddać do końca miesiąca');
+  });
+
+  test('"mam zajęć" is not an infinitive', () => {
+    expect(impersonalize('W piątek nie mam zajęć, więc zostaję', noteWords)).not.toMatch(/^Zajęć/u);
+  });
+
+  test('a weekday corrected by the speaker is replaced in the case the point uses', () => {
+    const cited = 'Termin: środa do osiemnastej. Poprawka: nie środa, tylko czwartek do osiemnastej.';
+    expect(fixStaleWeekday('Podsumowanie do środy do 18:00', cited)).toBe('Podsumowanie do czwartku do 18:00');
+    expect(fixStaleWeekday('Termin: środa do 18:00', cited)).toBe('Termin: czwartek do 18:00');
+    expect(fixStaleWeekday('Termin: czwartek do 18:00', cited)).toBe('Termin: czwartek do 18:00');
+  });
+
+  test('a corrected weekday is also fixed in finalizePoints, using the correction sentence after the cited one', () => {
+    const units = [
+      { id: 1, text: 'Termin: środa do osiemnastej.' },
+      { id: 2, text: 'Poprawka: nie środa, tylko czwartek do osiemnastej.' },
+      { id: 3, text: 'Potem napiszę rozdział.' },
+    ];
+    const { points } = finalizePoints([{ text: 'Termin: środa do osiemnastej', sourceIds: [1] }], units, 'pl');
+    expect(points[0].text).toBe('Termin: czwartek do 18:00');
+  });
+
+  test('two points about one dated event are merged, the fuller one wins', () => {
+    const units = [
+      { id: 1, text: 'Poprosił, żebym przygotował krótkie podsumowanie postępów i wysłał mu je mailem.' },
+      { id: 2, text: 'Termin: czwartek do osiemnastej.' },
+    ];
+    const { points } = finalizePoints([
+      { text: 'Wysłać podsumowanie postępów do czwartku do osiemnastej', sourceIds: [1] },
+      { text: 'Termin: czwartek do osiemnastej', sourceIds: [2] },
+    ], units, 'pl');
+    expect(points).toHaveLength(1);
+    expect(points[0].text).toContain('podsumowanie');
+    expect(points[0].sourceIds).toEqual([1, 2]);
+  });
+
+  test('an invented verb form is rejected', () => {
+    const units = [{ id: 1, text: 'W sobotę jadę pociągiem o dziewiątej czterdzieści, jestem na miejscu około trzynastej.' }];
+    const byId = new Map(units.map(unit => [unit.id, unit]));
+    expect(checkPoint({ text: 'Wyjazd pociągiem w sobotę o 9:40, dojde o 13:00', sourceIds: [1] }, byId, units).join()).toContain('words');
+    expect(checkPoint({ text: 'Wyjazd pociągiem w sobotę o 9:40, na miejscu około 13:00', sourceIds: [1] }, byId, units)).toEqual([]);
+  });
+
+  test('numbering labels of the speaker are dropped', () => {
+    const units = [{ id: 1, text: 'Druga sprawa: prezentacja na poniedziałek.' }];
+    const { points } = finalizePoints([{ text: 'Druga sprawa: prezentacja na poniedziałek', sourceIds: [1] }], units, 'pl');
+    expect(points[0].text).toBe('Prezentacja na poniedziałek');
+  });
+
+  test('capPoints drops the least substantial points and keeps the order', () => {
+    const units = [
+      { id: 1, text: 'Muszę zapłacić czynsz do dziesiątego, tysiąc złotych.' },
+      { id: 2, text: 'Pogoda była ładna.' },
+      { id: 3, text: 'Mam zadzwonić do lekarza w piątek.' },
+    ];
+    const points = [
+      { text: 'Zapłacić czynsz do 10, 1000 zł', sourceIds: [1] },
+      { text: 'Ładna pogoda', sourceIds: [2] },
+      { text: 'Zadzwonić do lekarza w piątek', sourceIds: [3] },
+    ];
+    expect(capPoints(points, units, 2).map(point => point.sourceIds[0])).toEqual([1, 3]);
+    expect(capPoints(points, units, 5)).toHaveLength(3);
+  });
+});
+
+describe('chunk budgets', () => {
+  const sentence = (i: number): string => `Zdanie numer ${i} o czymś ważnym, muszę to zrobić w piątek.`;
+  const longNote = Array.from({ length: 60 }, (_, i) => sentence(i + 1)).join(' ');
+
+  test('each chunk of a long note leaves headroom for its points and asks for a line limit', async () => {
+    model.mockReset();
+    model.mockResolvedValue(reply('- Zrobić coś w piątek [1]'));
+    const { createSummarySources } = jest.requireActual<typeof import('./summarySources')>('./summarySources');
+    const units = createSummarySources(longNote);
+    await generatePointSummary(units, longNote, 'pl');
+    const calls = model.mock.calls;
+    expect(calls.length).toBeGreaterThan(1);
+    let total = 0;
+    for (const [prompt, , options] of calls) {
+      const asked = Number(/Najwyżej (\d+) punkt/u.exec(prompt)?.[1]);
+      total += asked;
+      expect(options?.nPredict).toBe(outputTokensFor(asked));
+      expect(prompt).toMatch(new RegExp(`najwyżej ${asked} lini[ei]\\.`, 'u'));
+    }
+    expect(total).toBeLessThanOrEqual(24);
   });
 });

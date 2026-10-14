@@ -1,6 +1,7 @@
 import { generate, getContextWindowSize, measureFormattedPromptTokens, type GenerationResult } from './llm';
 import { noteSourceSystem } from './sharedSourcePrompt';
 import {
+  answeredCount,
   TASK_LINES_PROMPT,
   applyCorrections,
   cleanDue,
@@ -23,6 +24,16 @@ import {
   repairVerb,
   selectCandidates,
   splitCompound,
+  candidateScore,
+  cutAnswer,
+  dueFromOwnSentence,
+  isDateOnlySentence,
+  isMergedEvents,
+  isPastNarration,
+  isVagueTitle,
+  limitCandidates,
+  MAX_CANDIDATES_LONG,
+  toInfinitive,
   hourValues,
   isOtherOwned,
   isDegenerate,
@@ -451,31 +462,31 @@ describe('extractTaskLines', () => {
     expect(prompt).toContain('\nSOURCE_END\n' + TASK_LINES_PROMPT + '\n\nTeraz zdania tej notatki.\nZDANIA:\n[2] Muszę oddać raport do czwartku.\n[5] Trzeba zapłacić');
     expect(prompt.endsWith('\nODPOWIEDŹ:\n')).toBe(true);
     expect(prompt.split('ZDANIA:\n')[2]).not.toContain('[1]');
-    expect(options).toMatchObject({ system: noteSourceSystem('pl'), temperature: 0.1, topP: 0.8, topK: 20, minP: 0, nPredict: 40 + 22 * 2 });
+    expect(options).toMatchObject({ system: noteSourceSystem('pl'), temperature: 0.1, topP: 0.8, topK: 20, minP: 0, nPredict: 40 + 18 * 2 });
     expect(result.rendered).toEqual(['Oddać raport — do czwartku', 'Zapłacić za internet 60 zł']);
     expect(result.tasks[0]).toEqual({ title: 'Oddać raport', due: 'do czwartku', sourceIds: [2] });
     expect(result.warnings).toEqual([]);
   });
 
   test('splits into batches of 24 when 64 sentences would not fit the context', async () => {
-    const many = manyUnits(70);
-    measure.mockImplementation(async ({ userPrompt }) => 5000 + 60 * (userPrompt.split('ZDANIA:\n')[2]!.split('\n').length - 1));
+    const many = manyUnits(40);
+    measure.mockImplementation(async ({ userPrompt }) => 5000 + 80 * (userPrompt.split('ZDANIA:\n')[2]!.split('\n').length - 1));
     model.mockImplementation(async (prompt) => {
       const ids = [...prompt.split('ZDANIA:\n')[2]!.matchAll(/^\[(\d+)\]/gmu)].map(match => Number(match[1]));
       return reply(ids.map(id => `[${id}] Kupić ${word(id)} — jutro`).join('\n') + '\n[999] Kupić nic');
     });
     const result = await extractTaskLines(many, 'pl');
-    expect(model.mock.calls.map(call => (call[2]?.nPredict))).toEqual([40 + 22 * 24, 40 + 22 * 24, 40 + 22 * 22]);
-    expect(result.tasks).toHaveLength(70);
+    expect(model.mock.calls.map(call => (call[2]?.nPredict))).toEqual([40 + 18 * 24, 40 + 18 * 16]);
+    expect(result.tasks).toHaveLength(40);
     expect(result.tasks.every(task => task.due === 'jutro')).toBe(true);
   });
 
   test('ids outside the current batch are ignored', async () => {
-    const many = manyUnits(70);
-    measure.mockImplementation(async ({ userPrompt }) => 5000 + 60 * (userPrompt.split('ZDANIA:\n')[2]!.split('\n').length - 1));
-    model.mockResolvedValue(reply(`[1] Kupić ${word(1)}\n[70] Kupić ${word(70)}`));
+    const many = manyUnits(40);
+    measure.mockImplementation(async ({ userPrompt }) => 5000 + 80 * (userPrompt.split('ZDANIA:\n')[2]!.split('\n').length - 1));
+    model.mockResolvedValue(reply(`[1] Kupić ${word(1)}\n[40] Kupić ${word(40)}\n[99] Kupić ${word(99)}`));
     const result = await extractTaskLines(many, 'pl');
-    expect(result.tasks.map(task => task.sourceIds)).toEqual([[1], [70]]);
+    expect(result.tasks.map(task => task.sourceIds)).toEqual([[1], [40]]);
   });
 
   test('warns when even one sentence does not fit', async () => {
@@ -485,11 +496,41 @@ describe('extractTaskLines', () => {
     expect(result.warnings).toHaveLength(1);
   });
 
-  test('warns when the answer hit the token limit', async () => {
-    model.mockResolvedValue(reply('[2] Oddać raport — do czwartku', true));
+  test('warns when a cut answer makes no progress in its follow-up call', async () => {
+    model.mockResolvedValue(reply('[2] Oddać raport — do czwartku\n[5] Zapłacić za int', true));
     const result = await extractTaskLines(noteUnits, 'pl');
+    expect(model).toHaveBeenCalledTimes(2);
     expect(result.tasks).toHaveLength(1);
     expect(result.warnings).toHaveLength(1);
+  });
+
+  test('sentences left unanswered by a cut answer go to a follow-up call', async () => {
+    model
+      .mockResolvedValueOnce(reply('[2] Oddać raport — do czwartku\n[5] Zapłacić za int', true))
+      .mockResolvedValueOnce(reply('[5] Zapłacić za internet 60 zł'));
+    const result = await extractTaskLines(noteUnits, 'pl');
+    const tail = model.mock.calls[1]![0].split('ZDANIA:\n')[2]!;
+    expect(tail.startsWith('[5] Trzeba zapłacić')).toBe(true);
+    expect(tail).not.toContain('[2]');
+    expect(result.rendered).toEqual(['Oddać raport — do czwartku', 'Zapłacić za internet 60 zł']);
+    expect(result.warnings).toEqual([]);
+  });
+
+  test('answeredCount follows the last answered id of the batch', () => {
+    const batch = [{ id: 2 }, { id: 5 }, { id: 9 }];
+    expect(answeredCount('[2] -\n[5] Kupić mleko', batch)).toBe(2);
+    expect(answeredCount('', batch)).toBe(0);
+    expect(answeredCount('[7] Coś', batch)).toBe(0);
+  });
+
+  test('a long note sends only its most binding sentences', async () => {
+    const filler = Array.from({ length: 60 }, (_, index) => ({ id: index + 1, text: `W piątek ${word(index + 1)} zajęcia ${'słowo '.repeat(14)}.` }));
+    const binding = Array.from({ length: 40 }, (_, index) => ({ id: 61 + index, text: `Muszę kupić ${word(100 + index)} jutro.` }));
+    model.mockResolvedValue(reply('[61] Kupić coś'));
+    await extractTaskLines([...filler, ...binding], 'pl');
+    const sent = [...model.mock.calls[0]![0].split('ZDANIA:\n')[2]!.matchAll(/^\[(\d+)\]/gmu)].map(match => Number(match[1]));
+    expect(sent).toEqual(binding.slice(0, MAX_CANDIDATES_LONG).map(unit => unit.id));
+    expect(model.mock.calls[0]![2]!.nPredict).toBe(360);
   });
 
   test('guards drop invented and foreign tasks', async () => {
@@ -511,6 +552,84 @@ describe('extractTaskLines', () => {
     await expect(extractTaskLines(noteUnits, 'pl')).rejects.toThrow('Generation interrupted');
   });
 });
+
+describe('round 4 task fixes', () => {
+  test('past narration is not a candidate, a plan or an appointment change is', () => {
+    expect(isPastNarration('Zapłaciłem trzysta złotych za druk plakatu.')).toBe(true)
+    expect(isPastNarration('W poniedziałek o dziesiątej miałem spotkanie z promotorem.')).toBe(true)
+    expect(isPastNarration('Kupiłem bilet na pociąg w sobotę.')).toBe(true)
+    expect(isPastNarration('Kuba pożyczył mi książkę, muszę mu ją oddać do końca miesiąca.')).toBe(false)
+    expect(isPastNarration('Mama prosiła, żebym przywiózł dysk.')).toBe(false)
+    expect(isPastNarration('Fryzjer był na jedenastą, ale jednak na trzynastą.')).toBe(false)
+    expect(isPastNarration('Kontrola jest we wtorek, lekarka powiedziała, że o szesnastej.')).toBe(false)
+    expect(selectCandidates(units('Zapłaciłem trzysta złotych w piątek.', 'Muszę zapłacić rachunek.')).map(u => u.id)).toEqual([2])
+    expect(selectCandidates(units('Druga sprawa: prezentacja na poniedziałek.', 'Ola przygotuje listę uwag do piątku.')).map(u => u.id)).toEqual([])
+  })
+  test('limitCandidates keeps the most binding sentences in note order', () => {
+    const u = [{ id: 1, text: 'W piątek zajęcia.' }, { id: 2, text: 'Muszę oddać raport.' }, { id: 3, text: 'W sobotę rano zrobię przegląd.' }]
+    expect(limitCandidates(u, 2).map(x => x.id)).toEqual([2, 3])
+    expect(limitCandidates(u, 5).map(x => x.id)).toEqual([1, 2, 3])
+    expect(candidateScore('Muszę oddać raport w piątek.')).toBeGreaterThan(candidateScore('W piątek zajęcia.'))
+  })
+  test('cutAnswer drops a half-written last line only for a cut answer', () => {
+    expect(cutAnswer('[1] Kupić mleko\n[2] Zapł', true)).toBe('[1] Kupić mleko')
+    expect(cutAnswer('[1] Kupić mleko\n[2] Zapł', false)).toBe('[1] Kupić mleko\n[2] Zapł')
+    expect(cutAnswer('[1] Kupić mleko\n', true)).toBe('[1] Kupić mleko\n')
+  })
+  test('imperatives and gerunds become infinitives', () => {
+    expect(toInfinitive('Wyślij wyniki')).toBe('Wysłać wyniki')
+    expect(toInfinitive('Wzywając serwisanta')).toBe('Wzywać serwisanta')
+    expect(toInfinitive('Zarezerwuj nocleg')).toBe('Zarezerwować nocleg')
+    expect(toInfinitive('Wysłać wyniki')).toBe('Wysłać wyniki')
+    expect(toInfinitive('Wizyta u dentysty')).toBe('Wizyta u dentysty')
+    expect(tidyTask(draft('Wyślij wyniki', null, 1)).title).toBe('Wysłać wyniki')
+  })
+  test('vague and merged tasks are rejected, a past time is not a due', () => {
+    expect(isVagueTitle('Pokazać 3 rzeczy')).toBe(true)
+    expect(isVagueTitle('Zakończyć zadania')).toBe(true)
+    expect(isVagueTitle('Pokazać schemat przepływu')).toBe(false)
+    expect(isMergedEvents('Spotkanie z Oliwią, dentysta i serwisant')).toBe(true)
+    expect(isMergedEvents('Spotkanie z Oliwią i Markiem')).toBe(false)
+    expect(finalizeTasks([draft('Pokazać 3 rzeczy', null, 1), draft('Kupić mleko', null, 2)]).kept.map(t => t.title)).toEqual(['Kupić mleko'])
+    expect(cleanDue(draft('Zapłacić karę', 'tydzień temu', 1)).due).toBeNull()
+  })
+  test('another person with a future verb owns the task', () => {
+    expect(isOtherOwned('Ola sprawdzi rozdział drugi do czwartku.')).toBe(true)
+    expect(isOtherOwned('Ola sprawdzi rozdział, a ja wyślę link.')).toBe(false)
+  })
+  test('a deadline comes from the task sentence, not from the next task', () => {
+    const u = units(
+      'Po spotkaniu muszę poprawić ekran eksportu i wysłać mu link.',
+      'Ola sprawdzi rozdział drugi do czwartku.',
+      'Muszę oddać raport.',
+      'Termin: środa do osiemnastej.',
+    )
+    expect(isDateOnlySentence('Termin: środa do osiemnastej.')).toBe(true)
+    expect(isDateOnlySentence('Ola sprawdzi rozdział drugi do czwartku.')).toBe(false)
+    expect(dueFromOwnSentence(draft('Poprawić ekran eksportu', 'do czwartku', 1), u).due).toBeNull()
+    expect(dueFromOwnSentence({ ...draft('Oddać raport', 'środa', 3), sourceIds: [3, 4] }, u).due).toBe('środa')
+    expect(dueFromOwnSentence(draft('Oddać raport', 'do obrony', 3), u).due).toBeNull()
+    const kept = postprocessTaskLines([draft('Poprawić ekran eksportu', 'do czwartku', 1)], u).kept
+    expect(kept.map(t => [t.title, t.due])).toEqual([['Poprawić ekran eksportu', null]])
+  })
+  test('a weekday corrected in the next sentence replaces the stated one', () => {
+    const u = units('Poprosił, żebym wysłał mu podsumowanie.', 'Termin: środa do osiemnastej.', 'Poprawka: nie środa, tylko czwartek do osiemnastej, bo w środę mam zajęcia.')
+    const kept = postprocessTaskLines([draft('Wysłać podsumowanie', 'środa do 18:00', 1)], u).kept
+    expect(kept.map(t => t.due)).toEqual(['czwartek do 18:00'])
+  })
+  test('a verb without its own object shares the next one', () => {
+    expect(splitCompound(draft('Przygotować i wysłać podsumowanie', null, 1)).map(t => t.title)).toEqual(['Przygotować i wysłać podsumowanie'])
+  })
+  test('an invented amount is replaced by the stated one', () => {
+    const u = units('Czynsz za listopad to tysiąc sto pięćdziesiąt złotych, muszę zapłacić do dziesiątego.')
+    const kept = postprocessTaskLines([draft('Zapłacić czynsz 1050 zł', 'do 10', 1)], u).kept
+    expect(kept.map(t => t.title)).toEqual(['Zapłacić czynsz 1150 zł'])
+  })
+  test('a nominal list needs no past purchase or hearsay', () => {
+    const u = units('Bilet kupiłem wcześniej.', 'Dwa terabajty, kosztował czterysta dziewięćdziesiąt złotych, przyszło etui i kabel.')
+    expect(nominalListTasks(u)).toEqual([])
+  })
+})
 
 describe('grounding guards', () => {
   test('foldScripts maps lookalikes and Russian infinitives, rejects other scripts', () => {
