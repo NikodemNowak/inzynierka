@@ -1,4 +1,4 @@
-import { projectSourceUnitPlan, sourceUnitsFromPlan, validateSourceUnitPlan } from "./sourceUnits";
+import { deterministicSourceUnitPlan, projectSourceUnitPlan, sourceUnitsFromPlan, validateSourceUnitPlan } from "./sourceUnits";
 import { canSelectSourceSummary, renderSummarySource } from "./summarySelection";
 
 jest.mock("./llm", () => ({}));
@@ -247,4 +247,37 @@ test("coalesces the finite predicate with a detached correction cue without drop
     "Ula przesyła opis gabloty", "Poprawka Ula sprawdzi tabelę", "Archiwum zawiera fotografie",
   ]);
   expect(plan.ends.at(-1)).toBe(source.length);
+});
+
+describe("deterministic split of unpunctuated speech", () => {
+  const speech = "no więc zbieram myśli po pierwsze przegląd auta mam do końca miesiąca więc muszę się umówić na stacji diagnostycznej najlepiej na jakiś poranek bo po południu są kolejki po drugie faktura dla pana Kowalskiego wysłać ją do jutra bo obiecałem a propos weterynarza szczepienie jest w grudniu mama pytała czy przyjadę na obiad w niedzielę i powiedziałem że tak aha i jeszcze bilet miesięczny doładować w poniedziałek dobra to by było na tyle";
+
+  test("cuts at discourse markers, keeps exact spans and a source that mentions 'czy'", () => {
+    const plan = deterministicSourceUnitPlan(speech);
+    expect(plan).not.toBeNull();
+    const units = sourceUnitsFromPlan(speech, plan!);
+    expect(units.length).toBeGreaterThanOrEqual(6);
+    for (const unit of units) {
+      expect(speech.slice(unit.start, unit.end)).toBe(unit.text);
+      expect(unit.text.split(" ").length).toBeLessThanOrEqual(30);
+    }
+    expect(units.some(unit => unit.text.startsWith("po drugie"))).toBe(true);
+    expect(units.some(unit => unit.text.startsWith("a propos"))).toBe(true);
+    expect(units.some(unit => unit.text.startsWith("dobra"))).toBe(true);
+  });
+
+  test("limits unit length on word boundaries without markers", () => {
+    const flat = Array.from({ length: 100 }, (_, i) => `słowo${i}`).join(" ");
+    const units = sourceUnitsFromPlan(flat, deterministicSourceUnitPlan(flat)!);
+    expect(units.length).toBeGreaterThanOrEqual(3);
+    expect(units.every(unit => unit.text.split(" ").length <= 30)).toBe(true);
+  });
+
+  test("ignores punctuated or short text and rejects foreign plans of ambiguous sources", () => {
+    expect(deterministicSourceUnitPlan("Kupić mleko. Zadzwonić do mamy.")).toBeNull();
+    expect(deterministicSourceUnitPlan("kupić mleko")).toBeNull();
+    const plan = deterministicSourceUnitPlan(speech)!;
+    const forged = { ...plan, ends: [plan.ends[0], speech.length], identity: JSON.stringify([1, speech, [plan.ends[0], speech.length]]) };
+    expect(() => validateSourceUnitPlan(speech, forged)).toThrow();
+  });
 });

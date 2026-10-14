@@ -17,7 +17,7 @@ export const qualitySourceUnits = async (
   execution: ProcessingExecutionContext | undefined,
   onStructure?: () => void,
 ): Promise<readonly SummarySourceUnit[]> => {
-  const plan = await prepareSpokenSource(content, language, execution, onStructure);
+  const plan = await prepareSpokenSource(content, language, execution, onStructure, true);
   return createSummarySources(content, plan ?? execution?.sourceUnitPlan);
 };
 

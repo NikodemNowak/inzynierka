@@ -7,9 +7,18 @@ import {
   clockUnanchored,
   dedupeTasks,
   extractTaskLines,
+  cancelledFilter,
+  dropClosingDue,
   finalizeTasks,
+  mergeVague,
+  nominalListTasks,
+  repairReminder,
+  repairVerb,
+  selectCandidates,
+  splitCompound,
   hourValues,
   isOtherOwned,
+  isDegenerate,
   isTaskCandidate,
   numbersAnchored,
   ownerFilter,
@@ -315,6 +324,87 @@ describe('postprocessTaskLines', () => {
     expect(rejected.map(r => r.reason)).toEqual(expect.arrayContaining(['not an action', 'other person']));
   });
 });
+
+describe('class fixes', () => {
+  test('selectCandidates adds a list fragment only shortly after a shopping cue', () => {
+    const u = units('Lista zakupów na weekend.', 'Marchewki, jogurt, mąka, olej.', 'Pogoda była ładna.', 'Było miło.', 'Ryż, szynka, ser, mleko.')
+    expect(selectCandidates(u).map(x => x.id)).toEqual([1, 2])
+    expect(selectCandidates(units('Marchewki, jogurt, mąka, olej.')).map(x => x.id)).toEqual([])
+  })
+  test('"marchewki" is not the month of March', () => {
+    expect(isTaskCandidate('Marchewki, jogurt i mąka.')).toBe(false)
+    expect(isTaskCandidate('W marcu mam egzamin.')).toBe(true)
+  })
+  test('new candidate cues: reminders, "po pierwsze", "pamiętaj"', () => {
+    for (const t of ['Przypomnij mi o urodzinach cioci.', 'Po drugie wysłać skan umowy.', 'Pamiętaj, żeby wziąć klucze.'])
+      expect(isTaskCandidate(t)).toBe(true)
+  })
+  test('nominalListTasks turns verbless lists after a cue into one "Kupić:" task', () => {
+    const u = units('Dobra, lista zakupów.', 'Pomidory pół kilo, makaron dwie paczki, ser feta, papier toaletowy.', 'Do tego szampon i pasta.', 'Idę do domu.')
+    expect(nominalListTasks(u).map(t => [t.title, t.sourceIds])).toEqual([
+      ['Kupić: pomidory pół kilo, makaron 2 paczki, ser feta, papier toaletowy, szampon i pasta', [2, 3]],
+    ])
+  })
+  test('nominalListTasks ignores negations, verbs and uncued sentences', () => {
+    expect(nominalListTasks(units('Lista zakupów.', 'Mleka nie trzeba, jeszcze są dwa kartony.', 'Tak, Okęcie, 17, sprawdzałem rano.'))).toEqual([])
+    expect(nominalListTasks(units('Pomidory, makaron, ser, olej.'))).toEqual([])
+  })
+  test('repairReminder rebuilds a garbled "Zapomnieć" title from the sentence', () => {
+    const u = units('Przypomnij mi, żebym jutro przed dziewiątą oddzwonił do pana z warsztatu.')
+    const fixed = repairReminder(draft('Zapomnijć o zadzwonieniu do pana', null, 1), u)
+    expect(fixed).toMatchObject({ title: 'Oddzwonić do pana z warsztatu', due: 'jutro przed 9' })
+    expect(repairReminder(draft('Zapomnieć o czymś', null, 1), units('Pogoda.'))).toBeNull()
+    expect(repairReminder(draft('Kupić chleb', null, 1), u)).toMatchObject({ title: 'Kupić chleb' })
+  })
+  test('repairReminder handles "przypomnij mi o X w sobotę"', () => {
+    const fixed = repairReminder(draft('Zapomnienie, żebym', null, 1), units('Przypomnij mi też o urodzinach cioci w sobotę.'))
+    expect(fixed).toMatchObject({ title: 'Pamiętać o urodzinach cioci', due: 'w sobotę' })
+  })
+  test('repairVerb swaps an invented infinitive for a close one used in the sentence', () => {
+    const u = units('Mam odebrać Stasia ze szkoły.')
+    expect(repairVerb(draft('Odbić Stasia', null, 1), u).title).toBe('Odebrać Stasia')
+    expect(repairVerb(draft('Odebrać Stasia', null, 1), u).title).toBe('Odebrać Stasia')
+    expect(repairVerb(draft('Zadzwonić do Ewy', null, 1), u).title).toBe('Zadzwonić do Ewy')
+  })
+  test('dropClosingDue removes an opening-hours time but keeps real deadlines', () => {
+    const u = units('Muszę wstąpić do apteki, zamykają o dwudziestej.', 'Muszę wstąpić do poczty, zamykają o dwudziestej, najlepiej w piątek.')
+    expect(dropClosingDue(draft('Wstąpić do apteki', 'do 20:00', 1), u).due).toBeNull()
+    expect(dropClosingDue(draft('Wstąpić do poczty', 'piątek', 2), u).due).toBe('piątek')
+  })
+  test('wordsToDigits writes "do osiemnastej" as a clock time', () => {
+    expect(wordsToDigits('do osiemnastej')).toBe('do 18:00')
+    expect(wordsToDigits('do piętnastego')).toBe('do 15')
+  })
+  test('cancelledFilter drops tasks whose own clause is cancelled', () => {
+    const u = units('Kawy nie trzeba kupować, mam jeszcze pół paczki.', 'Soku nie trzeba, chleb kupić.')
+    const { kept, rejected } = cancelledFilter([draft('Kupić kawę', null, 1), draft('Kupić chleb', null, 2)], u)
+    expect(kept.map(t => t.title)).toEqual(['Kupić chleb'])
+    expect(rejected.map(r => r.reason)).toEqual(['cancelled'])
+  })
+  test('ownerFilter rejects "Ola zajmuje się ..." and "mama bierze ..."', () => {
+    expect(isOtherOwned('Ola zajmuje się rezerwacją sali.')).toBe(true)
+    expect(isOtherOwned('Mama bierze dzieci na weekend.')).toBe(true)
+    expect(isOtherOwned('Ola zajmuje się salą, a ja zadzwonię do firmy.')).toBe(false)
+  })
+  test('splitCompound makes one task per infinitive and shares the due', () => {
+    expect(splitCompound(draft('Sprawdzić opony, dolać płynu i zatankować', 'piątek', 1)).map(t => [t.title, t.due])).toEqual([
+      ['Sprawdzić opony', 'piątek'], ['Dolać płynu', 'piątek'], ['Zatankować', 'piątek'],
+    ])
+    expect(splitCompound(draft('Kupić: ryż, ser', null, 1))).toHaveLength(1)
+  })
+  test('mergeVague moves the due of "Kupić wszystko" onto the list task', () => {
+    const merged = mergeVague([draft('Kupić: farba, wałek', null, 2), draft('Kupić wszystko', 'środa', 3)])
+    expect(merged.map(t => [t.title, t.due])).toEqual([['Kupić: farba, wałek', 'środa']])
+  })
+  test('tidyTask drops a bare month as a due', () => {
+    expect(tidyTask(draft('Odpisać Markowi', 'wrzesień', 1)).due).toBeNull()
+    expect(tidyTask(draft('Zapłacić', 'do 15 września', 1)).due).toBe('do 15 września')
+  })
+  test('isDegenerate detects a looping answer', () => {
+    expect(isDegenerate('[1] -\n[2] Kupić x\n[3] Kupić x\n[4] Kupić x')).toBe(true)
+    expect(isDegenerate('[1] -\n[2] -\n[3] -\n[4] -')).toBe(false)
+  })
+})
 
 // Distinct 4-letter stems, so the duplicate merge does not join the tasks.
 const word = (n: number): string => `zx${String.fromCharCode(97 + Math.floor(n / 26))}${String.fromCharCode(97 + (n % 26))}ak`;

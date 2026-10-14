@@ -81,6 +81,57 @@ const rawUnits = (content: string, ends: readonly number[]): OriginalSourceUnit[
   });
 };
 
+// Deterministic fallback for a long unpunctuated transcript: cut before strong
+// Polish discourse markers and, past length limits, at conjunctions or any safe
+// word boundary. Cuts only choose positions; unit text stays exact source.
+const STRONG_STARTS: readonly (readonly string[])[] = [
+  ["po", "pierwsze"], ["po", "drugie"], ["po", "trzecie"], ["po", "czwarte"], ["po", "piąte"],
+  ["a", "poza", "tym"], ["poza", "tym"], ["a", "propos"], ["no", "i"], ["no", "więc"],
+  ["aha"], ["dobra"], ["okej"], ["ok"], ["potem"], ["następnie"], ["na", "koniec"], ["na", "początek"],
+  ["i", "jeszcze"], ["kolejna", "rzecz"], ["kolejne"], ["tak", "czy", "inaczej"],
+];
+const WEAK_STARTS = new Set(["a", "ale", "więc", "wtedy", "dalej"]);
+const SOFT_STARTS = new Set(["i", "oraz", "albo", "lub", "bo", "ale", "więc", "czyli", "wtedy", "potem", "ponieważ", "jeszcze"]);
+const DANGLING_END = /^(?:i|w|we|na|z|ze|do|od|po|za|o|u|nad|pod|przy|bez|dla|przez|oraz|albo|lub|a|ale|bo|nie|że|jak|ten|ta|te|tę|to|ma|mam|mój|moje)$/iu;
+const MAX_UNIT_WORDS = 30;
+
+const deterministicEnds = (content: string): number[] | null => {
+  if (!needsSourceUnitPlan(content)) return null;
+  const words = [...content.matchAll(/\S+/gu)];
+  const norm = words.map((word) => word[0].toLowerCase().replace(/[,;:]+$/u, ""));
+  const wordEnd = (index: number): number => words[index].index + words[index][0].length;
+  const startsWith = (index: number, phrase: readonly string[]): boolean =>
+    phrase.every((part, offset) => norm[index + offset] === part);
+  const cuts: number[] = [];
+  let segment = 0;
+  for (let index = 1; index < words.length; index += 1) {
+    const length = index - segment;
+    const wanted = (length >= 3 && STRONG_STARTS.some((phrase) => startsWith(index, phrase))) ||
+      (length >= 10 && WEAK_STARTS.has(norm[index])) ||
+      (length >= 12 && norm[index] === "jeszcze") ||
+      (length >= 22 && SOFT_STARTS.has(norm[index])) ||
+      length >= MAX_UNIT_WORDS;
+    if (!wanted || DANGLING_END.test(norm[index - 1])) continue;
+    const left = content.slice(words[segment].index, wordEnd(index - 1));
+    const right = content.slice(words[index].index, wordEnd(Math.min(words.length - 1, index + 3)));
+    if (unsafeBoundary(left, right)) continue;
+    cuts.push(index);
+    segment = index;
+  }
+  if (cuts.length && words.length - cuts[cuts.length - 1] < 3) cuts.pop();
+  const ends = cuts.map((cut) => wordEnd(cut - 1));
+  ends.push(content.length);
+  // Recheck whole units like projectSourceUnitPlan; drop any cut that fails.
+  while (ends.length > 1) {
+    const units = rawUnits(content, ends);
+    const unsafe = units.findIndex((unit, index) => index < units.length - 1 &&
+      (correctionCue(unit.text) || unsafeBoundary(unit.text, units[index + 1].text)));
+    if (unsafe < 0) break;
+    ends.splice(unsafe, 1);
+  }
+  return ends.length >= 2 ? ends : null;
+};
+
 export const validateSourceUnitPlan = (
   content: string, value: unknown,
 ): SourceUnitPlan => {
@@ -92,7 +143,8 @@ export const validateSourceUnitPlan = (
       plan.ends.length < 2 || plan.ends.length > 2048 || plan.ends.at(-1) !== content.length ||
       !plan.ends.every((end, index) => Number.isInteger(end) && end > (index ? plan.ends![index - 1] : 0) &&
         end <= content.length && (end === content.length || /\s/u.test(content[end]))) ||
-      plan.identity !== identity(content, plan.ends) || ambiguousParent(content))
+      plan.identity !== identity(content, plan.ends) ||
+      (ambiguousParent(content) && JSON.stringify(deterministicEnds(content)) !== JSON.stringify(plan.ends)))
     throw new Error("Source unit plan identity does not match its source");
   const units = rawUnits(content, plan.ends);
   if (units.some((unit) => !unit.text || correctionCue(unit.text)) || units.some((unit, index) => index < units.length - 1 && unsafeBoundary(unit.text, units[index + 1].text)))
@@ -135,6 +187,16 @@ export const projectSourceUnitPlan = (
   try {
     return validateSourceUnitPlan(content, { version: 1, source: content,
       identity: identity(content, merged), ends: merged });
+  } catch {
+    return null;
+  }
+};
+
+export const deterministicSourceUnitPlan = (content: string): SourceUnitPlan | null => {
+  const ends = deterministicEnds(content);
+  if (!ends) return null;
+  try {
+    return validateSourceUnitPlan(content, { version: 1, source: content, identity: identity(content, ends), ends });
   } catch {
     return null;
   }

@@ -311,6 +311,7 @@ const TEMPORAL = rx(
 )
 const COND = rx(String.raw`^(jeśli|jeżeli|jak|gdy|gdyby|chyba że)\b`, 'i')
 const MONTH_WORD = /^(?:stycz|lut|marc|kwiet|maj|czerw|lip|sierp|wrze|paźdz|listop|grud)/iu
+const CLOCK_PREP = ['o', 'na', 'do', 'od', 'około', 'koło', 'godz']
 const DATE_PREP = ['do', 'od', 'przed', 'o', 'na', 'godz', 'po', 'około', 'koło', 'dnia']
 const COUNT_ONLY = /^\s*\d+\s*(?:zł|złotych|euro|€|osób)?\s*$/u
 
@@ -355,7 +356,8 @@ export const wordsToDigits = (text: string): string => {
     const val = seqValue(seq)
     const trail = toks[j - 2]!.replace(rx(String.raw`^\w+`), '')
     let num = String(val)
-    if ((prev === 'o' || prev === 'na') && ordinal && val <= 24) num = `${Math.trunc(val)}:00`
+    if (CLOCK_PREP.includes(prev) && ordinal && val <= 24 && (prev === 'o' || prev === 'na' || /ej$/u.test(last)))
+      num = `${Math.trunc(val)}:00`
     out.push(num + trail)
     i = j - 1
   }
@@ -431,6 +433,9 @@ export const parseTaskLines = (text: string, allowed: ReadonlySet<number>): Task
 }
 
 // ---------------------------------------------------------------- guards
+// A bare nominative month ('wrzesień') is a leaked detail ('faktura za wrzesień'), not a deadline.
+const BARE_MONTH = /^(?:styczeń|luty|marzec|kwiecień|maj|czerwiec|lipiec|sierpień|wrzesień|październik|listopad|grudzień)$/iu
+
 export const tidyTask = (t: TaskDraft): TaskDraft => {
   let title = fixGlued(t.title.replace(/[\s—–\-:,;]+$/u, '').trim())
   title = title.replace(rx(String.raw`\s+\b(z|u|do|na|w|we|o|dla|i)$`, 'i'), '')
@@ -439,6 +444,7 @@ export const tidyTask = (t: TaskDraft): TaskDraft => {
     title = `${title} ${wordsToDigits(due)}`
     due = null
   }
+  if (due && BARE_MONTH.test(due)) due = null
   title = wordsToDigits(title)
   if (due) due = wordsToDigits(due)
   return { ...t, title: title.charAt(0).toUpperCase() + title.slice(1), due }
@@ -632,7 +638,7 @@ export const validateTasks = (tasks: readonly TaskDraft[], units: readonly Unit[
 
 const OTHER_SUBJ = rx(
   String.raw`(?:^|[,.:;]\s*|\b(?:a|i|ale|więc|że)\s+)(?:(?!Ja\b)[A-ZŁŚŻŹĆ][a-ząćęłńóśźż]+|mama|tata|szef\w*|ona|on|oni|one)` +
-    String.raw`(?:\s+\w+){0,4}?\s+(?:(?:ma|mają)\s+(?:\w+\s+){0,2}?\w+(?:ć|c)\b|zrobi|przygotuje|odbierze|przejmuje|przywiezie|kupi|roześle|wpuści|zamówi|zadzwoni|zarezerwuje|podeśle)\b` +
+    String.raw`(?:\s+\w+){0,4}?\s+(?:(?:ma|mają)\s+(?:\w+\s+){0,2}?\w+(?:ć|c)\b|zrobi|przygotuje|odbierze|przejmuje|przywiezie|kupi|roześle|wpuści|zamówi|zadzwoni|zarezerwuje|podeśle|zajmuje się|zajmie się|zajmują się|bierze|biorą|załatwi|załatwia|ogarnia|ogarnie|pilnuje|przyniesie|zawiezie|pójdzie|przyjdzie)\b` +
     String.raw`|^(?:(?!Ja\b)[A-ZŁŚŻŹĆ][a-ząćęłńóśźż]+|Mama|Tata)\s*:`,
 )
 const FIRST_PERSON = rx(
@@ -737,6 +743,143 @@ export const recoverAmount = (t: TaskDraft, units: readonly Unit[]): TaskDraft =
   return { ...t, title: `${t.title} ${value} ${currency}` }
 }
 
+// ---------------------------------------------------------------- repairs
+const REMINDER = rx(String.raw`przypomn\w*(?:\s+(?:mi|nam))?,?\s+(?:o tym,?\s+)?(?:że|żeby\w*)\s+(.+)`, 'i')
+const REMINDER_ABOUT = rx(String.raw`przypomn\w*(?:\s+(?:mi|nam))\s+(?:też\s+)?o\s+(.+)`, 'i')
+const ABOUT_TAIL = /\s+((?:w|we|na|do|przed)\s+\p{L}+(?:\s+(?:rano|wieczorem))?)$/u
+const PAST_VERB = /^(\p{L}+?)(ił|ał|ył)(?:a|em|am)?$/u
+
+// 'Zapomnieć …' is the model garbling 'przypomnij mi, żebym … zadzwonił': rebuild from the sentence.
+export const repairReminder = (t: TaskDraft, units: readonly Unit[]): TaskDraft | null => {
+  if (/^przypomnij\b/iu.test(t.title) && !/^przypomnij\s+mi\b/iu.test(t.title))
+    return { ...t, title: `Przypomnieć${t.title.slice('Przypomnij'.length).replace(/,?\s+żeb.*$/iu, '')}` }
+  if (!/^(?:zapomn|przypomnij\s+mi)/iu.test(t.title) || /\bnie\b/iu.test(t.title)) return t
+  const byId = new Map(units.map((u) => [u.id, u.text]))
+  for (const id of t.sourceIds) {
+    const sentence = byId.get(id) ?? ''
+    const about = REMINDER_ABOUT.exec(sentence)
+    const m = REMINDER.exec(sentence)
+    if (!m && about) {
+      const text = stripChars(about[1]!.trim(), '.,;!? ')
+      const tail = ABOUT_TAIL.exec(text)
+      const when = tail && TEMPORAL.test(tail[1]!) ? tail[1]! : ''
+      const what = when ? text.slice(0, text.length - tail![0].length) : text
+      return { ...t, title: wordsToDigits(`Pamiętać o ${what}`), due: when ? wordsToDigits(when) : t.due }
+    }
+    if (!m) continue
+    const words = m[1]!.split(/\s+/u).map((w) => stripChars(w, '.,;!?'))
+    const at = words.findIndex((w) => PAST_VERB.test(w.toLowerCase()) && w.length > 4)
+    if (at < 0) continue
+    const verb = words[at]!.toLowerCase().replace(PAST_VERB, (_all, stem: string, end: string) => `${stem}${end.slice(0, -1)}ć`)
+    const rest = m[1]!.split(/\s+/u).slice(at + 1)
+    const stop = rest.findIndex((w) => /[,;.]$/u.test(w))
+    const object = (stop < 0 ? rest : rest.slice(0, stop + 1)).map((w) => stripChars(w, '.,;!?')).join(' ')
+    const when = words.slice(0, at).join(' ')
+    const title = verb.charAt(0).toUpperCase() + verb.slice(1) + (object ? ` ${object}` : '')
+    return { ...t, title: wordsToDigits(title), due: when && TEMPORAL.test(when) ? wordsToDigits(when) : t.due }
+  }
+  return null
+}
+
+const editDistance = (a: string, b: string): number => {
+  let prev = Array.from({ length: b.length + 1 }, (_v, i) => i)
+  for (let i = 1; i <= a.length; i += 1) {
+    const cur = [i]
+    for (let j = 1; j <= b.length; j += 1)
+      cur.push(Math.min(prev[j]! + 1, cur[j - 1]! + 1, prev[j - 1]! + (a[i - 1] === b[j - 1] ? 0 : 1)))
+    prev = cur
+  }
+  return prev[b.length]!
+}
+
+// 'Odbić' for 'odebrać': swap an invented infinitive for a close infinitive that the sentence really uses.
+export const repairVerb = (t: TaskDraft, units: readonly Unit[]): TaskDraft => {
+  const first = t.title.split(/\s+/u)[0] ?? ''
+  const verb = first.toLowerCase()
+  if (verb.length < 5 || !verb.endsWith('ć')) return t
+  const byId = new Map(units.map((u) => [u.id, u.text]))
+  const words = lettersOnly(t.sourceIds.map((i) => byId.get(i) ?? '').join(' '))
+  if (words.includes(verb)) return t
+  const near = [...new Set(words.filter((w) => w.length >= 5 && w.endsWith('ć')))]
+    .map((w) => ({ w, d: editDistance(verb, w) }))
+    .filter((x) => x.d <= (words.some((w) => w.startsWith(verb.slice(0, 4))) ? 2 : 3))
+    .sort((a, b) => a.d - b.d)[0]
+  if (!near) return t
+  return { ...t, title: near.w.charAt(0).toUpperCase() + near.w.slice(1) + t.title.slice(first.length) }
+}
+
+const CLOSING = rx(String.raw`\b(zamyka\w*|zamknięt\w*|czynn\w*|otwart\w*|otwiera\w*|do której)\b`, 'i')
+
+// A clock time that only says when a place closes is not the task's deadline.
+export const dropClosingDue = (t: TaskDraft, units: readonly Unit[]): TaskDraft => {
+  if (!t.due) return t
+  const byId = new Map(units.map((u) => [u.id, u.text]))
+  const cited = (t.modelIds.length ? t.modelIds : t.sourceIds).map((i) => byId.get(i) ?? '').join(' ')
+  if (CLOSING.test(cited) && dateWordsUnanchored(t.due, '').length === 0) return { ...t, due: null }
+  return t
+}
+
+const CANCELLED = rx(
+  String.raw`\bnie\s+(?:trzeba|muszę|potrzeb\w*|zapisuję|kupuję|biorę|idę|jadę|robię|zamawiam|będę)\b|\b(?:odpuszczam|rezygnuję|odpada|zrezygnowałem|zrezygnowałam)\b`,
+  'i',
+)
+
+// 3-letter stems survive Polish declension ('kawę' / 'kawy').
+const stems3 = (text: string): Set<string> =>
+  new Set(lettersOnly(text).filter((w) => w.length >= 4 && !STOP.has(w) && !GENERIC.has(w)).map((w) => w.slice(0, 3)))
+
+// A task whose own clause is cancelled ('kawy nie trzeba', 'odpuszczam') is not active.
+export const cancelledFilter = (tasks: readonly TaskDraft[], units: readonly Unit[]): GuardResult => {
+  const byId = new Map(units.map((u) => [u.id, u.text]))
+  const kept: TaskDraft[] = []
+  const rejected: RejectedTask[] = []
+  for (const t of tasks) {
+    const ts = stems3(t.title)
+    const ids = (t.modelIds.length ? t.modelIds : t.sourceIds).filter((i) => byId.has(i))
+    const clauses = ids.flatMap((i) => byId.get(i)!.split(/[,;.]|\s(?:a|ale|za to|natomiast)\s/u))
+    const best = clauses
+      .map((clause) => ({ clause, hit: [...stems3(clause)].filter((x) => ts.has(x)).length }))
+      .filter((x) => x.hit > 0)
+      .sort((a, b) => b.hit - a.hit)[0]
+    if (best && CANCELLED.test(best.clause)) rejected.push({ title: t.title, due: t.due, reason: 'cancelled' })
+    else kept.push(t)
+  }
+  return { kept, rejected }
+}
+
+// 'Sprawdzić opony, dolać płynu i zatankować' -> one task per infinitive (the due is shared).
+export const splitCompound = (t: TaskDraft): TaskDraft[] => {
+  const words = t.title.split(/\s+/u)
+  const starts = [0]
+  for (let i = 1; i < words.length; i += 1) {
+    const w = stripChars(words[i]!, ',').toLowerCase()
+    const before = words[i - 1]!
+    if (w.length >= 5 && w.endsWith('ć') && wordValue(w) === null && (/,$/u.test(before) || ['i', 'oraz'].includes(before.toLowerCase())))
+      starts.push(i)
+  }
+  if (starts.length < 2) return [t]
+  return starts.map((from, k) => {
+    const part = words.slice(from, starts[k + 1] ?? words.length).join(' ').replace(/[\s,]+$/u, '').replace(/\s+(?:i|oraz)$/iu, '')
+    return { ...t, title: part.charAt(0).toUpperCase() + part.slice(1) }
+  })
+}
+
+const VAGUE_OBJECT = /^(\p{L}+)\s+(?:wszystko|to|te rzeczy|resztę|całość)$/iu
+
+// 'Kupić wszystko — środa' next to 'Kupić: list' only adds its due to the list.
+export const mergeVague = (tasks: readonly TaskDraft[]): TaskDraft[] => {
+  const out = [...tasks]
+  for (const t of tasks) {
+    const m = VAGUE_OBJECT.exec(t.title)
+    if (!m) continue
+    const host = out.find((o) => o !== t && o.title.toLowerCase().startsWith(m[1]!.toLowerCase()) && o.title.length > t.title.length)
+    if (!host) continue
+    out.splice(out.indexOf(t), 1)
+    if (!host.due && t.due) out[out.indexOf(host)] = { ...host, due: t.due, sourceIds: sortedUnique([...host.sourceIds, ...t.sourceIds]) }
+  }
+  return out
+}
+
 export const dedupeTasks = (tasks: readonly TaskDraft[]): TaskDraft[] => {
   const seen = new Set<string>()
   const out: TaskDraft[] = []
@@ -756,20 +899,27 @@ export const postprocessTaskLines = (raw: readonly TaskDraft[], units: readonly 
     return step.kept
   }
   let tasks = raw.map((t) => ({ ...tidyTask(t), modelIds: [...t.sourceIds] }))
-  tasks = take(finalizeTasks(tasks)).map((t) => applyCorrections(t, units))
+  tasks = tasks.flatMap((t) => {
+    const fixed = repairReminder(t, units)
+    if (fixed) return [fixed]
+    rejected.push({ title: t.title, due: t.due, reason: 'malformed reminder' })
+    return []
+  })
+  tasks = take(finalizeTasks(tasks.flatMap(splitCompound))).map((t) => applyCorrections(t, units))
   tasks = take(validateTasks(tasks, units))
   tasks = take(ownerFilter(tasks, units))
   tasks = take(supersededFilter(tasks, units))
-  tasks = tasks.map((t) => recoverAmount(t, units))
-  return { kept: dedupeTasks(tasks), rejected }
+  tasks = take(cancelledFilter(tasks, units))
+  tasks = tasks.map((t) => recoverAmount(repairVerb(dropClosingDue(t, units), units), units))
+  return { kept: dedupeTasks(mergeVague(tasks)), rejected }
 }
 
 // ---------------------------------------------------------------- candidate pre-filter
-const MODAL = String.raw`\b(muszę|musze|musimy|trzeba|mam\s+(?:\w+\s+){0,3}?\w+(?:ć|c)\b|mamy\s+\w+ć|powinien|powinnam|warto|lepiej\s+\w+ć|należy|nie zapomn|pamiętać|żeby nie zapomnieć|postanaw|postanowi|zamierzam|chcę\s+\w+ć)`
+const MODAL = String.raw`\b(muszę|musze|musimy|trzeba|mam\s+(?:\w+\s+){0,3}?\w+(?:ć|c)\b|mamy\s+\w+ć|powinien|powinnam|warto|lepiej\s+\w+ć|należy|nie zapomn|pamiętać|żeby nie zapomnieć|postanaw|postanowi|zamierzam|chcę\s+\w+ć|pamiętaj|przypomnij|przypomnieć|przypominaj|po\s+(?:pierwsze|drugie|trzecie|czwarte|piąte),?\s+\w+)`
 const INF = String.raw`(?:^|[,.;:]\s*|\b(?:i|a|no i|aha i|to)\s+)(\w+(?:ć|c))\b`
-const DATE = String.raw`\b(jutr\w*|dziś|dzisiaj|pojutrze|weekend\w*|poniedział\w*|wtor\w*|środ\w*|czwart\w*|piąt(?:ek|ku)|sobot\w*|niedziel\w*|do końca|najpóźniej|przed\s+\w+|tygodni\w*|stycz\w*|lut\w*|marc\w*|kwietni\w*|maj\w*|czerw\w*|lip\w*|sierp\w*|wrze\w*|paździer\w*|listopad\w*|grud\w*|o\s+\w+(?:ej|ą)\b)`
+const DATE = String.raw`\b(jutr\w*|dziś|dzisiaj|pojutrze|weekend\w*|poniedział\w*|wtor\w*|środ\w*|czwart\w*|piąt(?:ek|ku)|sobot\w*|niedziel\w*|do końca|najpóźniej|przed\s+\w+|tygodni\w*|stycz\w*|luty|lutego|lutym|marz\w*|marca|marcu|kwietni\w*|maj(?:a|u|em)?|czerw\w*|lip(?:iec|ca|cu)|sierp\w*|wrze\w*|paździer\w*|listopad\w*|grud\w*|o\s+\w+(?:ej|ą)\b)`
 const APPT = String.raw`\b(spotkani|wizyt|kontrol|dentyst|lekar|wymian|termin|rezerwac|umówi|szczepien)\w*`
-const SHOP = String.raw`\b(kupi\w*|lista|zakup\w*)`
+const SHOP = String.raw`\b(kupi\w*|lista|zakup\w*|potrzeb\w*)`
 const FIRST_PERSON_FUT = String.raw`\b(zadzwonię|napiszę|zrobię|oddam|pójdę|przyjadę|przedłużę|wyślę|kupię|zapłacę|wpłacę|sprawdzę|zapytam|anuluję|wpłacam|zamawiam|przelewam|porównuję|wysyłam|dzwonię|piszę|biorę|odkładam|ustawiam|wpiszę|załatwię|zorganizuję|odbiorę|zmieniam|eskaluję)\b`
 const HEUR_COND = String.raw`\b(jeśli|jeżeli|jak będzie|gdyby|do tego|tylko jak)\b`
 const NO_TASK = rx(String.raw`^\s*(dobra|okej|ok|no|aha|matko|kurczę|chyba)\b[^.]{0,25}[.!?]?\s*$`)
@@ -780,6 +930,61 @@ export const isTaskCandidate = (text: string): boolean => {
   const t = text.toLowerCase()
   if (NO_TASK.test(t)) return false
   return CANDIDATE_PATTERNS.some((pattern) => pattern.test(t))
+}
+
+// A nominal list ('ryż, szynka, mleko') carries items to buy only after a shopping cue nearby.
+const LIST_CUE = rx(String.raw`\b(lista|listę|listy|liście|zakup\w*|kupi\w*|kupować|potrzeb\w*|brakuje|skończy\w*)\b`, 'i')
+const LIST_MORE = rx(String.raw`^\s*(do tego|jeszcze|oraz|plus|i też|a także|i)\b`, 'i')
+const LIST_LOOKBACK = 3
+const isListFragment = (text: string): boolean => {
+  const words = text.trim().split(/\s+/u).length
+  return words <= 16 && (/,/u.test(text) || /\s(?:i|oraz)\s/u.test(text) || LIST_MORE.test(text))
+}
+
+// Pre-filter plus context: nominal list sentences right after a shopping cue are candidates too.
+export const selectCandidates = <T extends { text: string }>(units: readonly T[]): T[] =>
+  units.filter((unit, index) => {
+    if (isTaskCandidate(unit.text)) return true
+    if (!isListFragment(unit.text) || NO_TASK.test(unit.text.toLowerCase())) return false
+    return units.slice(Math.max(0, index - LIST_LOOKBACK), index).some((prev) => LIST_CUE.test(prev.text))
+  })
+
+// A verbless list right after a shopping cue ('ryż, szynka, ser') needs no model: it becomes 'Kupić: ...'.
+const NOMINAL_STOP = rx(String.raw`\b(nie|jest|są|było|były|będzie|mam|ma|mamy|mają|trzeba|muszę|chcę|może|bo|że|ale|żeby|czy|jak|gdy|tak|chyba|tyle|idę|jadę|wracam|okej|dobra)\b|\w+(?:łem|łam|liśmy|ałem|ałam)\b`, 'i')
+const LEAD_FILLER = rx(String.raw`^(?:(?:aha|no|dobra|i|też|do tego|jeszcze|plus|oraz)\b[,\s]*)+`, 'i')
+const isNominalList = (text: string): boolean => {
+  const body = text.replace(LEAD_FILLER, '')
+  const parts = body.split(/,|\s(?:i|oraz)\s/u).filter((part) => part.trim())
+  const additive = LEAD_FILLER.test(text) && parts.length >= 1
+  return (
+    body.trim().split(/\s+/u).length <= 20 &&
+    !NOMINAL_STOP.test(body) &&
+    parts.every((part) => part.trim().split(/\s+/u).length <= 6) &&
+    (parts.length >= 3 || additive)
+  )
+}
+
+export const nominalListTasks = (units: readonly Unit[]): TaskDraft[] => {
+  const out: TaskDraft[] = []
+  let last: TaskDraft | null = null
+  units.forEach((unit, index) => {
+    const cued = units.slice(Math.max(0, index - LIST_LOOKBACK), index).some((prev) => LIST_CUE.test(prev.text))
+    const chained = last !== null && last.sourceIds[last.sourceIds.length - 1] === unit.id - 1
+    if (isTaskCandidate(unit.text.replace(LEAD_FILLER, '')) || !(cued || chained) || !isNominalList(unit.text)) {
+      last = null
+      return
+    }
+    const raw = wordsToDigits(stripChars(unit.text.replace(LEAD_FILLER, '').trim(), '.!?, '))
+    const items = raw.charAt(0).toLowerCase() + raw.slice(1)
+    if (last) {
+      last.title = `${last.title}, ${items}`
+      last.sourceIds.push(unit.id)
+    } else {
+      last = { title: `Kupić: ${items}`, due: null, sourceIds: [unit.id], modelIds: [unit.id] }
+      out.push(last)
+    }
+  })
+  return out
 }
 
 // ---------------------------------------------------------------- prompt
@@ -796,6 +1001,7 @@ Dla każdego zdania z listy napisz jedną linię, w tej samej kolejności i z ty
 - gdy zdanie nie zawiera zadania autora: numer i myślnik, np. [5] -
 - gdy zawiera: numer, czynność, a po " — " termin, np. [6] Zapłacić za internet 60 zł — do piątku
 Czynność: 2–8 słów, zawsze bezokolicznik z czasownikiem ze zdania (Kupić…, Zadzwonić do…, Wysłać…; nie "zadzwonię"), dla wizyty/spotkania rzeczownik (Wizyta u…, Spotkanie z…). Bez "muszę/trzeba" i bez uzasadnień. Kwoty, liczby (cyframi), miejsca i warunek ("jeśli…") wpisz w czynność, np. Kupić 12 jajek.
+Lista rzeczy do kupienia (same rzeczowniki po "lista zakupów", "potrzebuję", "kupić") to jedno zadanie, także bez czasownika: "Kupić: " i wszystkie pozycje po przecinku, z ilościami.
 Po " — " wpisz tylko termin: dzień, datę, godzinę albo "do…/przed…/jutro", i tylko jeśli padł w notatce; liczby i godziny cyframi; nie dodawaj miesięcy ani dat. Bez terminu nie pisz " — ".
 Dwa zadania w jednym zdaniu rozdziel znakiem |
 
@@ -811,6 +1017,8 @@ ZDANIA:
 [8] Na basen w tym tygodniu nie idę, odpuszczam.
 [9] Krople do oczu mam zakraplać trzy razy dziennie.
 [10] Hania prosiła, żebym jej oddał książkę w sobotę.
+[11] Lista zakupów na jutro.
+[12] Ryż, szynka w plastrach, dwa opakowania ręczników papierowych.
 ODPOWIEDŹ:
 [1] Oddać projekt — czwartek
 [2] -
@@ -821,12 +1029,22 @@ ODPOWIEDŹ:
 [7] Napisać maila do Igora, jeśli nie przyśle umowy — jutro
 [8] -
 [9] Zakraplać krople do oczu 3 razy dziennie
-[10] Oddać Hani książkę — sobota`
+[10] Oddać Hani książkę — sobota
+[11] -
+[12] Kupić: ryż, szynkę w plastrach, 2 opakowania ręczników papierowych`
 
 const BATCH_SIZES = [64, 24, 12, 6, 3, 1]
 const OUTPUT_BASE_TOKENS = 40
 const OUTPUT_TOKENS_PER_SENTENCE = 22
 const CONTEXT_MARGIN = 24
+// The same answer line three times in a row means the model started looping.
+export const isDegenerate = (text: string): boolean => {
+  const bodies = text
+    .split(/\r?\n/u)
+    .map((line) => line.replace(/^\s*\[\d+\]\s*/u, '').trim())
+    .filter((b) => b.length > 3)
+  return bodies.some((b, i) => i >= 2 && b === bodies[i - 1] && b === bodies[i - 2])
+}
 const emptyResult = (): TaskLinesResult => ({ tasks: [], rendered: [], warnings: [] })
 const renderTask = (t: TaskLine): string => (t.due ? `${t.title} — ${t.due}` : t.title)
 
@@ -836,8 +1054,10 @@ export const extractTaskLines = async (
   execution?: ProcessingExecutionContext,
 ): Promise<TaskLinesResult> => {
   if (language !== 'pl') return emptyResult()
-  const candidates = units.filter((unit) => isTaskCandidate(unit.text))
-  if (!candidates.length) return emptyResult()
+  const nominal = nominalListTasks(units)
+  const nominalIds = new Set(nominal.flatMap((t) => t.sourceIds))
+  const candidates = selectCandidates(units.filter((unit) => !nominalIds.has(unit.id)))
+  if (!candidates.length && !nominal.length) return emptyResult()
   const system = noteSourceSystem(language)
   const numbered = units.map((unit) => `[${unit.id}] ${unit.text}`).join('\n')
   const head = `${TASK_LINES_PROMPT}\n\nTeraz zdania tej notatki.\nZDANIA:\n`
@@ -847,6 +1067,7 @@ export const extractTaskLines = async (
   const raw: TaskDraft[] = []
   let cut = false
   let rest = candidates
+  let maxBatch = Infinity
   while (rest.length) {
     throwIfProcessingAborted(execution)
     // Largest batch whose prompt plus answer fits the context window.
@@ -854,7 +1075,7 @@ export const extractTaskLines = async (
     let prompt = ''
     let nPredict = 0
     const tried = new Set<number>()
-    for (const size of BATCH_SIZES) {
+    for (const size of BATCH_SIZES.filter((n) => n <= maxBatch)) {
       const candidate = rest.slice(0, size)
       if (tried.has(candidate.length)) continue
       tried.add(candidate.length)
@@ -886,11 +1107,15 @@ export const extractTaskLines = async (
     throwIfProcessingAborted(execution)
     if (result.completion?.interrupted) throw new Error('Generation interrupted')
     if (result.completion?.truncated || result.completion?.stoppedLimit) cut = true
+    if (isDegenerate(result.text) && batch.length > 3) {
+      maxBatch = Math.max(3, Math.floor(batch.length / 2))
+      continue
+    }
     raw.push(...parseTaskLines(result.text, new Set(batch.map((unit) => unit.id))))
     rest = rest.slice(batch.length)
   }
   if (cut) warnings.push('Odpowiedź modelu została ucięta; część zadań mogła zostać pominięta.')
-  const { kept } = postprocessTaskLines(raw, units)
+  const kept = dedupeTasks(mergeSimilar(mergeVague([...postprocessTaskLines(raw, units).kept, ...nominal]))).sort((a, b) => a.sourceIds[0]! - b.sourceIds[0]!)
   const tasks = kept.map((t): TaskLine => ({ title: t.title, due: t.due, sourceIds: [...t.sourceIds] }))
   return { tasks, rendered: tasks.map(renderTask), warnings }
 }

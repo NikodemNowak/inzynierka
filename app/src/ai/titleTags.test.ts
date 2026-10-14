@@ -4,7 +4,11 @@ import {
   TITLE_TAG_CATEGORIES,
   cleanModelTitle,
   fallbackTitleFromPoints,
+  diaryTitle,
+  fixTitleCase,
   fixWordForms,
+  isDiaryLead,
+  limitEnumeration,
   generateTitleAndTags,
   parseTitleTagsResponse,
   repairReason,
@@ -68,7 +72,7 @@ describe('category table', () => {
 describe('prompt', () => {
   it('builds the Polish prompt with opening, points, numbered categories and format', () => {
     const prompt = titleTagsPrompt('Początek notatki', ['Pierwszy punkt', 'Drugi punkt'], 'pl')
-    expect(prompt.startsWith('/no_think\nPoczątek nagrania (często mówi, czym jest notatka; nie kopiuj go):\n„Początek notatki”\n\nNajważniejsze punkty notatki:\n- Pierwszy punkt\n- Drugi punkt\n\nTytuł: 2-5 słów')).toBe(true)
+    expect(prompt.startsWith('/no_think\nPoczątek nagrania (często nazywa temat lub rodzaj notatki):\n„Początek notatki”\n\nNajważniejsze punkty notatki:\n- Pierwszy punkt\n- Drugi punkt\n\nTytuł: 2-5 słów')).toBe(true)
     expect(prompt).toContain('1 Praca (praca zawodowa: firma, klienci, szef, zespół)')
     expect(prompt).toContain('13 Dziennik (osobisty, wieczorny zapis dnia, przemyślenia, nastrój)')
     expect(prompt).toContain('15 Hobby (sport, rozrywka, kultura)')
@@ -211,7 +215,7 @@ describe('repair prompt', () => {
 
   it('repeats the first prompt, quotes the previous answer and asks for one title line', () => {
     const prompt = titleRepairPrompt('PIERWSZY', 'Tytuł: Pomoc\nKategoria: 2', 'Pomoc', ['abstract'], 'pl')
-    expect(prompt).toBe('PIERWSZY\n\nTwoja poprzednia odpowiedź:\nTytuł: Pomoc\nKategoria: 2\n\nTytuł „Pomoc” składa się z samych ogólnych słów – nazwij konkretny temat. Podaj inny tytuł zgodny z zasadami. Odpowiedz jedną linią:\nTytuł: <tytuł>')
+    expect(prompt).toBe('PIERWSZY\n\nTwoja poprzednia odpowiedź:\nTytuł: Pomoc\nKategoria: 2\n\nTytuł „Pomoc” składa się z samych ogólnych słów – nazwij konkretny temat. Podaj inny tytuł zgodny z zasadami (2-5 słów). Odpowiedz jedną linią:\nTytuł: <tytuł>')
   })
 })
 
@@ -222,21 +226,21 @@ describe('generateTitleAndTags', () => {
     expect(result).toEqual({ title: 'Szkolenie z pierwszej pomocy', categories: ['Nauka', 'Zdrowie'], titleFallback: false })
     expect(model).toHaveBeenCalledTimes(1)
     const [prompt, , options] = model.mock.calls[0]
-    expect(prompt).toBe(titleTagsPrompt(opening, points, 'pl'))
+    expect(prompt).toBe(titleTagsPrompt(content, points, 'pl'))
     expect(options).toMatchObject({ system: titleTagsSystem('pl'), nPredict: 40, temperature: 0.1, topP: 0.8, topK: 20, minP: 0 })
     expect(metrics).toHaveBeenCalledWith('title', prompt.length, expect.anything(), content.length)
   })
 
-  it('caps the opening at 25 words and keeps an existing cut marker', async () => {
+  it('shows the first sentences of the source, cut at about 60 words with a marker', async () => {
     model.mockResolvedValueOnce(response(answer('Szkolenie z pierwszej pomocy')))
-    const long = Array.from({ length: 40 }, (_, i) => `słowo${i}`).join(' ')
-    await generateTitleAndTags({ ...input, opening: long }, 'pl')
+    const long = Array.from({ length: 100 }, (_, i) => `słowo${i}`).join(' ')
+    await generateTitleAndTags({ ...input, content: long }, 'pl')
     const prompt = model.mock.calls[0][0]
-    expect(prompt).toContain('słowo24 …”')
-    expect(prompt).not.toContain('słowo25')
+    expect(prompt).toContain('słowo79 …”')
+    expect(prompt).not.toContain('słowo80')
     expect(titleTagsPrompt('A B ' + '…', [], 'pl')).toContain('„A B …”')
     model.mockResolvedValueOnce(response(answer('Szkolenie z pierwszej pomocy')))
-    await generateTitleAndTags({ ...input, opening: 'Krótki początek …' }, 'pl')
+    await generateTitleAndTags({ ...input, content: '', opening: 'Krótki początek …' }, 'pl')
     expect(model.mock.calls[1][0]).toContain('„Krótki początek …”')
   })
 
@@ -365,6 +369,38 @@ describe('fallbackTitleFromPoints', () => {
   })
 })
 
+describe('title polishing', () => {
+  it('replaces -em on a name that ends in -a by the instrumental', () => {
+    expect(fixWordForms('Pożegnanie z Kubem', ['Kuba wyjeżdża. Pożegnanie Kuby.'])).toBe('Pożegnanie z Kubą')
+    expect(fixWordForms('Spotkanie z Termexem', ['Klient Termex.'])).toBe('Spotkanie z Termexem')
+  })
+
+  it('does not break a derivation that shares a stem with a shorter source word', () => {
+    expect(fixWordForms('Prezentacja i plan', ['Prezent dla taty. Prezentację robię w środę.'])).toBe('Prezentacja i plan')
+  })
+
+  it('lowercases list items the source never capitalises mid-sentence, keeping names', () => {
+    const content = 'Auto stuka. Muszę zawieźć auto do mechanika. Jadę z Kubą, potem Kuba wraca.'
+    expect(fixTitleCase('Wypowiedzenie, Auto, Kuba', content)).toBe('Wypowiedzenie, auto, Kuba')
+    expect(fixTitleCase('Dziennik: Auto i AED', content)).toBe('Dziennik: auto i AED')
+  })
+
+  it('shortens a list to its first two items', () => {
+    expect(limitEnumeration('Wypowiedzenie, auto, psycholożka', 'pl')).toBe('Wypowiedzenie i auto')
+    expect(limitEnumeration('Dziennik: wypowiedzenie, auto, babcia, książka', 'pl')).toBe('Dziennik: wypowiedzenie i auto')
+    expect(limitEnumeration('Kredyt, auto i weterynarz', 'pl')).toBe('Kredyt, auto i weterynarz')
+  })
+
+  it('recognises a diary lead and prefixes a diary title once', () => {
+    expect(isDiaryLead('Dobra, to taki wieczorny zapis, bardziej dla mnie.')).toBe(true)
+    expect(isDiaryLead('Spotkanie z klientem o dziesiątej.')).toBe(false)
+    expect(isDiaryLead('Spotkanie projektowe, spisuję dla siebie, zanim mi umknie.')).toBe(false)
+    expect(diaryTitle('Wypowiedzenie i babcia', 'Wypowiedzenie to nie wiem.', 'pl')).toBe('Dziennik: wypowiedzenie i babcia')
+    expect(diaryTitle('Kuba i decyzje', 'Dziś rozmawiałem z Kubą, bo Kuba odchodzi, ale z Kuba.', 'pl')).toBe('Dziennik: Kuba i decyzje')
+    expect(diaryTitle('Wieczorny zapis', '', 'pl')).toBe('Wieczorny zapis')
+  })
+})
+
 describe('word forms and soft problems', () => {
   const sources = ['Promotor czyta rozdział. Był u lekarki. Zadzwonił lekarz.']
 
@@ -385,7 +421,7 @@ describe('word forms and soft problems', () => {
     }, 'pl')
     expect(model).toHaveBeenCalledTimes(2)
     expect(model.mock.calls[1][0]).toContain('kończy się zbyt ogólnym członem')
-    expect(result).toMatchObject({ title: 'Pożegnanie Kuby i plany', categories: ['Dziennik'], titleFallback: false })
+    expect(result).toMatchObject({ title: 'Dziennik: pożegnanie Kuby i plany', categories: ['Dziennik'], titleFallback: false })
   })
 
   it('adds the sentence that announces the subject to the opening', async () => {
@@ -395,6 +431,17 @@ describe('word forms and soft problems', () => {
       points: ['Impreza w Zajeździe'],
       content: 'No dobra, nagrywam po rozmowie z Magdą. Rozmawialiśmy długo. No więc chodzi o siedemdziesiąte urodziny taty. Impreza w Zajeździe.',
     }, 'pl')
-    expect(model.mock.calls[0][0]).toContain('„No dobra, nagrywam po rozmowie z Magdą. No więc chodzi o siedemdziesiąte urodziny taty.”')
+    expect(model.mock.calls[0][0]).toContain('„No dobra, nagrywam po rozmowie z Magdą. Rozmawialiśmy długo. No więc chodzi o siedemdziesiąte urodziny taty. Impreza w Zajeździe.”')
+  })
+
+  it('appends a far-away announced topic to the lead', async () => {
+    model.mockResolvedValueOnce(response(answer('Urodziny taty', '10')))
+    const filler = Array.from({ length: 70 }, (_, i) => `słowo${i}`).join(' ')
+    await generateTitleAndTags({
+      opening: 'No dobra, nagrywam.',
+      points: ['Impreza'],
+      content: `No dobra, nagrywam. ${filler}. No więc chodzi o urodziny taty. Koniec.`,
+    }, 'pl')
+    expect(model.mock.calls[0][0]).toMatch(/… No więc chodzi o urodziny taty\.”/u)
   })
 })

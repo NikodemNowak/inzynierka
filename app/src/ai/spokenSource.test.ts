@@ -416,6 +416,14 @@ test.each(["Gdy klient potwierdzi zgodę", "W razie akceptacji kosztorysu", "Czy
   expect(execution.checkpoint?.read).not.toHaveBeenCalled();
 });
 
+test("the quality pipeline gets a deterministic split for an unsupported governing scope without a prepass", async () => {
+  const content = `Czy klient potwierdzi zgodę ${source}`;
+  const plan = await prepareSpokenSource(content, "pl", { checkpoint: store(), taskEvidenceMemo: {} }, undefined, true);
+  expect(plan).not.toBeNull();
+  expect(sourceUnitsFromPlan(content, plan!).length).toBeGreaterThan(1);
+  expect(model).not.toHaveBeenCalled();
+});
+
 test.each(["language", "options", "window"])("durable structure cannot be reused with a different %s identity", async (change) => {
   const checkpoint = store();
   model.mockResolvedValue(generated(proposal));

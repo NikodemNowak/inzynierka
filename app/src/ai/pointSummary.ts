@@ -81,6 +81,7 @@ wcześniej później następnie potem przed najpóźniej najlepiej obowiązuje a
 zmiana zmienione przeniesione przełożone zamiast powód powodu dlatego ponieważ przyczyna niepewne nieustalone ustalenia
 ustalone ustalić sprawdzić zrobić załatwić kupić zadzwonić wysłać odebrać umówić zarezerwować przygotować pamiętać
 brak brakuje tylko jedynie dopiero wyłącznie wizyta wizyty godzina godzinie godz dzień dnia osoba osoby osób
+stwierdził stwierdziła stwierdzili zalecił zalecenie zalecenia rezerwacja rezerwacji leczenie leczeniu podział ustalenie
 uwaga notatka zgłosić odpowiedzialna odpowiedzialny zajmuje zajmie zrobi rezerwuje organizuje zorganizować
 `.split(/\s+/u).filter(Boolean));
 
@@ -139,7 +140,7 @@ const staleNumbers = (ids: readonly number[], byId: ReadonlyMap<number, Unit>): 
 // ---------------------------------------------------------------- substance score
 // Cheap lexical estimate of how much a sentence carries something to act on or
 // remember (plan, obligation, decision, date, number) versus plain narration.
-const PLAN_SIGNAL = rx(String.raw`(?<![^\W\d_])(?:postanow\w*|postanaw\w*|zdecyduj\w*|zdecydowa\w*|musz\w*|musi\w*|trzeba|mam(?:y)?\s+(?:\w+\s+){0,2}\w+ć|powinn?\w*|zamierz\w*|planuj\w*|plan(?:ujemy)?|umówi\w*|ustali\w*|termin\w*|chc(?:ę|emy)|nie\s+będ\w*|(?:dzwoni|zadzwoni|robi|zrobi|kupi|zamówi|załatwi|sprawdz|napisz|zapłac|przedłuż|wyśl|odbior|zarezerwuj|przyjad|zawioz|zorganizuj|odłoż|zanotuj|zapisz|oddam|oddać)\w*(?:ę|my))(?![^\W\d_])`, 'i');
+const PLAN_SIGNAL = rx(String.raw`(?<![^\W\d_])(?:postanowi(?:ł\w*|my|ć)|postanaw\w*|zdecyduj\w*|zdecydowa\w*|musz\w*|musi\w*|trzeba|mam(?:y)?\s+(?:\w+\s+){0,2}\w+ć|powinn?\w*|zamierz\w*|planuj\w*|plan(?:ujemy)?|umówi\w*|ustali\w*|termin\w*|chc(?:ę|emy)|nie\s+będ\w*|(?:dzwoni|zadzwoni|robi|zrobi|kupi|zamówi|załatwi|sprawdz|napisz|zapłac|przedłuż|wyśl|odbior|zarezerwuj|przyjad|zawioz|zorganizuj|odłoż|zanotuj|zapisz|oddam|oddać)\w*(?:ę|my))(?![^\W\d_])`, 'i');
 const PAST_FIRST = rx(String.raw`(?<![^\W\d_])\w{3,}(?:łem|łam|liśmy|łyśmy)(?![^\W\d_])`, 'i');
 const SOON = rx(String.raw`(?<![^\W\d_])(?:jutro|pojutrze|przyszł\w+|za\s+(?:tydzień|miesiąc|dwa|trzy)|do\s+końca|od\s+jutra|od\s+dziś|od\s+dzisiaj)(?![^\W\d_])`, 'i');
 
@@ -154,7 +155,7 @@ export const substanceScore = (text: string): number => {
 };
 
 // Thoughts, feelings and memories, as opposed to things that happened or must happen.
-const REFLECTION = rx(String.raw`(?<![^\W\d_])(?:myśl\w*|pomyśla\w*|czuj\w*|czuł\w*|wrażeni\w*|pamiętam|wspomin\w*|wspomnie\w*|przypomnia\w*|wydawał\w*|dziwn\w*|melanchol\w*|tęsk\w*|cieszę|szkoda|zmęcz\w*|smut\w*|nastr\w+|kiedyś|swoją\s+drogą|w\s+sumie|w\s+ogóle|matko|zafascyn\w*|trudno|serio|szczerze|wtedy|nostalg\w*|traum\w*|stres\w*|wmawiam|uświadomi\w*|zauważy\w*)(?![^\W\d_])`, 'i');
+const REFLECTION = rx(String.raw`(?<![^\W\d_])(?:myśl\w*|pomyśla\w*|czuj\w*|czuł\w*|wrażeni\w*|pamiętam|wspomin\w*|wspomnie\w*|przypomnia\w*|wydawał\w*|dziwn\w*|melanchol\w*|tęsk\w*|cieszę|szkoda|zmęcz\w*|smut\w*|nastr\w+|kiedyś|swoją\s+drogą|w\s+sumie|w\s+ogóle|matko|zafascyn\w*|marginesie|trudno|serio|szczerze|wtedy|nostalg\w*|traum\w*|stres\w*|wmawiam|uświadomi\w*|zauważy\w*)(?![^\W\d_])`, 'i');
 
 const SUBSTANTIVE = 1;
 const MIN_RAMBLING_UNITS = 24;
@@ -401,6 +402,13 @@ const SPAN_PATTERNS = [
   String.raw`(?:,\s*)?\(\s*\d{1,2}\.\d{1,2}\.?\s*\)`,
 ];
 
+// The core of each span pattern (date, clock time), used to take over a stated value.
+const SPAN_CORES: readonly (string | null)[] = [
+  String.raw`\d{1,2}(?:\.\d{1,2})?\s+${MONTH_NAMES}(?:\s+\d{4})?`,
+  String.raw`\d{1,2}:\d{2}`,
+  null,
+];
+
 const citedText = (ids: readonly number[], byId: ReadonlyMap<number, Unit>): string =>
   ids.map(id => byId.get(id)?.text ?? '').join(' ');
 
@@ -422,19 +430,24 @@ const surgicalRepair = (
     }
     let text = current.text;
     let removedDate = false;
-    for (const source of SPAN_PATTERNS) {
+    const srcDigits = wordsToDigits(src);
+    SPAN_PATTERNS.forEach((source, patternIndex) => {
       text = text.replace(rx(source, 'gi'), span => {
         const nums = (span.match(/\d+/gu) ?? []).map(Number);
         const month = rx(MONTH_NAMES, 'i').exec(span);
         const monthBad = month !== null && !new RegExp(month[0].slice(0, 5), 'iu').test(src);
         if (nums.some(n => bad.has(n)) || monthBad) {
+          // A misheard time or date is better replaced by the one the sentences state.
+          const core = SPAN_CORES[patternIndex];
+          const stated = core ? new Set(srcDigits.match(rx(core, 'gi')) ?? []) : new Set<string>();
+          if (core && stated.size === 1) return span.replace(rx(core, 'i'), [...stated][0]);
           removedDate = removedDate || month !== null || span.includes('(');
           return '';
         }
         return span;
       });
-    }
-    text = stripChars(text.replace(/\s{2,}/gu, ' '), ' ,;–-');
+    });
+    text = stripChars(text.replace(/\s+([,;.])/gu, '$1').replace(/\s{2,}/gu, ' '), ' ,;–-');
     text = text.replace(/\(\s*\)/gu, '').trim();
     if (removedDate && !rx(WEEKDAY_PHRASE_SRC, 'i').test(text)) {
       const weekdays = new Set([...src.matchAll(rx(WEEKDAY_PHRASE_SRC, 'gi'))].map(m => m[0].toLowerCase()));
@@ -505,10 +518,33 @@ const repairByCitation = (
   return { point, issues };
 };
 
+// "Ania zarezerwowała kolację" where the speaker says "Ania ma zarezerwować":
+// put the planned action back into the infinitive.
+const undoPlannedAsDone = (text: string, src: string): string | null => {
+  const modal = PLAN_MODAL.exec(src)?.[0].toLowerCase();
+  if (!modal) return null;
+  const srcWords = words(src);
+  for (const m of text.matchAll(PAST_VERB)) {
+    const stem = m[1].toLowerCase();
+    const infinitive = `${stem}ć`;
+    if (stem.length < 5 || !srcWords.includes(infinitive) || srcWords.some(w => w.startsWith(stem) && w !== infinitive)) continue;
+    const before = text.slice(0, m.index ?? 0).trim();
+    const after = text.slice((m.index ?? 0) + m[0].length);
+    if (!before) return `${capitalize(infinitive)}${after}`;
+    if (modal === 'ma' || modal === 'mają') return `${before} ${modal} ${infinitive}${after}`;
+  }
+  return null;
+};
+
 // Citation repair, then surgical repair (also on each re-cited variant).
 export const repairPoint = (
-  point: WorkPoint, byId: ReadonlyMap<number, Unit>, allUnits: readonly Unit[], language: Language = 'pl', radius = 2,
+  start: WorkPoint, byId: ReadonlyMap<number, Unit>, allUnits: readonly Unit[], language: Language = 'pl', radius = 2,
 ): { point: WorkPoint; issues: string[] } => {
+  let point = start;
+  if (language === 'pl' && checkPoint(point, byId, allUnits, language).join() === 'tense') {
+    const text = undoPlannedAsDone(point.text, citedText(point.sourceIds, byId));
+    if (text !== null) point = { ...point, text };
+  }
   const first = repairByCitation(point, byId, allUnits, language, radius);
   if (!first.issues.length) return first;
   const candidates = [point, ...neighbourIds(point, byId, radius).map(c => withIds(point, [c]))];
@@ -523,7 +559,7 @@ export const repairPoint = (
 const LEAD_FILLERS_PL = [
   String.raw`no\s+(?:więc|dobra|i|to|ale|tak|nic)`, 'dobra', 'okej', 'ok', String.raw`aha(?:\s+i)?(?:\s+jeszcze)?`, String.raw`i\s+jeszcze`, 'jeszcze',
   String.raw`a\s+propos(?:\s+\w+)?`, String.raw`swoją\s+drogą`, String.raw`w\s+ogóle`, 'generalnie', 'znaczy', 'tak', 'no', 'a', 'i', 'oraz',
-  'czyli', String.raw`w\s+sumie`, 'ogólnie', 'ale', 'więc', String.raw`tak\s+serio`, 'serio', 'słuchaj', 'wiesz', 'kurczę', 'matko', String.raw`ostatnia\s+rzecz`,
+  'czyli', String.raw`w\s+sumie`, 'ogólnie', 'ale', 'więc', String.raw`tak\s+serio`, 'serio', 'słuchaj', 'wiesz', 'kurczę', 'matko', String.raw`ostatnia\s+rzecz`, 'dalej', String.raw`chyba\s+wszystko`, String.raw`to\s+chyba\s+tyle`,
   String.raw`i\s+ostatnia\s+rzecz`, String.raw`no\s+i\s+ostatnia\s+rzecz`, 'najważniejsze', String.raw`po\s+pierwsze`, String.raw`po\s+drugie`, String.raw`potem\s+jeszcze`,
 ];
 const LEAD_RE_PL = rx(`^(?:(?:${LEAD_FILLERS_PL.join('|')})\\s*[,:]?\\s+)+`, 'i');
@@ -703,6 +739,110 @@ const fixVocative = (text: string, noteWords: ReadonlySet<string>): string =>
     return !noteWords.has(lower) && noteWords.has(`${stem.toLowerCase()}a`) ? `${stem}a` : match;
   });
 
+// ---------------------------------------------------------------- impersonal style
+// Points read as notes, not as the speaker's diary: obligations and plans become
+// infinitives, decisions start with "Decyzja:". Only word forms are changed.
+const DECISION_OPENER = rx(String.raw`^(?:postanowi(?:łem|łam|liśmy|łyśmy)|postanawiam|postanawiamy|zdecydowałem|zdecydowałam|zdecydowaliśmy|postanowił(?=\s+(?:do|że|nie|przez|od|na)(?![^\W\d_])))(?![^\W\d_])(?:\s*,)?(?:\s*,?\s+(?:dzisiaj|dziś|tak|serio|teraz|już|ostatecznie|jednak|postanowiłem|postanowiłam|postanawiam))*\s*,?\s*(?:że\s+)?`, 'i');
+// "..., więc postanawiam od dzisiaj, że X": the decision is what follows.
+const DECISION_INSIDE = rx(String.raw`^[^.]{10,}?,\s*(?:więc\s+|i\s+)?(?:postanowiłem|postanowiłam|postanawiam|zdecydowałem|zdecydowałam)(?![^\W\d_])(?:\s*,)?(?:\s*,?\s+(?:dzisiaj|dziś|od\s+dzisiaj|od\s+dziś|teraz|już|ostatecznie))*\s*,?\s*(?:że\s+)?`, 'i');
+const MODAL_OPENER = rx(String.raw`^(?:muszę|musimy|mam|mamy|trzeba|powinienem|powinnam|powinniśmy)\s+(?:(?:jeszcze|też|także|koniecznie|kiedyś|na\s+pewno|w\s+końcu)\s+)?(?!(?:być|mieć)(?![^\W\d_]))([^\W\d_]{3,}ć)(?![^\W\d_])`, 'i');
+const FIRST_FUTURE = rx(String.raw`^([^\W\d_]{4,})ię(?![^\W\d_])`, 'i');
+const NOT_VERBS = new Set(['plemię', 'brzemię', 'strzemię', 'nasienię']);
+const FIRST_PERSON_NEGATED = rx(String.raw`(?<![^\W\d_])nie\s+([^\W\d_]{4,})am(?![^\W\d_])`, 'gi');
+const WEEKDAY_ACCUSATIVE: readonly (readonly [RegExp, string])[] = [
+  [/^poniedział\p{L}*$/iu, 'poniedziałek'], [/^wtor\p{L}*$/iu, 'wtorek'], [/^środ\p{L}*$/iu, 'środę'],
+  [/^czwart\p{L}*$/iu, 'czwartek'], [/^piąt\p{L}*$/iu, 'piątek'], [/^sobot\p{L}*$/iu, 'sobotę'], [/^niedziel\p{L}*$/iu, 'niedzielę'],
+];
+const AFTER_W = rx(String.raw`(?<![^\W\d_])(w|we)\s+([^\W\d_]+)(?![^\W\d_])`, 'gi');
+
+// Cyrillic letters that look like Latin ones, which the model sometimes emits mid-word.
+const CYRILLIC_TWINS: Readonly<Record<string, string>> = { а: 'a', е: 'e', о: 'o', р: 'p', с: 'c', х: 'x', у: 'y' };
+
+// "Przedłużę zwrot" -> "Przedłużyć": the first word is a first-person future in -ę and
+// the note itself has its infinitive.
+const firstPersonFuture = (text: string, noteWords: ReadonlySet<string>): { infinitive: string; length: number } | null => {
+  const first = /^\p{L}{6,}ę(?![\p{L}])/u.exec(text)?.[0];
+  if (!first) return null;
+  const prefix = first.slice(0, -2).toLowerCase();
+  const infinitive = [...noteWords].find(w => w.endsWith('ć') && w.startsWith(prefix) && w.length - first.length <= 3);
+  return infinitive ? { infinitive, length: first.length } : null;
+};
+
+export const impersonalize = (input: string, noteWords: ReadonlySet<string>): string => {
+  let text = input.replace(/ть(?![\p{L}])/gu, 'ć').replace(/[аеорсху]/gu, c => CYRILLIC_TWINS[c] ?? c);
+  // "nie składaj" where the speaker said "nie składam"
+  text = text.replace(/(?<![\p{L}])([\p{L}]{4,})aj(?![\p{L}])/gu, (match, stem: string) =>
+    (!noteWords.has(match.toLowerCase()) && noteWords.has(`${stem.toLowerCase()}am`) ? `${stem}am` : match));
+  const decision = DECISION_OPENER.exec(text) ?? DECISION_INSIDE.exec(text);
+  if (decision && text.length > decision[0].length + 8) {
+    text = `Decyzja: ${text.slice(decision[0].length)}`;
+  } else if (!/^decyzja:/iu.test(text)) {
+    const modal = MODAL_OPENER.exec(text);
+    if (modal) text = capitalize(modal[1]) + text.slice(modal[0].length);
+    else {
+      const future = FIRST_FUTURE.exec(text);
+      const infinitive = firstPersonFuture(text, noteWords);
+      if (infinitive) text = capitalize(infinitive.infinitive) + text.slice(infinitive.length);
+      else if (future && !NOT_VERBS.has(future[0].toLowerCase()) && noteWords.has(future[0].toLowerCase())) text = `${capitalize(future[1])}ić${text.slice(future[0].length)}`;
+    }
+  }
+  if (/^decyzja:/iu.test(text)) {
+    text = text.replace(FIRST_PERSON_NEGATED, (match, stem: string) => (noteWords.has(`${stem.toLowerCase()}am`) ? `nie ${stem}ać` : match));
+  }
+  text = text.replace(/(?<![\p{L}])w(\s+wtor)/giu, 'we$1');
+  // A weekday in the wrong case: "w niedzieli" -> "w niedzielę".
+  text = text.replace(AFTER_W, (match, prep: string, day: string) => {
+    if (noteWords.has(day.toLowerCase())) return match;
+    const hit = WEEKDAY_ACCUSATIVE.find(([pattern]) => pattern.test(day));
+    return hit ? `${prep} ${hit[1]}` : match;
+  });
+  return text;
+};
+
+// A point about the recording itself ("Nagrywam to") is not part of the note.
+const META_POINT = rx(String.raw`^(?:nagrywam|nagrywamy|dyktuję|dyktuje)(?![^\W\d_])(?:\s*,|\s+(?:to|się|notatk\w+|dla|bo|że)(?![^\W\d_]))|^(?:nagrywam|dyktuję)\s*$|(?<![^\W\d_])test\s+mikrofonu`, 'i');
+export const isMetaPoint = (text: string): boolean =>
+  META_POINT.test(text) && !/\d/u.test(text) && !DATE_SEARCH.some(pattern => pattern.test(text));
+
+// Prompt example phrases the model sometimes emits for a sentence with nothing to say.
+const PROMPT_ECHOES = ['umyć okna na balkonie', 'pociąg do lublina w sobotę rano'];
+const isPromptEcho = (text: string): boolean => PROMPT_ECHOES.some(phrase => text.toLowerCase().includes(phrase));
+
+// A long literal quote shrinks to the clauses around its most informative one.
+const CONTINUATION = rx(String.raw`^(?:że|żeby|ale|lub|albo|oraz|czyli|więc|bo|a|i)(?![^\W\d_])`, 'i');
+const MAX_SHORT_LITERAL = 120;
+const MIN_CLAUSE_START = 18;
+const LEADING_CONNECTIVE = rx(String.raw`^(?:więc|bo|że|żeby|ale|i|a|czyli)\s+`, 'i');
+const clauseWeight = (clause: string): number =>
+  (COMMITMENT.test(clause) || PLAN_SIGNAL.test(clause) ? 2 : 0) + (hasDate(clause) ? 1 : 0) + (hasNumber(clause) ? 1 : 0) +
+  (NEG.test(clause) || HEDGE_PLAIN.test(clause) ? 0.5 : 0) + (new RegExp(`[${UPPER}]`, 'u').test(clause.slice(1)) ? 0.5 : 0);
+const TRAILING_WAIT = rx(String.raw`^(?:zobaczymy|zobaczę|pomyślę|zobaczy\s+się)(?![^\W\d_])`, 'i');
+export const shortenLiteral = (input: string): string => {
+  const clauses = input.replace(/[.]+$/u, '').split(/(?<=,)\s+/u);
+  // "..., zobaczymy czy coś to zmieni" adds nothing to a decision.
+  if (clauses.length > 2 && TRAILING_WAIT.test(clauses[clauses.length - 1])) clauses.pop();
+  const trimmed = clauses.join(' ').replace(/[,;]+$/u, '');
+  if (trimmed.length <= MAX_SHORT_LITERAL || clauses.length < 2) return trimmed === input.replace(/[.]+$/u, '') ? input : trimmed;
+  const weights = clauses.map(clauseWeight);
+  let from = weights.indexOf(Math.max(...weights));
+  let to = from;
+  const length = (): number => clauses.slice(from, to + 1).join(' ').length;
+  for (let grown = true; grown;) {
+    grown = false;
+    const next = clauses[to + 1];
+    if (next !== undefined && (weights[to + 1] > 0 || CONTINUATION.test(next)) && length() + next.length < MAX_SHORT_LITERAL) { to += 1; grown = true; }
+    const prev = clauses[from - 1];
+    if (!grown && prev !== undefined && weights[from - 1] > 0 && length() + prev.length < MAX_SHORT_LITERAL) { from -= 1; grown = true; }
+  }
+  // The sentence opening usually names the subject; keep it when it fits.
+  if (from > 0 && clauses.slice(0, to + 1).join(' ').length <= MAX_SHORT_LITERAL * 1.2) from = 0;
+  // Never start on a fragment ("że nie," / "jednak 10 dni,").
+  while (from > 0 && (CONTINUATION.test(clauses[from]) || clauses[from].length < MIN_CLAUSE_START) &&
+    clauses.slice(from - 1, to + 1).join(' ').length <= MAX_SHORT_LITERAL * 1.6) from -= 1;
+  const kept = clauses.slice(from, to + 1).join(' ').replace(LEADING_CONNECTIVE, '');
+  return stripChars(kept, ' ,;');
+};
+
 // Validate every point; repair what can be repaired; a point that still fails
 // is dropped when its sentences are already covered, otherwise replaced by the
 // cleaned literal clauses of at most two of them. Output is in note order.
@@ -716,7 +856,8 @@ export const finalizePoints = (
   const rambling = isRambling(units);
   for (const raw of points) {
     const text = convert(tidy(raw.text, language), language);
-    const prepared: WorkPoint = { text: language === 'pl' ? fixVocative(text, noteWords) : text, sourceIds: [...raw.sourceIds] };
+    const prepared: WorkPoint = { text: language === 'pl' ? impersonalize(fixVocative(text, noteWords), noteWords) : text, sourceIds: [...raw.sourceIds] };
+    if (language === 'pl' && isMetaPoint(prepared.text)) continue;
     const { point, issues } = repairPoint(prepared, byId, units, language);
     if (issues.length) rejected.push({ text: point.text, sourceIds: point.sourceIds, issues });
     else kept.push(point);
@@ -725,13 +866,20 @@ export const finalizePoints = (
   for (const reject of rejected) {
     const rest = reject.sourceIds.filter(id => !covered.has(id));
     if (!rest.length) continue;
-    const literal = convert(clauseLiteral({ text: reject.text, sourceIds: rest }, byId, language), language);
+    const quoted = convert(clauseLiteral({ text: reject.text, sourceIds: rest }, byId, language), language);
+    const literal = language === 'pl' ? capitalize(shortenLiteral(impersonalize(quoted, noteWords))) : quoted;
     // Narration with nothing to act on is not worth quoting.
-    if (language === 'pl' && rambling && substanceScore(literal) < MIN_LITERAL_SUBSTANCE) continue;
+    if (language === 'pl' && (rambling || REFLECTION.test(literal)) && substanceScore(literal) < MIN_LITERAL_SUBSTANCE) continue;
+    if (language === 'pl' && (isMetaPoint(literal) || isPromptEcho(reject.text))) continue;
     kept.push({ text: literal, sourceIds: rest.slice(0, 2), literal: true, replaced: reject.text, issues: reject.issues });
     for (const id of rest.slice(0, 2)) covered.add(id);
   }
-  const ordered = kept.map((point, index) => ({ point, index }))
+  return { points: orderPoints(kept), rejected };
+};
+
+// Note order, without near-duplicates citing the same sentences.
+const orderPoints = (points: readonly WorkPoint[]): WorkPoint[] => {
+  const ordered = points.map((point, index) => ({ point, index }))
     .sort((a, b) => Math.min(...a.point.sourceIds) - Math.min(...b.point.sourceIds) || a.index - b.index)
     .map(entry => entry.point);
   const out: WorkPoint[] = [];
@@ -739,7 +887,40 @@ export const finalizePoints = (
     const duplicate = out.some(other => point.sourceIds.some(id => other.sourceIds.includes(id)) && similarity(point.text, other.text) >= 0.6);
     if (!duplicate) out.push(point);
   }
-  return { points: out, rejected };
+  return out;
+};
+
+// A sentence with a plan or a dated event that no point cites was most likely
+// skipped by the model; its cleaned words are added (at most 15% of the
+// points), so appointments and obligations do not depend on sampling luck.
+const RECOVER_SHARE = 0.15;
+const BIG_NUMBER = 10;
+const hasDate = (text: string): boolean => DATE_SEARCH.some(pattern => pattern.test(text));
+const hasNumber = (text: string): boolean => /\d/u.test(text) || statedNumbers(text).size > 0;
+const PAST_ANY = rx(String.raw`(?<![^\W\d_])\w{2,}(?:ł|ła|ło|li|ły|łem|łam|liśmy|łyśmy|liście)(?![^\W\d_])`, 'i');
+const COMMITMENT = rx(String.raw`(?<![^\W\d_])(?:postanowi(?:ł\w*|my|ć)|postanaw\w*|zdecyduj\w*|musz\w*|musi\w*|trzeba|mam(?:y)?\s+(?:\w+\s+){0,2}\w+ć|powinn?\w*|zamierz\w*|planuj\w*|termin\w*)(?![^\W\d_])`, 'i');
+// Obligations and decisions, or a dated event that is not a story about the past.
+export const isEventUnit = (text: string): boolean => {
+  if (COMMITMENT.test(text)) return hasDate(text) || SOON.test(text) || /\d/u.test(text) || [...statedNumbers(text)].some(n => n >= BIG_NUMBER);
+  if (PAST_ANY.test(text) || REFLECTION.test(text)) return false;
+  return (hasDate(text) && hasNumber(text)) || (PLAN_SIGNAL.test(text) && (hasDate(text) || SOON.test(text)));
+};
+
+export const recoverMissed = (points: readonly WorkPoint[], units: readonly Unit[]): WorkPoint[] => {
+  const covered = new Set(points.flatMap(point => point.sourceIds));
+  const budget = Math.max(1, Math.round(points.length * RECOVER_SHARE));
+  const byId = new Map(units.map(unit => [unit.id, unit]));
+  const noteWords = new Set(units.flatMap(unit => words(unit.text)));
+  const added: WorkPoint[] = [];
+  for (const unit of units) {
+    if (added.length >= budget) break;
+    if (covered.has(unit.id) || !isEventUnit(unit.text)) continue;
+    const quoted = convert(clauseLiteral({ text: unit.text, sourceIds: [unit.id] }, byId, 'pl'), 'pl');
+    const literal = capitalize(shortenLiteral(impersonalize(quoted, noteWords)));
+    if (isMetaPoint(literal)) continue;
+    added.push({ text: literal, sourceIds: [unit.id], literal: true, issues: ['missed'] });
+  }
+  return added.length ? orderPoints([...points, ...added]) : [...points];
 };
 
 // ---------------------------------------------------------------- prompts
@@ -975,7 +1156,7 @@ export const generatePointSummaryDetailed = async (
     }
     if (cut) warnings.push('Summary model output was cut off; the last points may be missing.');
     const finalized = finalizePoints(language === 'pl' ? dropNarration(rawPoints, units) : rawPoints, units, language);
-    finalPoints = finalized.points;
+    finalPoints = language === 'pl' ? recoverMissed(finalized.points, units) : finalized.points;
     rejected = finalized.rejected;
   }
   const points = finalPoints.map(point => ({ text: point.text, sourceIds: point.sourceIds }));

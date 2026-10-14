@@ -1,6 +1,6 @@
 import type { Language } from "../i18n/language";
 import { PIPELINE_VERSION, throwIfProcessingAborted, type ProcessingExecutionContext } from "./processingContext";
-import { canProjectSourceUnits, needsSourceUnitPlan, projectSourceUnitPlan, punctuationProposalWords, validateSourceUnitPlan, type SourceUnitPlan } from "./sourceUnits";
+import { canProjectSourceUnits, deterministicSourceUnitPlan, needsSourceUnitPlan, projectSourceUnitPlan, punctuationProposalWords, validateSourceUnitPlan, type SourceUnitPlan } from "./sourceUnits";
 import { generate, getLoadedModelInfo, getContextWindowSize, measureFormattedPromptTokens } from "./llm";
 import { fitsPrompt, isIncompleteGeneration } from "./sourcePipeline";
 import { recordGeneration } from "./generationMetrics";
@@ -11,6 +11,8 @@ const SOURCE_STRUCTURE_PROTOCOL = "punctuation-v7-short-complete-clauses-legacy-
 export const prepareSpokenSource = async (
   content: string, language: Language, execution?: ProcessingExecutionContext,
   onSourceStructure?: () => void,
+  // The quality pipeline needs usable units even when no model plan is admitted.
+  deterministicFallback = false,
 ): Promise<SourceUnitPlan | null> => {
   throwIfProcessingAborted(execution);
   if (!needsSourceUnitPlan(content)) return null;
@@ -21,7 +23,7 @@ export const prepareSpokenSource = async (
   const runtime = JSON.stringify(execution?.runtimeOptions ?? null);
   const runtimeKey = (): string => {
     const loaded = getLoadedModelInfo();
-    return JSON.stringify([PIPELINE_VERSION, SOURCE_STRUCTURE_PROTOCOL, content, language, execution?.runtimeOptions ?? null,
+    return JSON.stringify([PIPELINE_VERSION, SOURCE_STRUCTURE_PROTOCOL, deterministicFallback, content, language, execution?.runtimeOptions ?? null,
       loaded?.modelPath, loaded?.model, loaded?.execution, loaded?.speculative,
       loaded?.gpu, loaded?.devices, getContextWindowSize()]);
   };
@@ -50,7 +52,9 @@ export const prepareSpokenSource = async (
     if (execution?.taskEvidenceMemo) execution.taskEvidenceMemo.sourceStructure = Object.freeze({ key, context, signal, checkpoint, result });
     return result;
   };
-  if (!canProjectSourceUnits(content)) return saveMemo(null);
+  // Without a model-proposed plan the deterministic split keeps units usable.
+  const fallback = (): SourceUnitPlan | null => deterministicFallback ? deterministicSourceUnitPlan(content) : null;
+  if (!canProjectSourceUnits(content)) return saveMemo(fallback());
   const options = execution?.runtimeOptions;
   const cacheIdentity: SourcePlanCacheIdentity | null = context?.execution === "foreground" &&
     (options?.execution ?? context.execution) === "foreground" && context.model.sha256 && context.model.revision
@@ -138,7 +142,7 @@ export const prepareSpokenSource = async (
         count = count === 1 ? 0 : Math.floor(count / 2);
       }
       assertRuntime();
-      if (!count) return saveMemo(null);
+      if (!count) return saveMemo(fallback());
       const text = content.slice(start, end);
       const preceding = core - Math.max(0, core - overlap);
       const minimumOwned = Math.min(16, count);
@@ -174,7 +178,7 @@ export const prepareSpokenSource = async (
         if (result.completion?.interrupted) throw new Error("Source structure generation interrupted");
         if (isIncompleteGeneration(result)) {
           if (coreSize > 16) { coreSize = Math.max(16, Math.floor(coreSize / 2)); continue; }
-          return saveMemo(null);
+          return saveMemo(fallback());
         }
         const localWords = [...text.matchAll(/\S+/gu)];
         const proposal = result.text.replace(/^<think>\s*<\/think>\s*/u, "");
@@ -202,7 +206,7 @@ export const prepareSpokenSource = async (
         }
         if (!accepted) {
           if (coreSize > 16) { coreSize = Math.max(16, Math.floor(coreSize / 2)); continue; }
-          return saveMemo(null);
+          return saveMemo(fallback());
         }
         if (plan) await checkpoint?.write(partKey, { version: PIPELINE_VERSION, source: text, key, prefixEnd: plan.source.length, plan });
         assertRuntime();
@@ -224,7 +228,7 @@ export const prepareSpokenSource = async (
     try {
       plan = validateSourceUnitPlan(content, { version: 1, source: content,
         identity: JSON.stringify([1, content, boundaries]), ends: boundaries });
-    } catch { return saveMemo(null); }
+    } catch { return saveMemo(fallback()); }
     assertRuntime();
     await checkpoint?.write(checkpointKey, { version: PIPELINE_VERSION, source: content, key, plan });
     assertRuntime();
@@ -245,7 +249,7 @@ export const prepareSpokenSource = async (
     recordGeneration("source_structure", content.length, result);
     assertRuntime();
     if (result.completion?.interrupted) throw new Error("Source structure generation interrupted");
-    if (isIncompleteGeneration(result)) return saveMemo(null);
+    if (isIncompleteGeneration(result)) return saveMemo(fallback());
     // Native Qwen can return its empty chat thinking envelope in raw content.
     // Keep the recorded response intact and strip only that leading empty frame.
     const proposal = result.text.replace(/^<think>\s*<\/think>\s*/u, "");
@@ -255,5 +259,5 @@ export const prepareSpokenSource = async (
     assertRuntime();
     return saveAccepted(plan);
   }
-  return saveMemo(null);
+  return saveMemo(fallback());
 };
