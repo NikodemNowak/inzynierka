@@ -43,6 +43,8 @@ import { literalTopicDeclaration } from "./titleDeclaration";
 import { noteSourceSystem, sourceFirstPrompt } from "./sharedSourcePrompt";
 import { prepareSpokenSource } from "./spokenSource";
 import { needsSourceUnitPlan, type SourceUnitPlan } from "./sourceUnits";
+import { getSummaryEngineMode } from "./summaryEngine";
+import { processNoteQuality } from "./qualityPipeline";
 
 export type ProcessingPhase =
   | "queued"
@@ -130,6 +132,8 @@ export const processNoteWithLlm = async (
   throwIfProcessingAborted(execution);
   onProgress({ phase: "processing" });
   throwIfProcessingAborted(execution);
+  if (getSummaryEngineMode() === "points")
+    return processNoteQuality(content, onProgress, language, execution);
   if (needsSourceUnitPlan(content)) {
     let structuringSource = false;
     const plan = await prepareSpokenSource(content, language, execution,

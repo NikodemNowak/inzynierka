@@ -255,3 +255,10 @@ it('propagates model generation errors without fabricating a category', async ()
   model.mockRejectedValue(new Error('Native generation failed'))
   await expect(classifyNoteCategories(content, 'en', undefined, content, metadata)).rejects.toThrow('Native generation failed')
 })
+
+it('keeps the legacy closed schema on the original eight ids while parsing the extended set', async () => {
+  await classifyNoteCategories(content, 'en', undefined, content, metadata)
+  expect(model.mock.calls[0][2]?.jsonSchema).toMatchObject({properties: {category: {enum: categoryIds}}})
+  model.mockResolvedValue(response('Rodzina'))
+  await expect(classifyNoteCategories(content, 'pl', undefined, content)).resolves.toEqual(['Rodzina'])
+})

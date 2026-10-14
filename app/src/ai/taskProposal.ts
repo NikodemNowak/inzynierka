@@ -1,6 +1,8 @@
 import type { Language } from '../i18n/language'
 import type { ProcessingExecutionContext } from './processingContext'
 import { extractTasks } from './taskExtraction'
+import { getSummaryEngineMode } from './summaryEngine'
+import { createQualityTaskLines } from './qualityPipeline'
 
 export interface TaskProposal {
   tasks: string[]
@@ -40,6 +42,15 @@ export const createTaskProposal = async (
   execution?: ProcessingExecutionContext,
   recoverUnresolved = false,
 ): Promise<TaskProposal> => {
+  if (getSummaryEngineMode() === 'points' && language === 'pl') {
+    const found = await createQualityTaskLines(source, language, execution)
+    const unique = new Map<string, string>()
+    for (const task of found.tasks) {
+      const key = task.toLowerCase()
+      if (!isNoteMetaTask(task) && !unique.has(key)) unique.set(key, task)
+    }
+    return { tasks: [...unique.values()], warnings: found.warnings }
+  }
   const warnings = new Set<string>()
   const tasks = await extractTasks(source, onStatus, language, {
     ...execution,

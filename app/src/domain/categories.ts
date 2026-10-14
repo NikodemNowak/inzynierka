@@ -11,12 +11,23 @@ export const NOTE_CATEGORIES = [
   'Nauka',
   'Podróże',
   'Pomysły',
+  // Added with the single-call title+category pass; the first eight keep their
+  // original order so stored notes and filters render unchanged.
+  'Rodzina',
+  'Znajomi',
+  'Wydarzenia',
+  'Urzędy',
+  'Dziennik',
+  'Planowanie',
+  'Hobby',
 ] as const
+
+export type NoteCategory = (typeof NOTE_CATEGORIES)[number]
 
 export const isCategory = (value: string): boolean =>
   (NOTE_CATEGORIES as readonly string[]).includes(value)
 
-const ENGLISH_CATEGORIES: Record<(typeof NOTE_CATEGORIES)[number], string> = {
+const ENGLISH_CATEGORIES: Record<NoteCategory, string> = {
   Praca: 'Work',
   Dom: 'Home',
   Finanse: 'Finance',
@@ -25,10 +36,17 @@ const ENGLISH_CATEGORIES: Record<(typeof NOTE_CATEGORIES)[number], string> = {
   Nauka: 'Study',
   Podróże: 'Travel',
   Pomysły: 'Ideas',
+  Rodzina: 'Family',
+  Znajomi: 'Friends',
+  Wydarzenia: 'Events',
+  Urzędy: 'Admin',
+  Dziennik: 'Journal',
+  Planowanie: 'Planning',
+  Hobby: 'Hobbies',
 }
 
 // Stored identifiers remain stable across interface languages and app upgrades.
 export const categoryLabel = (category: string, language: Language): string =>
   language === 'en' && isCategory(category)
-    ? ENGLISH_CATEGORIES[category as (typeof NOTE_CATEGORIES)[number]]
+    ? ENGLISH_CATEGORIES[category as NoteCategory]
     : category

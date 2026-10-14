@@ -457,7 +457,7 @@ test('records the pipeline version and raw generation for local failure diagnosi
     arms: ['qwen3'],
     warmRepeats: 0,
   })
-  expect(run).toMatchObject({ pipelineVersion: 'source-linked-summary-v40' })
+  expect(run).toMatchObject({ pipelineVersion: 'point-summary-v41' })
   expect(run.generations[0]).toMatchObject({ outputText: 'Summary', sourceChars: 100 })
   expect(run.generationPhases).toEqual([
     {
