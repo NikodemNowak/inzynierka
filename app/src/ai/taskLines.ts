@@ -2,6 +2,7 @@ import type { Language } from '../i18n/language'
 import { recordGeneration } from './generationMetrics'
 import { generate, getContextWindowSize, measureFormattedPromptTokens } from './llm'
 import { throwIfProcessingAborted, type ProcessingExecutionContext } from './processingContext'
+import { numberSpans } from './polishNumbers'
 import { noteSourceSystem, sourceFirstPrompt } from './sharedSourcePrompt'
 
 // Single-call task extractor: one batched pass over the candidate sentences of
@@ -645,16 +646,25 @@ const FIRST_PERSON = rx(
   String.raw`(?<!nie )\b(?:muszę|mam\s+(?:\w+\s+){0,3}?\w+ć|ja\s+(?!się nie|nie)\w+|zrobię|zadzwonię|napiszę|piszę|wyślę|wysyłam|wpłacam|zamawiam|oddam|pójdę|przyjadę|kupię|sprawdzę|zapytam|dzwonię|trzeba)\b`,
   'i',
 )
-export const isOtherOwned = (sentence: string): boolean => OTHER_SUBJ.test(sentence) && !FIRST_PERSON.test(sentence)
+// Verb-subject order: 'testy płatności robi Tomek'.
+const OTHER_VS = rx(
+  String.raw`\b(?:robi|zrobi|robią|zrobią|przygotuje|przygotowuje|odbierze|kupi|załatwi|zajmie się|zajmuje się|ogarnia|ogarnie|bierze|przyniesie|zawiezie|podeśle|wysyła|wyśle|zamówi|zamawia|zadzwoni|dzwoni|napisze|pisze|sprawdzi|sprawdza|pilnuje)\s+(?!Ja\b)[A-ZŁŚŻŹĆ][a-ząćęłńóśźż]+`,
+)
+export const isOtherOwned = (sentence: string): boolean =>
+  (OTHER_SUBJ.test(sentence) || OTHER_VS.test(sentence)) && !FIRST_PERSON.test(sentence)
 
-// Ownership is judged on the sentence the model pointed at, not on widened ids.
+// Ownership is judged on the sentences the model pointed at that actually carry the task's content words
+// (a neighbouring date sentence says nothing about who does the work).
 export const ownerFilter = (tasks: readonly TaskDraft[], units: readonly Unit[]): GuardResult => {
   const byId = new Map(units.map((u) => [u.id, u.text]))
   const kept: TaskDraft[] = []
   const rejected: RejectedTask[] = []
   for (const t of tasks) {
     const ids = (t.modelIds.length ? t.modelIds : t.sourceIds).filter((i) => byId.has(i))
-    if (ids.length && ids.every((i) => isOtherOwned(byId.get(i)!)))
+    const objectStems = new Set(lettersOnly(t.title.split(/\s+/u).slice(1).join(' ')).filter((w) => w.length >= 4).map((w) => w.slice(0, 4)))
+    const anchored = ids.filter((i) => lettersOnly(byId.get(i)!).some((w) => w.length >= 4 && objectStems.has(w.slice(0, 4))))
+    const judged = anchored.length ? anchored : ids
+    if (judged.length && judged.every((i) => isOtherOwned(byId.get(i)!)))
       rejected.push({ title: t.title, due: t.due, reason: 'other person' })
     else kept.push(t)
   }
@@ -811,11 +821,22 @@ export const repairVerb = (t: TaskDraft, units: readonly Unit[]): TaskDraft => {
 const CLOSING = rx(String.raw`\b(zamyka\w*|zamknięt\w*|czynn\w*|otwart\w*|otwiera\w*|do której)\b`, 'i')
 
 // A clock time that only says when a place closes is not the task's deadline.
+const CLOCK_IN_DUE = rx(String.raw`\s*(?:\b(?:o|do|od)\s+)?\b\d{1,2}:\d{2}\b`)
 export const dropClosingDue = (t: TaskDraft, units: readonly Unit[]): TaskDraft => {
   if (!t.due) return t
   const byId = new Map(units.map((u) => [u.id, u.text]))
   const cited = (t.modelIds.length ? t.modelIds : t.sourceIds).map((i) => byId.get(i) ?? '').join(' ')
-  if (CLOSING.test(cited) && dateWordsUnanchored(t.due, '').length === 0) return { ...t, due: null }
+  if (!CLOSING.test(cited)) return t
+  if (dateWordsUnanchored(t.due, '').length === 0) return { ...t, due: null }
+  // 'jutro o 18:00' where 18:00 is only the closing hour: keep the day.
+  const hours = [...t.due.matchAll(rx(String.raw`\b(\d{1,2}):\d{2}\b`, 'g'))].map((m) => Number(m[1]))
+  const clauses = cited.split(/[,;.]/u)
+  const stated = (closing: boolean): boolean =>
+    clauses.some((c) => CLOSING.test(c) === closing && hours.some((h) => hourValues(c).has(h)))
+  if (hours.length && stated(true) && !stated(false)) {
+    const due = stripChars(t.due.replace(new RegExp(CLOCK_IN_DUE.source, 'gu'), '').trim(), ' ,;-')
+    return { ...t, due: due || null }
+  }
   return t
 }
 
@@ -828,7 +849,14 @@ const CANCELLED = rx(
 const stems3 = (text: string): Set<string> =>
   new Set(lettersOnly(text).filter((w) => w.length >= 4 && !STOP.has(w) && !GENERIC.has(w)).map((w) => w.slice(0, 3)))
 
-// A task whose own clause is cancelled ('kawy nie trzeba', 'odpuszczam') is not active.
+const LATE_CANCEL = rx(
+  String.raw`\bjednak\s+(?:nie|odpuszcz\w*|zrezygnuj\w*|rezygnuj\w*)|\b(?:odpuszczam|rezygnuję|zrezygnowałe?m|zrezygnowałam|odpada|odpadło)\b|\bnie\s+(?:będę|zamierzam|zapisuję|kupuję|biorę|idę|jadę)\b`,
+  'i',
+)
+const LATE_WINDOW = 10
+
+// A task whose own clause is cancelled ('kawy nie trzeba', 'odpuszczam') is not active; a later sentence
+// that rejects the same thing ('z kursu jednak rezygnuję') cancels it too.
 export const cancelledFilter = (tasks: readonly TaskDraft[], units: readonly Unit[]): GuardResult => {
   const byId = new Map(units.map((u) => [u.id, u.text]))
   const kept: TaskDraft[] = []
@@ -841,7 +869,20 @@ export const cancelledFilter = (tasks: readonly TaskDraft[], units: readonly Uni
       .map((clause) => ({ clause, hit: [...stems3(clause)].filter((x) => ts.has(x)).length }))
       .filter((x) => x.hit > 0)
       .sort((a, b) => b.hit - a.hit)[0]
-    if (best && CANCELLED.test(best.clause)) rejected.push({ title: t.title, due: t.due, reason: 'cancelled' })
+    // The verb is not evidence of the same plan: judge the later clause on the object words only.
+    const objectStems = new Set(
+      lettersOnly(t.title.split(/\s+/u).slice(1).join(' ')).filter((w) => w.length >= 4 && !STOP.has(w) && !GENERIC.has(w)).map((w) => w.slice(0, 3)),
+    )
+    const last = Math.max(0, ...ids)
+    const later = units
+      .filter((u) => u.id > last && u.id <= last + LATE_WINDOW)
+      .flatMap((u) => u.text.split(/[,;.]|\s(?:a|ale|za to|natomiast)\s/u))
+      .some((clause) => {
+        if (!LATE_CANCEL.test(clause)) return false
+        const shared = [...stems3(clause)].filter((x) => objectStems.has(x)).length
+        return shared >= Math.min(2, objectStems.size) && shared > 0
+      })
+    if ((best && CANCELLED.test(best.clause)) || later) rejected.push({ title: t.title, due: t.due, reason: 'cancelled' })
     else kept.push(t)
   }
   return { kept, rejected }
@@ -892,6 +933,210 @@ export const dedupeTasks = (tasks: readonly TaskDraft[]): TaskDraft[] => {
   return out
 }
 
+// ---------------------------------------------------------------- grounding guards
+// Cyrillic letters that look like Latin ones, which the model sometimes emits mid-word.
+const CYRILLIC_TWINS: Readonly<Record<string, string>> = {
+  а: 'a', е: 'e', о: 'o', р: 'p', с: 'c', х: 'x', у: 'y', к: 'k', м: 'm', т: 't', і: 'i',
+  А: 'A', В: 'B', Е: 'E', К: 'K', М: 'M', Н: 'H', О: 'O', Р: 'P', С: 'C', Т: 'T', Х: 'X',
+}
+const REFLEXIVE_ENDINGS: Readonly<Record<string, string>> = { а: 'ać się', е: 'eć się', и: 'ić się', ы: 'yć się' }
+const isForeignLetter = (ch: string): boolean => /\p{L}/u.test(ch) && !/[A-Za-zÀ-ɏ]/u.test(ch)
+
+// Russian infinitive endings and lookalike letters are mapped to Polish; null = other foreign letters remain.
+export const foldScripts = (text: string): string | null => {
+  const folded = text
+    .replace(/([аеиы])ться(?![\p{L}])/gu, (_all, v: string) => REFLEXIVE_ENDINGS[v] ?? v)
+    .replace(/ть(?![\p{L}])/gu, 'ć')
+    .replace(/[аеорсхуктіАВЕКМНОРСТХ]/gu, (c) => CYRILLIC_TWINS[c] ?? c)
+  return Array.from(folded).some(isForeignLetter) ? null : folded
+}
+
+// Count/unit pairs ('2 razy', '5 ml'): the number alone may be stated in the source ('siedem dni') while
+// being bound to another unit in the title ('7 razy dziennie').
+const UNIT_KEYS: readonly (readonly [RegExp, string])[] = [
+  [/^raz(?:y|ów)?$/u, 'raz'], [/^(?:ml|mililitr\p{L}*)$/u, 'ml'], [/^(?:mg|miligram\p{L}*)$/u, 'mg'],
+  [/^(?:kg|kilogram\p{L}*)$/u, 'kg'], [/^(?:g|gram\p{L}*)$/u, 'g'], [/^(?:l|litr\p{L}*)$/u, 'l'],
+  [/^(?:godz|godzin\p{L}*)$/u, 'h'], [/^(?:min|minut\p{L}*)$/u, 'min'], [/^(?:dni|dzień|dnia|dniach|dób|dobę)$/u, 'd'],
+  [/^(?:tydz|tyg|tygodni\p{L}*|tygodn\p{L}*)$/u, 'tydz'], [/^miesi\p{L}*$/u, 'mies'], [/^(?:zł|złot\p{L}*)$/u, 'zł'],
+  [/^(?:euro|eur|€)$/u, 'euro'], [/^(?:osób|osoby|osoba|osobom)$/u, 'os'], [/^(?:szt|sztuk\p{L}*)$/u, 'szt'],
+  [/^tabletk\p{L}*$/u, 'tab'], [/^(?:paczk\p{L}*|opakowa\p{L}*)$/u, 'pak'], [/^(?:proc|procent\p{L}*|%)$/u, '%'],
+]
+const unitKey = (word: string): string | null => {
+  const w = word.toLowerCase()
+  for (const [pattern, key] of UNIT_KEYS) if (pattern.test(w)) return key
+  return null
+}
+const digitize = (text: string): string => {
+  let out = ''
+  let pos = 0
+  for (const span of numberSpans(text)) {
+    out += text.slice(pos, span.start) + String(span.value)
+    pos = span.end
+  }
+  return out + text.slice(pos)
+}
+const PAIR = /(\d{1,3}(?: \d{3})+|\d+(?:[.,]\d+)?)\s*([\p{L}%€]+)/gu
+const NUMBER_THEN_WORD = /(\d{1,3}(?: \d{3})+|\d+(?:[.,]\d+)?)(?:\s*([\p{L}%€]+))?/gu
+const pairValue = (raw: string): number => Number(raw.replace(/ /gu, '').replace(',', '.'))
+// Unit keys that follow each stated value in the text; null = a number with no known unit after it.
+const unitsByValue = (text: string): Map<number, Set<string | null>> => {
+  const out = new Map<number, Set<string | null>>()
+  for (const m of digitize(text).matchAll(NUMBER_THEN_WORD)) {
+    const value = pairValue(m[1]!)
+    const keys = out.get(value) ?? new Set<string | null>()
+    keys.add(m[2] ? unitKey(m[2]) : null)
+    out.set(value, keys)
+  }
+  return out
+}
+const QUALIFIER = /^\s+(?:dziennie|tygodniowo|miesięcznie|dobę|na dobę)(?![\p{L}])/iu
+
+// A number the cited text binds to another unit ('siedem dni' vs '7 razy dziennie') is replaced by the
+// value the source gives for that unit when there is exactly one, otherwise the pair is dropped.
+export const repairNumberUnits = (text: string, cited: string): string => {
+  const source = unitsByValue(cited)
+  let out = text
+  for (const m of [...text.matchAll(PAIR)].reverse()) {
+    const key = unitKey(m[2]!)
+    const keys = source.get(pairValue(m[1]!))
+    if (!key || !keys || keys.has(key) || keys.has(null)) continue
+    const alternatives = [...source.entries()].filter(([, ks]) => ks.has(key)).map(([value]) => value)
+    const start = m.index
+    const end = start + m[0].length
+    if (alternatives.length === 1) {
+      out = `${out.slice(0, start)}${alternatives[0]} ${m[2]}${out.slice(end)}`
+      continue
+    }
+    const tail = QUALIFIER.exec(out.slice(end))
+    out = `${out.slice(0, start)}${out.slice(end + (tail ? tail[0].length : 0))}`
+  }
+  return out.replace(/\s{2,}/gu, ' ').trim()
+}
+
+const DATE_DM = /(?<![\d:])(\d{1,2})[./](\d{1,2})(?![\d:])/u
+const DAY_PREP_NUM = /\b(do|na|przed|od|po)\s+(\d{1,2})(?![\d:])/giu
+
+// A 'D.M' due needs its month in the source; a bare ordinal day ('do dwudziestego piątego') is rendered
+// as 'do 25' instead of the invented '20.5'.
+export const repairDueDate = (due: string, cited: string): string | null => {
+  const m = DATE_DM.exec(due)
+  if (!m) return due
+  const day = Number(m[1])
+  const month = Number(m[2])
+  const text = digitize(cited)
+  const hasMonthWord = groupHits(lettersOnly(cited), MONTH_GROUPS).size > 0
+  const written = new RegExp(String.raw`(?<![\d:])${day}[./]${month}(?![\d:])`, 'u').test(text)
+  if (written || (hasMonthWord && sourceNumbers(cited).has(day))) return due
+  const candidates = [...text.matchAll(DAY_PREP_NUM)].filter((c) => Number(c[2]) >= 1 && Number(c[2]) <= 31)
+  const pick = candidates.find((c) => [day + month, Number(`${day}${month}`)].includes(Number(c[2]))) ?? candidates[0]
+  return pick ? `${pick[1]!.toLowerCase()} ${Number(pick[2])}` : null
+}
+
+const KNOWN_GLITCH_VERBS: Readonly<Record<string, string>> = { idć: 'iść', biorć: 'brać' }
+const BAD_INFINITIVE = /[^aeiouyąęóśź]ć$/u
+const PAYMENT_VERB =/^(?:zapłac|wpłac|opłac|przela|przelew)/u
+const MONEY_CUE = rx(String.raw`(?:€|\b(?:zł|złot\w*|euro|płac\w*|płat\w*|opłat\w*|przelew\w*|rachun\w*|czynsz\w*|składk\w*|abonament\w*|mandat\w*|podat\w*|zaliczk\w*|wpłat\w*|zapłat\w*|subskrypcj\w*|karnet\w*|rat[aęy]|kosztuj\w*|kwot\w*|faktur\w*|cen[aęy])\b)`, 'i')
+const DOSE_CUE = /(?:\b(?:ml|mg)\b|mililitr|miligram|tabletk|krople|razy dziennie|co \d+ godzin)/iu
+
+// 'Zapłacić amoksycylinę' where the sentence only gives a dose: a payment verb with no money anywhere near
+// the cited sentences is swapped for a neutral one when a dose is stated, otherwise the task is dropped.
+export const groundVerb = (t: TaskDraft, neighbourhood: string): TaskDraft | null => {
+  const first = t.title.split(/\s+/u)[0] ?? ''
+  const verb = first.toLowerCase()
+  if (verb.length < 3 || !verb.endsWith('ć')) return t
+  const rest = t.title.slice(first.length)
+  const glitch = KNOWN_GLITCH_VERBS[verb]
+  const swap = (infinitive: string): TaskDraft => ({ ...t, title: infinitive.charAt(0).toUpperCase() + infinitive.slice(1) + rest })
+  if (glitch) return swap(glitch)
+  // A consonant before 'ć' ('odbierć') is a broken infinitive: take the closest infinitive of the source.
+  if (BAD_INFINITIVE.test(verb)) {
+    const near = [...new Set(lettersOnly(neighbourhood).filter((w) => w.length >= 5 && w.endsWith('ć') && !BAD_INFINITIVE.test(w)))]
+      .map((w) => ({ w, d: editDistance(verb, w) }))
+      .filter((x) => x.d <= 4)
+      .sort((a, b) => a.d - b.d)[0]
+    if (near) return swap(near.w)
+  }
+  if (!PAYMENT_VERB.test(verb) || MONEY_CUE.test(neighbourhood)) return t
+  if (DOSE_CUE.test(t.title) || DOSE_CUE.test(neighbourhood)) return { ...t, title: `Stosować${rest}` }
+  return null
+}
+
+const MEETING_NOUN = new Set(['spotkanie', 'zebranie', 'narada', 'telekonferencja'])
+const SPEAKER_ACTION = rx(
+  String.raw`\b(?:tam|wtedy|na nim|podczas)\b[^.;]*?\bmam\s+(?!to\b|go\b|je\b|ją\b)(?:\w+\s+){0,2}?(\w+(?:ć|c))\b([^,.;]*)`,
+  'i',
+)
+
+// 'Spotkanie we wtorek o 10:00 ... tam mam zreferować stan listy' is an event; the author's task is the
+// action named in the sentence, due when the meeting is.
+export const meetingToAction = (t: TaskDraft, units: readonly Unit[]): TaskDraft => {
+  const [head, ...others] = t.title.split(/\s+/u)
+  if (!MEETING_NOUN.has((head ?? '').toLowerCase())) return t
+  const byId = new Map(units.map((u) => [u.id, u.text]))
+  for (const id of t.sourceIds) {
+    const m = SPEAKER_ACTION.exec(byId.get(id) ?? '')
+    if (!m) continue
+    const action = `${m[1]!}${m[2]!}`.trim()
+    return { ...t, title: action.charAt(0).toUpperCase() + action.slice(1), due: t.due ?? (others.join(' ') || null) }
+  }
+  return t
+}
+
+const LEADING_CONDITION = rx(String.raw`^(?:\p{L}+,?\s+)?(?:jeśli|jeżeli)\s+([^,]+),\s*(?:to\s+)?`, 'i')
+const UNSETTLED = rx(String.raw`\b(jeszcze nic nie|nie rezerwujemy|zobaczymy|nie wiadomo|jeszcze nie wiem)\b`, 'i')
+
+// 'Jeśli zdam analizę, to jadę na narty, ale jeszcze nic nie rezerwujemy' is an open plan, not a task;
+// a plain conditional keeps its condition in the title.
+export const keepCondition = (t: TaskDraft, units: readonly Unit[]): TaskDraft | null => {
+  if (/jeśli|jeżeli/iu.test(t.title)) return t
+  const byId = new Map(units.map((u) => [u.id, u.text]))
+  for (const id of t.modelIds.length ? t.modelIds : t.sourceIds) {
+    const sentence = byId.get(id) ?? ''
+    const m = LEADING_CONDITION.exec(sentence)
+    if (!m) continue
+    if (UNSETTLED.test(sentence)) return null
+    const condition = wordsToDigits(m[1]!.trim())
+    if (condition.split(/\s+/u).length <= 8) return { ...t, title: `${t.title}, jeśli ${condition}` }
+  }
+  return t
+}
+
+// Foreign letters, unsupported numbers/units/dates and invented verbs, checked against the cited sentences
+// (widened by validateTasks) and their neighbours.
+export const groundTasks = (tasks: readonly TaskDraft[], units: readonly Unit[]): GuardResult => {
+  const byId = new Map(units.map((u) => [u.id, u.text]))
+  const kept: TaskDraft[] = []
+  const rejected: RejectedTask[] = []
+  for (const t of tasks) {
+    const cited = t.sourceIds.map((i) => byId.get(i) ?? '').join(' ')
+    const near = sortedUnique(t.sourceIds.flatMap((i) => [i - 1, i, i + 1]))
+      .map((i) => byId.get(i) ?? '')
+      .join(' ')
+    const title0 = foldScripts(t.title)
+    const due0 = t.due === null ? null : foldScripts(t.due)
+    if (title0 === null) {
+      rejected.push({ title: t.title, due: t.due, reason: 'foreign script' })
+      continue
+    }
+    let task: TaskDraft = { ...t, title: title0, due: t.due === null || due0 === null ? null : due0 }
+    task = { ...task, title: repairNumberUnits(task.title, cited) }
+    if (task.due) {
+      const dueFixed = repairNumberUnits(task.due, cited)
+      const dated = dueFixed ? repairDueDate(dueFixed, cited) : null
+      task = { ...task, due: dated }
+    }
+    const verbFixed = groundVerb(task, near)
+    if (!verbFixed) {
+      rejected.push({ title: t.title, due: t.due, reason: 'verb not in source' })
+      continue
+    }
+    const conditional = keepCondition(meetingToAction(verbFixed, units), units)
+    if (conditional) kept.push(conditional)
+    else rejected.push({ title: t.title, due: t.due, reason: 'open plan' })
+  }
+  return { kept, rejected }
+}
+
 export const postprocessTaskLines = (raw: readonly TaskDraft[], units: readonly Unit[]): GuardResult => {
   const rejected: RejectedTask[] = []
   const take = (step: GuardResult): TaskDraft[] => {
@@ -907,6 +1152,7 @@ export const postprocessTaskLines = (raw: readonly TaskDraft[], units: readonly 
   })
   tasks = take(finalizeTasks(tasks.flatMap(splitCompound))).map((t) => applyCorrections(t, units))
   tasks = take(validateTasks(tasks, units))
+  tasks = take(groundTasks(tasks, units))
   tasks = take(ownerFilter(tasks, units))
   tasks = take(supersededFilter(tasks, units))
   tasks = take(cancelledFilter(tasks, units))

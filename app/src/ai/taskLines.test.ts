@@ -9,6 +9,13 @@ import {
   extractTaskLines,
   cancelledFilter,
   dropClosingDue,
+  foldScripts,
+  groundTasks,
+  groundVerb,
+  keepCondition,
+  meetingToAction,
+  repairDueDate,
+  repairNumberUnits,
   finalizeTasks,
   mergeVague,
   nominalListTasks,
@@ -504,3 +511,73 @@ describe('extractTaskLines', () => {
     await expect(extractTaskLines(noteUnits, 'pl')).rejects.toThrow('Generation interrupted');
   });
 });
+
+describe('grounding guards', () => {
+  test('foldScripts maps lookalikes and Russian infinitives, rejects other scripts', () => {
+    expect(foldScripts('Zapisаться na kurs')).toBe('Zapisać się na kurs')
+    expect(foldScripts('Kupić ser')).toBe('Kupić ser')
+    expect(foldScripts('Kupić хлеб')).toBeNull()
+    expect(foldScripts('Kupić 牛奶')).toBeNull()
+  })
+  test('repairNumberUnits rebinds a number that the source ties to another unit', () => {
+    const cited = 'Antybiotyk, pięć mililitrów dwa razy dziennie, przez siedem dni.'
+    expect(repairNumberUnits('Stosować antybiotyk 5 ml 7 razy dziennie', cited)).toBe('Stosować antybiotyk 5 ml 2 razy dziennie')
+    expect(repairNumberUnits('Stosować antybiotyk 5 ml 2 razy dziennie', cited)).toBe('Stosować antybiotyk 5 ml 2 razy dziennie')
+    expect(repairNumberUnits('Brać 3 razy dziennie', 'Brać rano, przez trzy dni.')).toBe('Brać')
+  })
+  test('repairNumberUnits keeps a number the source states without a unit (spoken correction)', () => {
+    const cited = 'Przelewam tysiąc złotych, nie, czekaj, tysiąc dwieście, bo nadrabiam.'
+    expect(repairNumberUnits('Przelać 1200 zł', cited)).toBe('Przelać 1200 zł')
+  })
+  test('repairDueDate never invents D.M from a day number', () => {
+    expect(repairDueDate('20.5', 'Rezygnację trzeba złożyć do dwudziestego piątego.')).toBe('do 25')
+    expect(repairDueDate('20.5', 'Termin mija w sobotę.')).toBeNull()
+    expect(repairDueDate('20.5', 'Termin mija dwudziestego maja.')).toBe('20.5')
+    expect(repairDueDate('piątek', 'Do piątku.')).toBe('piątek')
+  })
+  test('groundVerb swaps a payment verb without money for a neutral one, or drops it', () => {
+    const dose = 'Antybiotyk, pięć mililitrów dwa razy dziennie.'
+    expect(groundVerb(draft('Zapłacić amoksycylinę 5 ml', null, 1), dose)?.title).toBe('Stosować amoksycylinę 5 ml')
+    expect(groundVerb(draft('Zapłacić rachunek', null, 1), 'Rachunek za prąd, sto złotych.')?.title).toBe('Zapłacić rachunek')
+    expect(groundVerb(draft('Zapłacić Oli', null, 1), 'Ola dzwoniła.')).toBeNull()
+    expect(groundVerb(draft('Biorć 2 ładowarki', null, 1), 'Biorę dwie ładowarki.')?.title).toBe('Brać 2 ładowarki')
+    expect(groundVerb(draft('Odbierć kurtkę', null, 1), 'W pralni odebrać kurtkę.')?.title).toBe('Odebrać kurtkę')
+  })
+  test('meetingToAction turns an event with a stated speaker action into that action', () => {
+    const u = units('Kolejne spotkanie za tydzień we wtorek o dziesiątej, tam mam krótko zreferować stan listy błędów.', 'Spotkanie z klientem, mam to wpisać do kalendarza.')
+    expect(meetingToAction(draft('Spotkanie za tydzień we wtorek o 10:00', null, 1), u)).toMatchObject({
+      title: 'Zreferować stan listy błędów',
+      due: 'za tydzień we wtorek o 10:00',
+    })
+    expect(meetingToAction(draft('Spotkanie z klientem', 'piątek', 2), u).title).toBe('Spotkanie z klientem')
+  })
+  test('groundTasks rejects leftover foreign scripts and fixes the dose task', () => {
+    const u = units('Lekarka przepisała amoksycylinę, pięć mililitrów dwa razy dziennie, przez siedem dni.', 'Mam kupić хлеб.')
+    const { kept, rejected } = groundTasks([draft('Zapłacić amoksycylinę 5 ml 7 razy dziennie', null, 1), draft('Kupić хлеб', null, 2)], u)
+    expect(kept.map(task => task.title)).toEqual(['Stosować amoksycylinę 5 ml 2 razy dziennie'])
+    expect(rejected.map(task => task.reason)).toEqual(['foreign script'])
+  })
+  test('ownerFilter rejects the task of a named doer even when a neighbouring sentence is cited', () => {
+    const u = units('Agnieszka mówi, że termin jest ostateczny.', 'Po drugie, testy płatności robi Tomek, ma je skończyć do środy.', 'Ja mam przygotować listę błędów.')
+    expect(isOtherOwned(u[1]!.text)).toBe(true)
+    const { kept, rejected } = ownerFilter([draft('Skończyć testy płatności', 'środa', 1, 2), draft('Przygotować listę błędów', null, 3)], u)
+    expect(kept.map(task => task.title)).toEqual(['Przygotować listę błędów'])
+    expect(rejected).toHaveLength(1)
+  })
+  test('cancelledFilter honours a later rejection of the same thing', () => {
+    const u = units('Zapiszę się na kurs fotografii.', 'Weekendowa odpada, bo soboty mam zajęte.', 'Z kursu fotografii jednak rezygnuję, za drogo.')
+    const { kept } = cancelledFilter([draft('Zapisać się na kurs fotografii', null, 1)], u)
+    expect(kept).toHaveLength(0)
+    const only = units('Zapiszę się na kurs fotografii.', 'Weekendowy kurs odpada, bo soboty mam zajęte.')
+    expect(cancelledFilter([draft('Zapisać się na kurs fotografii', null, 1)], only).kept).toHaveLength(1)
+  })
+  test('dropClosingDue keeps the day but not the closing hour', () => {
+    const u = units('Jutro po pracy muszę wstąpić po okulary, czynne mają do osiemnastej.')
+    expect(dropClosingDue(draft('Odebrać okulary', 'jutro o 18:00', 1), u).due).toBe('jutro')
+  })
+  test('keepCondition drops open plans and keeps the condition of plain conditionals', () => {
+    const u = units('Jeśli zdam analizę w pierwszym terminie, to jadę na narty, ale jeszcze nic nie rezerwujemy.', 'Jeśli kolokwium wyjdzie słabo, to idę na dodatkowe zajęcia.')
+    expect(keepCondition(draft('Jechać na narty', null, 1), u)).toBeNull()
+    expect(keepCondition(draft('Iść na dodatkowe zajęcia', null, 2), u)?.title).toBe('Iść na dodatkowe zajęcia, jeśli kolokwium wyjdzie słabo')
+  })
+})

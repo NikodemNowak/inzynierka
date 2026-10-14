@@ -8,7 +8,11 @@ import {
   finalizePoints,
   impersonalize,
   isEventUnit,
+  dropNarration,
   isMetaPoint,
+  isNarrated,
+  isRambling,
+  isTrivia,
   recoverMissed,
   shortenLiteral,
   type SummaryPoint,
@@ -456,5 +460,114 @@ describe('finalizePoints repairs', () => {
   test('drops a point about the recording', () => {
     const units = [{ id: 1, text: 'Dobra, nagrywam to, bo się zaraz pogubię.' }];
     expect(finalizePoints([{ text: 'Nagrywam to', sourceIds: [1] }], units, 'pl').points).toEqual([]);
+  });
+});
+
+describe('impersonalize (round 3)', () => {
+  const note = new Set(['kupię', 'zadzwonię', 'oddać', 'przesunąć', 'matematyczna']);
+
+  test('moves the time behind the task', () => {
+    expect(impersonalize('W niedzielę zadzwonię do babci, bo długo nie dzwoniłem', note)).toBe('Zadzwonić do babci w niedzielę, bo długo nie dzwoniłem');
+    expect(impersonalize('W sobotę rano mam mu ją oddać, jeszcze przed 10', note)).toBe('Oddać mu ją w sobotę rano, jeszcze przed 10');
+  });
+
+  test('turns a fact followed by an obligation into a dash', () => {
+    expect(impersonalize('Pracuję zdalnie, muszę przesunąć dwa spotkania', note)).toBe('Pracuję zdalnie – przesunąć dwa spotkania');
+  });
+
+  test('drops thinking openers and a subject pronoun before a modal', () => {
+    expect(impersonalize('Pomyślałem, że kupię nowy, ale nie teraz', note)).toBe('Kupić nowy, ale nie teraz');
+    expect(impersonalize('Ja mam zaktualizować dokumentację', note)).toBe('Zaktualizować dokumentację');
+  });
+
+  test('turns a request into a task and keeps its negation', () => {
+    expect(impersonalize('Przypomnij mi, żebym jutro oddzwonił do pana', note)).toBe('Jutro oddzwonić do pana');
+    expect(impersonalize('Wizyta – przypomnieć Oli, że nie zapomniała o szczepieniu', note)).toBe('Wizyta – przypomnieć Oli, żeby nie zapomniała o szczepieniu');
+  });
+
+  test('completes a word cut short by the model', () => {
+    expect(impersonalize('Analiza matematycz, poprawka', note)).toBe('Analiza matematyczna, poprawka');
+  });
+});
+
+describe('narration filtering', () => {
+  const diary = (): { id: number; text: string }[] => {
+    const filler = [
+      'Spotkałem sąsiadkę z psem, który szczeka na wszystko.',
+      'Zrobiłem sobie kanapki i włączyłem telewizor.',
+      'Przypomniało mi się, jak kiedyś zbieraliśmy kasztany.',
+      'Zastanawiałem się, czy jeszcze gdzieś leżą.',
+      'Pamiętam to dziwne uczucie z dzieciństwa.',
+      'Wyjrzałem przez okno, padał deszcz.',
+    ];
+    const texts: string[] = [];
+    for (let i = 0; i < 24; i += 1) texts.push(i % 6 === 5 ? `Muszę zapłacić rachunek do piątku, ${i} złotych.` : filler[i % 6]);
+    return texts.map((text, i) => ({ id: i + 1, text }));
+  };
+
+  test('a diary without markers is rambling and its anecdotes are narrated', () => {
+    const units = diary();
+    expect(isRambling(units)).toBe(true);
+    expect(isNarrated(units[0])).toBe(true);
+    expect(isNarrated(units[5])).toBe(false);
+  });
+
+  test('keeps points that cite a plan and drops the stories in a rambling note', () => {
+    const units = diary();
+    const points = [
+      { text: 'Sąsiadka z psem', sourceIds: [1] }, { text: 'Kasztany z dzieciństwa', sourceIds: [3] },
+      { text: 'Deszcz za oknem', sourceIds: [5] }, { text: 'Zapłacić rachunek do piątku', sourceIds: [6] },
+      { text: 'Kolejny rachunek', sourceIds: [12] }, { text: 'Rachunek trzeci', sourceIds: [18] }, { text: 'Rachunek czwarty', sourceIds: [24] },
+    ];
+    const kept = dropNarration(points, units).map(point => point.text);
+    expect(kept).toEqual(expect.arrayContaining(['Zapłacić rachunek do piątku', 'Kolejny rachunek']));
+    expect(kept).not.toContain('Sąsiadka z psem');
+    expect(kept).not.toContain('Kasztany z dzieciństwa');
+  });
+
+  test('trivia is past-tense ambient talk without a plan, number or task wording', () => {
+    const cited = [{ id: 1, text: 'Aha i jeszcze, spotkanie było w sali na drugim piętrze, klimatyzacja nie działała.' }];
+    expect(isTrivia('Spotkanie w sali na drugim piętrze – klimatyzacja nie działała', cited)).toBe(true);
+    expect(isTrivia('Kupić kawę', [{ id: 2, text: 'Skończyła się kawa.' }])).toBe(false);
+    expect(isTrivia('Ania rezerwuje kolację na rocznicę', [{ id: 3, text: 'Ania rezerwuje kolację na rocznicę.' }])).toBe(false);
+    expect(isTrivia('Kawa kosztuje 20 zł', [{ id: 4, text: 'Kawa kosztowała dwadzieścia złotych.' }])).toBe(false);
+  });
+
+  test('a dictated factual recap is not rambling', () => {
+    const recap = Array.from({ length: 30 }, (_, i) => ({
+      id: i + 1,
+      text: i % 3 === 0 ? 'Lekarka przepisała antybiotyk dwa razy dziennie.' : 'Kontrola jest w poniedziałek, mam zrobić morfologię.',
+    }));
+    expect(isRambling(recap)).toBe(false);
+  });
+});
+
+describe('short notes', () => {
+  test('a reminder becomes a compact task and the side remark goes', async () => {
+    model.mockReset();
+    const units = [
+      { id: 1, start: 0, end: 150, text: 'Aha, przypomnij mi, żebym jutro przed dziewiątą oddzwonił do pana z warsztatu w sprawie opon, bo mówił, że do piątku trzyma dla mnie rezerwację, a potem już nie.' },
+      { id: 2, start: 151, end: 190, text: 'Numer mam w telefonie, w ostatnich.' },
+    ];
+    const result = await generatePointSummary(units, units.map(unit => unit.text).join(' '), 'pl');
+    expect(model).not.toHaveBeenCalled();
+    expect(result.points.map(point => point.text)).toEqual([
+      'Jutro przed dziewiątą oddzwonić do pana z warsztatu w sprawie opon – do piątku trzyma rezerwację, a potem już nie.',
+    ]);
+  });
+});
+
+describe('shortenLiteral meta clauses', () => {
+  test('drops attendance and the recording purpose', () => {
+    expect(shortenLiteral('Spotkanie projektowe w sprawie panelu klienta, było nas pięcioro, więc spisuję dla siebie, zanim mi umknie'))
+      .toBe('Spotkanie projektowe w sprawie panelu klienta');
+  });
+});
+
+describe('date removal', () => {
+  test('does not eat the end of a word as a preposition', () => {
+    const units = [{ id: 1, text: 'Analiza matematyczna, egzamin dwunastego lutego.' }];
+    const { points } = finalizePoints([{ text: 'Analiza matematyczna 9 stycznia, egzamin 12 lutego', sourceIds: [1] }], units, 'pl');
+    expect(points[0].text).toContain('matematyczna');
   });
 });

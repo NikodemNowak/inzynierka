@@ -140,7 +140,7 @@ const staleNumbers = (ids: readonly number[], byId: ReadonlyMap<number, Unit>): 
 // ---------------------------------------------------------------- substance score
 // Cheap lexical estimate of how much a sentence carries something to act on or
 // remember (plan, obligation, decision, date, number) versus plain narration.
-const PLAN_SIGNAL = rx(String.raw`(?<![^\W\d_])(?:postanowi(?:ł\w*|my|ć)|postanaw\w*|zdecyduj\w*|zdecydowa\w*|musz\w*|musi\w*|trzeba|mam(?:y)?\s+(?:\w+\s+){0,2}\w+ć|powinn?\w*|zamierz\w*|planuj\w*|plan(?:ujemy)?|umówi\w*|ustali\w*|termin\w*|chc(?:ę|emy)|nie\s+będ\w*|(?:dzwoni|zadzwoni|robi|zrobi|kupi|zamówi|załatwi|sprawdz|napisz|zapłac|przedłuż|wyśl|odbior|zarezerwuj|przyjad|zawioz|zorganizuj|odłoż|zanotuj|zapisz|oddam|oddać)\w*(?:ę|my))(?![^\W\d_])`, 'i');
+const PLAN_SIGNAL = rx(String.raw`(?<![^\W\d_])(?:postanowi(?:ł\w*|my|ć)|postanaw\w*|zdecyduj\w*|zdecydowa\w*|musz\w*|musi\w*|trzeba|mam(?:y)?\s+(?:\w+\s+){0,2}\w+ć|powinn?\w*|zamierz\w*|planuj\w*|plan(?:ujemy)?|umówi\w*|ustali\w*|termin\w*|chc(?:ę|emy)|nie\s+będ\w*|(?:dzwoni|zadzwoni|robi|zrobi|kupi|zamówi|załatwi|sprawdz|napisz|zapłac|przedłuż|wyśl|odbior|zarezerwuj|przyjad|zawioz|zorganizuj|odłoż|zanotuj|zapisz|oddam|oddać)\w*(?:ę|(?<!liś)(?<!łyś)my))(?![^\W\d_])`, 'i');
 const PAST_FIRST = rx(String.raw`(?<![^\W\d_])\w{3,}(?:łem|łam|liśmy|łyśmy)(?![^\W\d_])`, 'i');
 const SOON = rx(String.raw`(?<![^\W\d_])(?:jutro|pojutrze|przyszł\w+|za\s+(?:tydzień|miesiąc|dwa|trzy)|do\s+końca|od\s+jutra|od\s+dziś|od\s+dzisiaj)(?![^\W\d_])`, 'i');
 
@@ -155,32 +155,72 @@ export const substanceScore = (text: string): number => {
 };
 
 // Thoughts, feelings and memories, as opposed to things that happened or must happen.
-const REFLECTION = rx(String.raw`(?<![^\W\d_])(?:myśl\w*|pomyśla\w*|czuj\w*|czuł\w*|wrażeni\w*|pamiętam|wspomin\w*|wspomnie\w*|przypomnia\w*|wydawał\w*|dziwn\w*|melanchol\w*|tęsk\w*|cieszę|szkoda|zmęcz\w*|smut\w*|nastr\w+|kiedyś|swoją\s+drogą|w\s+sumie|w\s+ogóle|matko|zafascyn\w*|marginesie|trudno|serio|szczerze|wtedy|nostalg\w*|traum\w*|stres\w*|wmawiam|uświadomi\w*|zauważy\w*)(?![^\W\d_])`, 'i');
+export const REFLECTION = rx(String.raw`(?<![^\W\d_])(?:myśl\w*|pomyśla\w*|czuj\w*|czuł\w*|wrażeni\w*|pamiętam|wspomin\w*|wspomnie\w*|przypomnia\w*|wydawał\w*|dziwn\w*|melanchol\w*|tęsk\w*|cieszę|szkoda|zmęcz\w*|smut\w*|nastr\w+|kiedyś|swoją\s+drogą|w\s+sumie|w\s+ogóle|matko|zafascyn\w*|marginesie|trudno|serio|szczerze|wtedy|nostalg\w*|traum\w*|stres\w*|wmawiam|uświadomi\w*|zauważy\w*|zastanawia\w*|wzrusz\w*|sentymentaln\w*|ciekaw\w*|śmieszn\w*|zaciekaw\w*|głupi\w*)(?![^\W\d_])`, 'i');
 
 const SUBSTANTIVE = 1;
 const MIN_RAMBLING_UNITS = 24;
 const RAMBLING_DENSITY = 0.4;
 const RAMBLING_REFLECTION = 0.3;
-const FILLER_WEIGHT = 0.35;
+const RAMBLING_NARRATION = 0.3;
+const RAMBLING_NARRATION_REFLECTION = 0.15;
+const FILLER_WEIGHT = 0.5;
 const MIN_LITERAL_SUBSTANCE = 0.5;
 
 // A long reflective note where few sentences carry anything to act on (a diary
 // entry, a stream of thoughts) needs far fewer points than its length suggests.
-export const isRambling = (units: readonly Unit[]): boolean =>
-  units.length >= MIN_RAMBLING_UNITS &&
-  units.filter(unit => substanceScore(unit.text) >= SUBSTANTIVE).length / units.length < RAMBLING_DENSITY &&
-  units.filter(unit => REFLECTION.test(unit.text)).length / units.length >= RAMBLING_REFLECTION;
+// A diary without reflective words still tells anecdotes: many sentences are
+// first-person past narration, and a fair share of them is reflective.
+export const isRambling = (units: readonly Unit[]): boolean => {
+  if (units.length < MIN_RAMBLING_UNITS) return false;
+  const scores = units.map(unit => substanceScore(unit.text));
+  if (scores.filter(score => score >= SUBSTANTIVE).length / units.length >= RAMBLING_DENSITY) return false;
+  const reflective = units.filter(unit => REFLECTION.test(unit.text)).length / units.length;
+  const narrated = scores.filter(score => score < 0).length / units.length;
+  return reflective >= RAMBLING_REFLECTION || (narrated >= RAMBLING_NARRATION && reflective >= RAMBLING_NARRATION_REFLECTION);
+};
 
-// Unit count for budgeting: sentences without substance weigh less in rambling notes.
+const PAST_ANY = rx(String.raw`(?<![^\W\d_])\w{2,}(?:ł|ła|ło|li|ły|łem|łam|liśmy|łyśmy|liście)(?![^\W\d_])`, 'i');
+// Ambient remarks: weather, food, media and the room the speaker happened to be in.
+const AMBIENT = rx(String.raw`(?<![^\W\d_])(?:deszcz\w*|pada\w*|padał\w*|siąp\w*|wiał\w*|wiatr\w*|mgł\w*|słońc\w*|słoneczn\w*|burz\w*|upał\w*|śnieg\w*|mróz\w*|pogod\w*|duszn\w*|klimatyzacj\w*|kanapk\w*|obiad\w*|kolacj\w*|śniadani\w*|zup[aąęyie]|sałatk\w*|herbat\w*|kaw(?:a|ę|y|ie|ą)|cukr\w*|kiełbas\w*|piw(?:o|a|em|ie)|rosół|rosoł\w*|drożdżówk\w*|przesoli\w*|zjad\w*|zjedz\w*|film\w*|serial\w*|audycj\w*|telewizor\w*|telewizj\w*)(?![^\W\d_])`, 'i');
+// "na drugim piętrze" locates a place; it is not a quantity worth keeping.
+const ORDINAL_PLACE = rx(String.raw`(?<![^\W\d_])(?:pierwsz|drug|trzec|czwart|piąt|szóst|siódm|ósm|dziewiąt|dziesiąt)[^\W\d_]*\s+(?:piętr|rząd|rzęd|miejsc|klas|pokoj|sal|kondygnacj)[^\W\d_]*`, 'gi');
+const INFINITIVE_START = /^\p{L}{3,}ć(?![\p{L}])/u;
+const hasNumber = (text: string): boolean => /\d/u.test(text) || statedNumbers(text).size > 0;
+
+// In a rambling note, first-person past narration without any plan never reaches
+// the model (it would only use up the point budget); other sentences without
+// substance weigh less when the budget is set.
+export const isNarrated = (unit: Unit): boolean => {
+  const score = substanceScore(unit.text);
+  return score < 0 || (score < SUBSTANTIVE && !hasNumber(unit.text) && (REFLECTION.test(unit.text) || AMBIENT.test(unit.text)));
+};
 const unitWeight = (unit: Unit, rambling: boolean): number =>
-  rambling && substanceScore(unit.text) < SUBSTANTIVE ? FILLER_WEIGHT : 1;
+  !rambling ? 1 : isNarrated(unit) ? 0 : substanceScore(unit.text) < SUBSTANTIVE ? FILLER_WEIGHT : 1;
+
+const unitsOf = (point: { readonly sourceIds: readonly number[] }, byId: ReadonlyMap<number, Unit>): Unit[] =>
+  point.sourceIds.flatMap(id => byId.get(id) ?? []);
+
+// Nothing to act on or remember, neither in the point nor in the sentences it cites.
+const isUnsubstantial = (point: { readonly text: string; readonly sourceIds: readonly number[] }, byId: ReadonlyMap<number, Unit>): boolean =>
+  substanceScore(point.text) < SUBSTANTIVE && unitsOf(point, byId).every(unit => substanceScore(unit.text) < SUBSTANTIVE);
+
+// An anecdote, memory or ambient remark told in the past tense, without a plan,
+// date, amount or task wording.
+export const isTrivia = (text: string, cited: readonly Unit[] = []): boolean =>
+  (AMBIENT.test(text) || REFLECTION.test(text)) && !hasNumber(text.replace(ORDINAL_PLACE, ' ')) && !INFINITIVE_START.test(text) &&
+  PAST_ANY.test([text, ...cited.map(unit => unit.text)].join(' ')) &&
+  substanceScore(text) < SUBSTANTIVE && cited.every(unit => substanceScore(unit.text) < SUBSTANTIVE);
 
 // In a rambling note, a point with no plan, decision, date or number is
-// narration; it goes unless that would leave too few points.
+// narration; in other long notes only trivia goes. Neither leaves a note with
+// too few points.
 const MIN_KEPT_POINTS = 3;
+const MIN_TRIVIA_UNITS = 12;
 export const dropNarration = (points: readonly SummaryPoint[], units: readonly Unit[]): SummaryPoint[] => {
-  if (!isRambling(units)) return [...points];
-  const kept = points.filter(point => substanceScore(point.text) >= SUBSTANTIVE);
+  const byId = new Map(units.map(unit => [unit.id, unit]));
+  const rambling = isRambling(units);
+  if (!rambling && units.length < MIN_TRIVIA_UNITS) return [...points];
+  const kept = points.filter(point => !(rambling ? isUnsubstantial(point, byId) : isTrivia(point.text, unitsOf(point, byId))));
   return kept.length >= MIN_KEPT_POINTS ? kept : [...points];
 };
 
@@ -397,8 +437,8 @@ const DATE_STRIP = rx(String.raw`(?:\s*,?\s*(?:w|we|na|do|od)?\s*(?:poniedziałe
 const MONTH_NAMES = String.raw`(?:stycznia|lutego|marca|kwietnia|maja|czerwca|lipca|sierpnia|września|października|listopada|grudnia)`;
 const WEEKDAY_PHRASE_SRC = String.raw`(?<![^\W\d_])(?:w|we)\s+(?:poniedziałek|wtorek|środę|czwartek|piątek|sobotę|niedzielę|weekend)(?:\s+(?:rano|wieczorem|po\s+południu|po\s+pracy))?(?![^\W\d_])`;
 const SPAN_PATTERNS = [
-  String.raw`(?:,\s*)?(?:(?:do|od|na|w|we|przed|po)\s+)?\d{1,2}(?:\.\d{1,2})?\s+${MONTH_NAMES}(?:\s+\d{4})?`,
-  String.raw`(?:,\s*)?(?:(?:o|od|do|około|ok\.|na)\s+)?\d{1,2}:\d{2}(?:\s*[–-]\s*\d{1,2}(?::\d{2})?)?`,
+  String.raw`(?:,\s*)?(?:(?<![^\W\d_])(?:do|od|na|w|we|przed|po)\s+)?\d{1,2}(?:\.\d{1,2})?\s+${MONTH_NAMES}(?:\s+\d{4})?`,
+  String.raw`(?:,\s*)?(?:(?<![^\W\d_])(?:o|od|do|około|ok\.|na)\s+)?\d{1,2}:\d{2}(?:\s*[–-]\s*\d{1,2}(?::\d{2})?)?`,
   String.raw`(?:,\s*)?\(\s*\d{1,2}\.\d{1,2}\.?\s*\)`,
 ];
 
@@ -560,6 +600,7 @@ const LEAD_FILLERS_PL = [
   String.raw`no\s+(?:więc|dobra|i|to|ale|tak|nic)`, 'dobra', 'okej', 'ok', String.raw`aha(?:\s+i)?(?:\s+jeszcze)?`, String.raw`i\s+jeszcze`, 'jeszcze',
   String.raw`a\s+propos(?:\s+\w+)?`, String.raw`swoją\s+drogą`, String.raw`w\s+ogóle`, 'generalnie', 'znaczy', 'tak', 'no', 'a', 'i', 'oraz',
   'czyli', String.raw`w\s+sumie`, 'ogólnie', 'ale', 'więc', String.raw`tak\s+serio`, 'serio', 'słuchaj', 'wiesz', 'kurczę', 'matko', String.raw`ostatnia\s+rzecz`, 'dalej', String.raw`chyba\s+wszystko`, String.raw`to\s+chyba\s+tyle`,
+  String.raw`ważne(?:\s+jest)?(?:\s+tylko)?(?:\s+to)?,?\s+że`, String.raw`jeszcze\s+jedno`, String.raw`co\s+jeszcze`,
   String.raw`i\s+ostatnia\s+rzecz`, String.raw`no\s+i\s+ostatnia\s+rzecz`, 'najważniejsze', String.raw`po\s+pierwsze`, String.raw`po\s+drugie`, String.raw`potem\s+jeszcze`,
 ];
 const LEAD_RE_PL = rx(`^(?:(?:${LEAD_FILLERS_PL.join('|')})\\s*[,:]?\\s+)+`, 'i');
@@ -608,6 +649,8 @@ export const cleanLiteral = (input: string, language: Language = 'pl', dropBo = 
     const trimmed = match.trim();
     return trimmed.startsWith(',') && trimmed.endsWith(',') ? ', ' : ' ';
   });
+  // "w niedzielę zadzwonię, tak, w niedzielę" -> "w niedzielę zadzwonię"
+  t = t.replace(/(\p{L}+(?:\s+\p{L}+){0,2})([^,.]*),\s*(?:tak|no),\s*\1(?![\p{L}])/giu, '$1$2');
   if (dropBo && pl) {
     // justification clauses without facts: ", bo <no digits/number words/names>"
     const upper = new RegExp(`[${UPPER}]`, 'u');
@@ -746,8 +789,8 @@ const DECISION_OPENER = rx(String.raw`^(?:postanowi(?:łem|łam|liśmy|łyśmy)|
 // "..., więc postanawiam od dzisiaj, że X": the decision is what follows.
 const DECISION_INSIDE = rx(String.raw`^[^.]{10,}?,\s*(?:więc\s+|i\s+)?(?:postanowiłem|postanowiłam|postanawiam|zdecydowałem|zdecydowałam)(?![^\W\d_])(?:\s*,)?(?:\s*,?\s+(?:dzisiaj|dziś|od\s+dzisiaj|od\s+dziś|teraz|już|ostatecznie))*\s*,?\s*(?:że\s+)?`, 'i');
 const MODAL_OPENER = rx(String.raw`^(?:muszę|musimy|mam|mamy|trzeba|powinienem|powinnam|powinniśmy)\s+(?:(?:jeszcze|też|także|koniecznie|kiedyś|na\s+pewno|w\s+końcu)\s+)?(?!(?:być|mieć)(?![^\W\d_]))([^\W\d_]{3,}ć)(?![^\W\d_])`, 'i');
-const FIRST_FUTURE = rx(String.raw`^([^\W\d_]{4,})ię(?![^\W\d_])`, 'i');
-const NOT_VERBS = new Set(['plemię', 'brzemię', 'strzemię', 'nasienię']);
+const FIRST_FUTURE = rx(String.raw`^([^\W\d_]{3,})ię(?![^\W\d_])`, 'i');
+const NOT_VERBS = new Set(['ramię', 'wymię', 'plemię', 'brzemię', 'strzemię', 'nasienię']);
 const FIRST_PERSON_NEGATED = rx(String.raw`(?<![^\W\d_])nie\s+([^\W\d_]{4,})am(?![^\W\d_])`, 'gi');
 const WEEKDAY_ACCUSATIVE: readonly (readonly [RegExp, string])[] = [
   [/^poniedział\p{L}*$/iu, 'poniedziałek'], [/^wtor\p{L}*$/iu, 'wtorek'], [/^środ\p{L}*$/iu, 'środę'],
@@ -768,17 +811,65 @@ const firstPersonFuture = (text: string, noteWords: ReadonlySet<string>): { infi
   return infinitive ? { infinitive, length: first.length } : null;
 };
 
+// "Pomyślałem, że kupię nowy" -> "kupię nowy": the thinking is not the content.
+const THOUGHT_OPENER = rx(String.raw`^(?:wiem|przypomniało\s+mi\s+się|pomyślał(?:em|am)|myślał(?:em|am)|stwierdził(?:em|am)|uznał(?:em|am)|doszedłem\s+do\s+wniosku|zdałem\s+sobie\s+sprawę)\s*,?\s+(?:że\s+)?(?=\S)`, 'i');
+// "Przypomnij mi, żebym jutro oddzwonił" -> "Jutro oddzwonić".
+const REQUEST_OPENER = rx(String.raw`^(?:przypomnij|przypomnisz)\s+(?:mi|nam)\s*,?\s*(?:żebym|żebyśmy|żeby|abym)\s+|^(?:pamiętaj|pamiętajcie)\s*,?\s*(?:żebym|żebyśmy|żeby|abym)\s+`, 'i');
+const PAST_TO_INFINITIVE = rx(String.raw`^((?:[^\W\d_]+\s+){0,3}?)([^\W\d_]{4,}?)(?:ł|ła|łem|łam|liśmy|łyśmy)(?![^\W\d_])`, 'i');
+const IRREGULAR_PAST = /^(?:mog|pomog|przysz|posz|wysz|zasz|dosz|wiozł|zawioz|przywioz|pomóg|móg)/iu;
+const requestToTask = (input: string): string => {
+  const m = REQUEST_OPENER.exec(input);
+  if (!m) return input;
+  const rest = input.slice(m[0].length);
+  const past = PAST_TO_INFINITIVE.exec(rest);
+  if (!past || IRREGULAR_PAST.test(past[2])) return capitalize(rest);
+  return capitalize(`${past[1]}${past[2]}ć${rest.slice(past[0].length)}`);
+};
+
+const SUBJECT_BEFORE_MODAL = rx(String.raw`^(?:to\s+)?(?:ja|my)\s+(?=(?:mam|muszę|mamy|musimy|trzeba)(?![^\W\d_]))`, 'i');
+const CLITICS = String.raw`(?:(?:mu|jej|go|ją|je|im|się|to|ich|mi|nam|sobie)\s+){0,2}`;
+// "W sobotę rano mam mu ją oddać, ..." / "W niedzielę zadzwonię do babci" -> the task first, the time after it.
+const TIME_LEAD = rx(String.raw`^((?:w|we|do|na|od|przed|po|jutro|dziś|dzisiaj|pojutrze|wieczorem|rano|potem|później|jeszcze)(?:\s+[^\W\d_]+){0,2}?)\s+(?:(?:muszę|musimy|mam|mamy|trzeba)\s+(${CLITICS})([^\W\d_]{3,}ć)|([^\W\d_]{4,}ię))(?![^\W\d_])([\s\S]*)$`, 'i');
+// "Pracuję zdalnie, muszę przesunąć dwa spotkania" -> "Pracuję zdalnie – przesunąć dwa spotkania".
+const FACT_THEN_MODAL = rx(String.raw`^([^\W\d_]+(?:ę|m)(?:\s+[^\W\d_]+){0,2}),\s*(?:muszę|musimy|mam|mamy|trzeba)\s+(?!(?:być|mieć)(?![^\W\d_]))(${CLITICS}[^\W\d_]{3,}ć)(?![^\W\d_])([\s\S]*)$`, 'i');
+const timeFirst = (m: RegExpExecArray): string => {
+  const verb = m[3] ?? `${m[4].slice(0, -2)}ić`;
+  const clitics = m[3] ? m[2].trim() : '';
+  const head = m[5].split(',')[0];
+  const tail = m[5].slice(head.length);
+  return capitalize(`${verb}${clitics ? ` ${clitics}` : ''}${head} ${m[1].charAt(0).toLowerCase()}${m[1].slice(1)}${tail}`);
+};
+
+// "przypomnieć Oli, że nie zapomniała" -> "przypomnieć Oli, żeby nie zapomniała".
+const REMIND_THAT_NOT = rx(String.raw`((?:przypomnieć|upewnić\s+się|dopilnować|zadbać)(?:\s+[^\W\d_]+)?,)\s+że\s+(nie\s+[^\W\d_]+(?:ł|ła|li|ły)(?![^\W\d_]))`, 'gi');
+// A word the model cut short ("matematycz") is completed from the note.
+const completeTruncated = (text: string, noteWords: ReadonlySet<string>): string =>
+  text.replace(/(?<![\p{L}])\p{L}{6,}(?![\p{L}])/gu, word => {
+    const lower = word.toLowerCase();
+    if (noteWords.has(lower)) return word;
+    const longer = [...noteWords].filter(w => w.length > lower.length && w.length - lower.length <= 4 && w.startsWith(lower)).sort((a, b) => a.length - b.length)[0];
+    return longer === undefined ? word : `${word}${longer.slice(lower.length)}`;
+  });
+
 export const impersonalize = (input: string, noteWords: ReadonlySet<string>): string => {
   let text = input.replace(/ть(?![\p{L}])/gu, 'ć').replace(/[аеорсху]/gu, c => CYRILLIC_TWINS[c] ?? c);
   // "nie składaj" where the speaker said "nie składam"
   text = text.replace(/(?<![\p{L}])([\p{L}]{4,})aj(?![\p{L}])/gu, (match, stem: string) =>
     (!noteWords.has(match.toLowerCase()) && noteWords.has(`${stem.toLowerCase()}am`) ? `${stem}am` : match));
+  text = capitalize(requestToTask(text).replace(THOUGHT_OPENER, '').replace(SUBJECT_BEFORE_MODAL, ''));
+  text = text.replace(REMIND_THAT_NOT, '$1 żeby $2');
+  text = completeTruncated(text, noteWords);
   const decision = DECISION_OPENER.exec(text) ?? DECISION_INSIDE.exec(text);
   if (decision && text.length > decision[0].length + 8) {
     text = `Decyzja: ${text.slice(decision[0].length)}`;
   } else if (!/^decyzja:/iu.test(text)) {
     const modal = MODAL_OPENER.exec(text);
+    const lead = TIME_LEAD.exec(text);
+    const leadOk = lead !== null && !(lead[4] && NOT_VERBS.has(lead[4].toLowerCase()));
+    const afterFact = FACT_THEN_MODAL.exec(text);
     if (modal) text = capitalize(modal[1]) + text.slice(modal[0].length);
+    else if (lead && leadOk) text = timeFirst(lead);
+    else if (afterFact) text = `${afterFact[1]} – ${afterFact[2]}${afterFact[3]}`;
     else {
       const future = FIRST_FUTURE.exec(text);
       const infinitive = firstPersonFuture(text, noteWords);
@@ -817,8 +908,12 @@ const clauseWeight = (clause: string): number =>
   (COMMITMENT.test(clause) || PLAN_SIGNAL.test(clause) ? 2 : 0) + (hasDate(clause) ? 1 : 0) + (hasNumber(clause) ? 1 : 0) +
   (NEG.test(clause) || HEDGE_PLAIN.test(clause) ? 0.5 : 0) + (new RegExp(`[${UPPER}]`, 'u').test(clause.slice(1)) ? 0.5 : 0);
 const TRAILING_WAIT = rx(String.raw`^(?:zobaczymy|zobaczę|pomyślę|zobaczy\s+się)(?![^\W\d_])`, 'i');
+// Attendance and duration of a meeting are not what was decided in it.
+const MEETING_META = rx(String.raw`^(?:więc\s+)?(?:spisuję|notuję|nagrywam|zapisuję)(?![^\W\d_])|^zanim\s+(?:mi\s+umknie|zapomnę)|^(?:było|byliśmy|byli)\s+nas\b|^trwał[oa]\s+(?:dobrą\s+|ponad\s+)?(?:godzinę|\d)`, 'i');
 export const shortenLiteral = (input: string): string => {
-  const clauses = input.replace(/[.]+$/u, '').split(/(?<=,)\s+/u);
+  const all = input.replace(/[.]+$/u, '').split(/(?<=,)\s+/u);
+  const clauses = all.length > 1 ? all.filter(clause => !MEETING_META.test(clause.replace(/,$/u, ''))) : all;
+  if (clauses.length && clauses[clauses.length - 1] !== all[all.length - 1]) clauses[clauses.length - 1] = clauses[clauses.length - 1].replace(/,$/u, '');
   // "..., zobaczymy czy coś to zmieni" adds nothing to a decision.
   if (clauses.length > 2 && TRAILING_WAIT.test(clauses[clauses.length - 1])) clauses.pop();
   const trimmed = clauses.join(' ').replace(/[,;]+$/u, '');
@@ -842,6 +937,28 @@ export const shortenLiteral = (input: string): string => {
   const kept = clauses.slice(from, to + 1).join(' ').replace(LEADING_CONNECTIVE, '');
   return stripChars(kept, ' ,;');
 };
+
+// A note with fewer sentences than the model needs is the speaker's own words,
+// compacted: fillers stripped, requests turned into tasks, hearsay introductions
+// and "for me" removed, and side remarks dropped next to a sentence with substance.
+const HEARSAY = rx(String.raw`,?\s*bo\s+(?:mówił[a]?|powiedział[a]?|twierdzi\w*|mówi|pisał[a]?),?\s+że\s+`, 'gi');
+const FOR_ME = rx(String.raw`\s+dla\s+(?:mnie|nas)(?![^\W\d_])`, 'gi');
+const shortNoteLiterals = (units: readonly Unit[], language: Language): WorkPoint[] => {
+  const pl = language === 'pl';
+  const noteWords = new Set(units.flatMap(unit => words(unit.text)));
+  const strong = pl && units.some(unit => substanceScore(unit.text) >= SUBSTANTIVE);
+  const kept = strong ? units.filter(unit => substanceScore(unit.text) >= MIN_LITERAL_SUBSTANCE) : units;
+  return kept.map(unit => {
+    let text = cleanLiteral(pl ? unit.text.replace(HEARSAY, ' – ').replace(FOR_ME, '') : unit.text, language);
+    if (pl) {
+      text = capitalize(impersonalize(fixVocative(convert(text, language), noteWords), noteWords));
+    }
+    return { text: pl ? text : convert(text, language), sourceIds: [unit.id], literal: true };
+  }).filter(point => point.text.length > 0);
+};
+
+// A finished first-person action ("Kupiłam probiotyk") leaves nothing to do.
+const FIRST_PERSON_DONE = rx(String.raw`^[^\W\d_]{3,}(?:łem|łam)(?![^\W\d_])`, 'i');
 
 // Validate every point; repair what can be repaired; a point that still fails
 // is dropped when its sentences are already covered, otherwise replaced by the
@@ -870,6 +987,8 @@ export const finalizePoints = (
     const literal = language === 'pl' ? capitalize(shortenLiteral(impersonalize(quoted, noteWords))) : quoted;
     // Narration with nothing to act on is not worth quoting.
     if (language === 'pl' && (rambling || REFLECTION.test(literal)) && substanceScore(literal) < MIN_LITERAL_SUBSTANCE) continue;
+    if (language === 'pl' && isTrivia(literal, rest.flatMap(id => byId.get(id) ?? []))) continue;
+    if (language === 'pl' && FIRST_PERSON_DONE.test(literal) && substanceScore(literal) < SUBSTANTIVE) continue;
     if (language === 'pl' && (isMetaPoint(literal) || isPromptEcho(reject.text))) continue;
     kept.push({ text: literal, sourceIds: rest.slice(0, 2), literal: true, replaced: reject.text, issues: reject.issues });
     for (const id of rest.slice(0, 2)) covered.add(id);
@@ -896,8 +1015,6 @@ const orderPoints = (points: readonly WorkPoint[]): WorkPoint[] => {
 const RECOVER_SHARE = 0.15;
 const BIG_NUMBER = 10;
 const hasDate = (text: string): boolean => DATE_SEARCH.some(pattern => pattern.test(text));
-const hasNumber = (text: string): boolean => /\d/u.test(text) || statedNumbers(text).size > 0;
-const PAST_ANY = rx(String.raw`(?<![^\W\d_])\w{2,}(?:ł|ła|ło|li|ły|łem|łam|liśmy|łyśmy|liście)(?![^\W\d_])`, 'i');
 const COMMITMENT = rx(String.raw`(?<![^\W\d_])(?:postanowi(?:ł\w*|my|ć)|postanaw\w*|zdecyduj\w*|musz\w*|musi\w*|trzeba|mam(?:y)?\s+(?:\w+\s+){0,2}\w+ć|powinn?\w*|zamierz\w*|planuj\w*|termin\w*)(?![^\W\d_])`, 'i');
 // Obligations and decisions, or a dated event that is not a story about the past.
 export const isEventUnit = (text: string): boolean => {
@@ -1129,15 +1246,15 @@ export const generatePointSummaryDetailed = async (
   let rejected: RejectedPoint[] = [];
   if (units.length < options.minUnitsForModel) {
     // Nothing to compress: the speaker's own words, cleaned.
-    finalPoints = units.map(unit => ({
-      text: convert(cleanLiteral(unit.text, language), language), sourceIds: [unit.id], literal: true,
-    })).filter(point => point.text.length > 0);
+    finalPoints = shortNoteLiterals(units, language);
   } else {
     const system = pointSummarySystem(language, options.promptVariant);
     let cut = false;
-    const rambling = isRambling(units);
-    const noteWeight = units.reduce((sum, unit) => sum + unitWeight(unit, rambling), 0);
-    for (const chunk of splitIntoChunks(units, options.chunkMaxUnits)) {
+    const unnarrated = units.filter(unit => !isNarrated(unit));
+    const rambling = isRambling(units) && unnarrated.length >= options.minUnitsForModel;
+    const shown = rambling ? unnarrated : units;
+    const noteWeight = shown.reduce((sum, unit) => sum + unitWeight(unit, rambling), 0);
+    for (const chunk of splitIntoChunks(shown, options.chunkMaxUnits)) {
       throwIfProcessingAborted(execution);
       const weightOf = (list: readonly Unit[]): number => list.reduce((sum, unit) => sum + unitWeight(unit, rambling), 0);
       const maxPoints = Math.max(rambling ? 2 : 3, Math.round(options.pointsForNote(Math.round(noteWeight)) * weightOf(chunk) / noteWeight));
