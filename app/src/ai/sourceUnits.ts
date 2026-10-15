@@ -89,7 +89,7 @@ const STRONG_STARTS: readonly (readonly string[])[] = [
   ["po", "pierwsze"], ["po", "drugie"], ["po", "trzecie"], ["po", "czwarte"], ["po", "piąte"],
   ["a", "poza", "tym"], ["poza", "tym"], ["a", "propos"], ["no", "i"], ["no", "więc"],
   ["aha"], ["dobra"], ["okej"], ["ok"], ["potem"], ["następnie"], ["na", "koniec"], ["na", "początek"],
-  ["i", "jeszcze"], ["kolejna", "rzecz"], ["kolejne"], ["tak", "czy", "inaczej"],
+  ["i", "jeszcze"], ["kolejna", "rzecz"], ["kolejna", "sprawa"], ["tak", "czy", "inaczej"],
   ["uwaga"], ["jeszcze", "jedna", "rzecz"], ["ostatnia", "rzecz"],
 ];
 const DANGLING_END = /^(?:i|w|we|na|z|ze|do|od|po|za|o|u|nad|pod|przy|bez|dla|przez|oraz|albo|lub|a|ale|bo|nie|że|jak|ten|ta|te|tę|to|ma|mam|mój|moje)$/iu;
@@ -138,6 +138,18 @@ const boundaryScore = (index: number, raw: readonly string[], norm: readonly str
   return 0;
 };
 
+// "wypłata za nowych Za polecone firmy nie za nowe": the right side corrects the
+// last words of the left one, so both must stay in one statement.
+const CORRECTION_SKIP = /^(?:za|do|na|w|we|z|ze|o|od|u|dla|po|przy|tylko|tak|to|ten|ta|te)$/iu;
+const correctsLeft = (left: string, right: string): boolean => {
+  const tail = (left.toLowerCase().match(/\p{L}{3,}/gu) ?? []).slice(-3).map((word) => word.slice(0, 3));
+  const after: string[] = right.toLowerCase().match(/\p{L}+/gu) ?? [];
+  const nie = after.indexOf("nie");
+  if (nie < 0) return false;
+  const target = after.slice(nie + 1).find((word) => !CORRECTION_SKIP.test(word));
+  return target !== undefined && target.length >= 3 && tail.includes(target.slice(0, 3));
+};
+
 const deterministicEnds = (content: string): number[] | null => {
   if (!needsSourceUnitPlan(content)) return null;
   const words = [...content.matchAll(/\S+/gu)];
@@ -157,7 +169,7 @@ const deterministicEnds = (content: string): number[] | null => {
     if (!wanted || DANGLING_END.test(norm[index - 1])) continue;
     const left = content.slice(words[segment].index, wordEnd(index - 1));
     const right = content.slice(words[index].index, wordEnd(Math.min(words.length - 1, index + 3)));
-    if (unsafeBoundary(left, right)) continue;
+    if (unsafeBoundary(left, right) || correctsLeft(left, content.slice(words[index].index, wordEnd(Math.min(words.length - 1, index + 7))))) continue;
     cuts.push(index);
     segment = index;
   }

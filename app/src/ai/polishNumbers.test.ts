@@ -1,4 +1,5 @@
 import {
+  mergedPercentForPrompt,
   spokenClockForPrompt,
   numberWordValue,
   numberSpans,
@@ -263,4 +264,10 @@ describe('spoken clock for prompts', () => {
     expect(spokenClockForPrompt('siedziałem do dwudziestej 2 nad testami')).toBe('siedziałem do dwudziestej 2 nad testami');
     expect(spokenClockForPrompt('rozdział drugi do czwartku')).toBe('rozdział drugi do czwartku');
   });
+});
+
+test('splits a recognizer-merged amount and percent for the model', () => {
+  expect(mergedPercentForPrompt('mamy 12 025% dla nich')).toBe('mamy 12 000, 25% dla nich');
+  expect(mergedPercentForPrompt('stałych 25% czyli')).toBe('stałych 25% czyli');
+  expect(mergedPercentForPrompt('kosztuje 3 000 zł')).toBe('kosztuje 3 000 zł');
 });

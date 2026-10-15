@@ -300,3 +300,9 @@ test('keeps a course name with the classes it names', () => {
   const units = sourceUnitsFromPlan(speech, deterministicSourceUnitPlan(speech)!).map(unit => unit.text);
   expect(units.some(unit => unit.includes('zajęcia Jakość'))).toBe(true);
 });
+
+test('a spoken correction stays with the words it corrects', () => {
+  const speech = 'Wcześniej pomysł na 50% w pierwszym roku ale przy stałych 25% wychodzi podobnie więc nie ma sensu robić czegoś takiego i żeby od początku było że będzie wypłata za nowych Za polecone firmy nie za nowe Trzeba się dowiedzieć ile kosztuje jedno stanowisko na rok';
+  const units = sourceUnitsFromPlan(speech, deterministicSourceUnitPlan(speech)!).map(unit => unit.text);
+  expect(units.some(unit => unit.includes('wypłata za nowych Za polecone firmy nie za nowe'))).toBe(true);
+});

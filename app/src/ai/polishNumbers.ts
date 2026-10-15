@@ -195,3 +195,10 @@ export const spokenClockForPrompt = (text: string): string => {
   out.push(text.slice(last));
   return out.join('');
 };
+
+// "12 025%" is a recognizer merging "12 000" and "25%"; no note means 12025 percent.
+export const mergedPercentForPrompt = (text: string): string =>
+  text.replace(/(?<!\d[   ]?)(\d{1,3})[   ]0(\d{2})%/gu, '$1 000, $2%');
+
+// Everything the model sees instead of the raw recognizer wording.
+export const promptView = (text: string): string => mergedPercentForPrompt(spokenClockForPrompt(text));

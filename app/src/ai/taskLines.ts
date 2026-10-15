@@ -2,7 +2,7 @@ import type { Language } from '../i18n/language'
 import { recordGeneration } from './generationMetrics'
 import { generate, getContextWindowSize, measureFormattedPromptTokens } from './llm'
 import { throwIfProcessingAborted, type ProcessingExecutionContext } from './processingContext'
-import { numberSpans, spokenClockForPrompt } from './polishNumbers'
+import { numberSpans, promptView } from './polishNumbers'
 import { noteSourceSystem, sourceFirstPrompt } from './sharedSourcePrompt'
 
 // Single-call task extractor: one batched pass over the candidate sentences of
@@ -1389,6 +1389,16 @@ export const dativeName = (t: TaskDraft): TaskDraft => {
   return t
 }
 
+// A task copied with its whole sentence: keep the first action up to a later "i/a/ale".
+const MAX_TASK_WORDS = 12
+export const trimLongTitle = (t: TaskDraft): TaskDraft => {
+  const words = t.title.split(/\s+/u)
+  if (words.length <= MAX_TASK_WORDS) return t
+  const cut = words.findIndex((word, index) => index >= 5 && /^(?:i|a|ale|bo|oraz)$/iu.test(word))
+  const kept = (cut > 0 ? words.slice(0, cut) : words.slice(0, MAX_TASK_WORDS)).join(' ').replace(/\s+na\s+pewno(?=\s|$)/iu, '')
+  return { ...t, title: kept.replace(/[\s,;:]+$/u, '') }
+}
+
 export const postprocessTaskLines = (raw: readonly TaskDraft[], units: readonly Unit[]): GuardResult => {
   const rejected: RejectedTask[] = []
   const take = (step: GuardResult): TaskDraft[] => {
@@ -1409,7 +1419,7 @@ export const postprocessTaskLines = (raw: readonly TaskDraft[], units: readonly 
   tasks = take(supersededFilter(tasks, units)).map((t) => applyNextSentenceFix(dueFromOwnSentence(t, units), units))
   tasks = take(cancelledFilter(tasks, units))
   tasks = tasks.map((t) =>
-    completeObjectClause(dativeName(perfective(dueFromSentenceLead(withWeekday(recoverAmount(repairVerb(dropClosingDue(t, units), units), units), units), units))), units),
+    trimLongTitle(completeObjectClause(dativeName(perfective(dueFromSentenceLead(withWeekday(recoverAmount(repairVerb(dropClosingDue(t, units), units), units), units), units))), units)),
   )
   return { kept: dedupeTasks(mergeVague(tasks)), rejected }
 }
@@ -1666,12 +1676,12 @@ export const extractTaskLines = async (
   const candidates = limitCandidates(selectCandidates(units.filter((unit) => !nominalIds.has(unit.id))), candidateLimit(units))
   if (!candidates.length && !nominal.length) return emptyResult()
   const system = noteSourceSystem(language)
-  const numbered = units.map((unit) => `[${unit.id}] ${spokenClockForPrompt(unit.text)}`).join('\n')
+  const numbered = units.map((unit) => `[${unit.id}] ${promptView(unit.text)}`).join('\n')
   const head = `${TASK_LINES_PROMPT}\n\nTeraz zdania tej notatki.\nZDANIA:\n`
   const promptFor = (batch: readonly Unit[], partial: string | null): string =>
     sourceFirstPrompt(
       numbered,
-      `${head}${batch.map((unit) => `[${unit.id}] ${spokenClockForPrompt(unit.text)}`).join('\n')}\n${partial ? continuationHint(partial) : ''}ODPOWIEDŹ:\n`,
+      `${head}${batch.map((unit) => `[${unit.id}] ${promptView(unit.text)}`).join('\n')}\n${partial ? continuationHint(partial) : ''}ODPOWIEDŹ:\n`,
     )
   const maxOutput = isLongNote(units) ? MAX_OUTPUT_TOKENS_LONG : MAX_OUTPUT_TOKENS
   const warnings: string[] = []

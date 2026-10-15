@@ -2,7 +2,7 @@ import type { SummaryDocument } from '../domain/summary';
 import type { Language } from '../i18n/language';
 import { recordGeneration } from './generationMetrics';
 import { generate } from './llm';
-import { numberWordValue, pointNumbers, spokenClockForPrompt, statedNumbers, wordsToDigits } from './polishNumbers';
+import { numberWordValue, pointNumbers, promptView, spokenClockForPrompt, statedNumbers, wordsToDigits } from './polishNumbers';
 import { throwIfProcessingAborted, type ProcessingExecutionContext } from './processingContext';
 import { noteSourceSystem, sourceFirstPrompt } from './sharedSourcePrompt';
 import { documentFromSummaryDraft } from './summaryProtocol';
@@ -925,7 +925,7 @@ const tidy = (text: string, language: Language): string => {
 // "do piątku, 23" -> "do piątku 23" (the month was never spoken).
 const WEEKDAY_COMMA_DAY = rx(String.raw`(?<![^\W\d_])((?:poniedział|wtor|środ|czwart|piąt|sobot|niedziel)[^\W\d_]*)\s*,\s*(\d{1,2})(?![\d:.])`, 'gi');
 const convert = (text: string, language: Language): string =>
-  (language === 'pl' ? wordsToDigits(spokenClockForPrompt(text)).replace(WEEKDAY_COMMA_DAY, '$1 $2') : text);
+  (language === 'pl' ? wordsToDigits(promptView(text)).replace(WEEKDAY_COMMA_DAY, '$1 $2') : text);
 
 // "Kubo" -> "Kuba": a capitalised word in -o that the note only has in -a.
 const fixVocative = (text: string, noteWords: ReadonlySet<string>): string =>
@@ -1568,7 +1568,7 @@ export const generatePointSummaryDetailed = async (
       const share = options.pointsForNote(Math.round(noteWeight)) * weightOf(chunk) / noteWeight;
       const maxPoints = Math.max(rambling ? 2 : 3, chunks.length > 1 ? Math.ceil(share * CHUNK_ASK_FACTOR) : Math.round(share));
       const nPredict = outputTokensFor(maxPoints);
-      const shown = language === 'pl' ? chunk.map(unit => ({ ...unit, text: spokenClockForPrompt(unit.text) })) : chunk;
+      const shown = language === 'pl' ? chunk.map(unit => ({ ...unit, text: promptView(unit.text) })) : chunk;
       const prompt = sourceFirstPrompt(renderSummarySources(shown), pointSummaryInstructions(language, maxPoints, options.promptVariant));
       const result = await generate(prompt, () => undefined, {
         system, nPredict, temperature: 0.1, topP: 0.8, topK: 20, minP: 0, ...(execution?.signal ? { signal: execution.signal } : {}),

@@ -6,6 +6,7 @@ import {
   dueFromSentenceLead,
   continuationHint,
   modalTask,
+  trimLongTitle,
   cutLine,
   withWeekday,
   dativeName,
@@ -800,4 +801,11 @@ test('modal duty recovery keeps only the plain present duty of the speaker', () 
   expect(modalTask({ id: 2, text: 'Nie muszę kupować biletu' })).toBeNull()
   expect(modalTask({ id: 3, text: 'Może trzeba będzie kiedyś zmienić opony' })).toBeNull()
   expect(modalTask({ id: 4, text: 'Muszę to dzisiaj przejrzeć' })).toBeNull()
+})
+
+test('a task copied with its whole sentence keeps its first action', () => {
+  const t = (title: string) => ({ title, due: null, sourceIds: [1], modelIds: [] })
+  expect(trimLongTitle(t('Dowiedzieć się na pewno ile kosztuje na 1 stanowisko na rok i ile chcą za każde kolejne mówimy o kwotach')).title)
+    .toBe('Dowiedzieć się ile kosztuje na 1 stanowisko na rok')
+  expect(trimLongTitle(t('Kupić mleko i chleb')).title).toBe('Kupić mleko i chleb')
 })
