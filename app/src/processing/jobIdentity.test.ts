@@ -16,8 +16,8 @@ test('metadata-only source revisions invalidate paused and ready jobs in the cur
   expect(JSON.parse(identity)).toMatchObject({ summaryDocument: document })
   const changed = { ...input, summaryDocument: { ...document, points: [{ text: 'Friday.', sources: [{ start: 8, end: 15 }] }] } }
   for (const status of ['paused', 'ready', 'pending']) {
-    const job = { source: identity, model: 'qwen', pipeline: 'point-summary-v46', status }
-    expect(isReusableJob(job, jobSourceIdentity(changed), 'qwen', 'point-summary-v46')).toBe(false)
+    const job = { source: identity, model: 'qwen', pipeline: 'point-summary-v47', status }
+    expect(isReusableJob(job, jobSourceIdentity(changed), 'qwen', 'point-summary-v47')).toBe(false)
     expect(isReusableJob(job, identity, 'qwen', 'old-pipeline')).toBe(false)
   }
   expect(jobSourceIdentity({ ...input, summaryDocument: undefined })).toBe(jobSourceIdentity({ ...input, summaryDocument: null }))

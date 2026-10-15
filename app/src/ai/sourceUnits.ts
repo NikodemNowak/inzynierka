@@ -102,10 +102,12 @@ const FIRST_PRESENT = /^\p{L}{3,}uję$/u;
 const NUMBER_WORD = /^(?:\d+(?::\d+)?|jeden|jedna|jedno|dwa|dwie|trzy|cztery|pięć|sześć|siedem|osiem|dziewięć|dziesięć|\p{L}+naście|\p{L}*dzieści|\p{L}*dziesiąt|sto|dwieście|\p{L}*set|tysiąc\p{L}*|(?:pierwsz|drug|trzeci|ósm|siódm|szóst|dziewiąt|dziesiąt|\p{L}+nast|dwudziest|trzydziest)\p{L}*)$/iu;
 const WEEKDAY = /^(?:poniedziałek|wtorek|środę|środa|czwartek|piątek|sobotę|sobota|niedzielę|niedziela|weekend)$/iu;
 const TIME_STARTS = new Set(["jutro", "pojutrze", "dzisiaj", "dziś", "wczoraj", "później", "potem"]);
-const PRONOUN_STARTS = new Set(["on", "ona", "oni", "one", "trzeba"]);
+const PRONOUN_STARTS = new Set(["on", "ona", "oni", "one"]);
+const DUTY_AFTER_CONJUNCTION = new Set(["muszę", "musimy", "trzeba", "mam", "jeszcze"]);
 const WEAK_STARTS = new Set(["a", "ale", "więc", "wtedy", "dalej", "czyli"]);
 const SOFT_STARTS = new Set(["albo", "lub", "bo", "ponieważ", "jeszcze"]);
-const REPORT_NEXT = new Set(["też", "także", "że", "żebym", "żeby", "mi", "mnie", "nam", "jeszcze", "wtedy"]);
+const NAMED_AFTER = /^(?:zajęci\p{L}*|wykład\p{L}*|kurs\p{L}*|przedmiot\p{L}*|ćwiczeni\p{L}*|laboratori\p{L}*|lab|projekt\p{L}*|egzamin\p{L}*|kolokwi\p{L}*|firm\p{L}*|ulic\p{L}*|sklep\p{L}*|aplikacj\p{L}*|program\p{L}*|szkoł\p{L}*|szpital\p{L}*|restauracj\p{L}*|hotel\p{L}*|kawiarni\p{L}*|pan|pani|panem|panią|doktor\p{L}*|dr|mgr)$/u;
+const REPORT_NEXT =new Set(["też", "także", "że", "żebym", "żeby", "mi", "mnie", "nam", "jeszcze", "wtedy"]);
 const TIME_TAIL = /^(?:o|około|rano|wieczorem|jutro|dzisiaj|dziś|wczoraj)$/iu;
 
 // How strongly a new statement seems to begin at this word (0 = no cue).
@@ -116,6 +118,8 @@ const boundaryScore = (index: number, raw: readonly string[], norm: readonly str
   // "dwa Terabajt", "dwudziestej 2": a number keeps its unit or second part.
   if (NUMBER_WORD.test(previous) && (NUMBER_WORD.test(norm[index]) || CAPITALIZED.test(raw[index]))) return 0;
   // "zadzwoniła Ola": a name right after a past verb is its subject.
+  // "zajęcia Jakość oprogramowania": a capital after such a noun starts its name.
+  if (CAPITALIZED.test(raw[index]) && NAMED_AFTER.test(previous)) return 0;
   if (CAPITALIZED.test(raw[index]))
     return raw[index].length > 2 && !TIME_STARTS.has(norm[index]) && /\p{L}{2,}(?:ł|ła|ło|li|ły)$/u.test(previous) ? 0 : 4;
   // "o 10:30 spotkałem się": the time before the verb belongs to its clause.
@@ -126,7 +130,10 @@ const boundaryScore = (index: number, raw: readonly string[], norm: readonly str
   if (TIME_STARTS.has(norm[index]) || PRONOUN_STARTS.has(norm[index]) || norm[index] === "muszę" || norm[index] === "musimy") return 2;
   // "poprosił też żebym…": another person's past verb starts a report.
   if (/^\p{L}{3,}(?:ł|ła|li|ły)$/u.test(norm[index]) && !afterTime && REPORT_NEXT.has(norm[index + 1] ?? "")) return 1;
+  // "ale muszę jeszcze to dzisiaj przejrzeć": a new duty, not a qualifier of the last one.
+  if (["ale", "a", "i", "więc"].includes(norm[index]) && DUTY_AFTER_CONJUNCTION.has(norm[index + 1] ?? "")) return 2;
   if (WEAK_STARTS.has(norm[index])) return 1;
+  if (norm[index] === "trzeba") return 0.5;
   if (SOFT_STARTS.has(norm[index])) return 0.5;
   return 0;
 };

@@ -294,3 +294,9 @@ describe('unpunctuated recognizer transcript', () => {
     expect(units.some(unit => unit.startsWith('Terabajt'))).toBe(false);
   });
 });
+
+test('keeps a course name with the classes it names', () => {
+  const speech = 'Jutro mam na godzinę ósmą chyba 30 zajęcia Jakość jakąś tam oprogramowania z panem mgr trzeba pokazać plany testów jest to w miarę przygotowane ale muszę jeszcze to dzisiaj przejrzeć i dopracować Poza tym O osiemnastej jutro jadę do psychologa';
+  const units = sourceUnitsFromPlan(speech, deterministicSourceUnitPlan(speech)!).map(unit => unit.text);
+  expect(units.some(unit => unit.includes('zajęcia Jakość'))).toBe(true);
+});

@@ -5,6 +5,7 @@ import {
   completeObjectClause,
   dueFromSentenceLead,
   continuationHint,
+  modalTask,
   cutLine,
   withWeekday,
   dativeName,
@@ -494,7 +495,9 @@ describe('extractTaskLines', () => {
     measure.mockImplementation(async ({ userPrompt }) => 5000 + 80 * (userPrompt.split('ZDANIA:\n')[2]!.split('\n').length - 1));
     model.mockResolvedValue(reply(`[1] Kupić ${word(1)}\n[40] Kupić ${word(40)}\n[99] Kupić ${word(99)}`));
     const result = await extractTaskLines(many, 'pl');
-    expect(result.tasks.map(task => task.sourceIds)).toEqual([[1], [40]]);
+    expect(result.tasks.some(task => task.sourceIds.includes(99))).toBe(false);
+    // Sentences the model skipped come back from their own "muszę + verb + object".
+    expect(result.tasks.map(task => task.sourceIds[0])).toEqual(many.map(unit => unit.id));
   });
 
   test('warns when even one sentence does not fit', async () => {
@@ -508,7 +511,8 @@ describe('extractTaskLines', () => {
     model.mockResolvedValue(reply('[2] Oddać raport — do czwartku\n[5] Zapłacić za int', true));
     const result = await extractTaskLines(noteUnits, 'pl');
     expect(model).toHaveBeenCalledTimes(2);
-    expect(result.tasks).toHaveLength(1);
+    // The unanswered "Trzeba zapłacić za internet" is recovered from its own wording.
+    expect(result.tasks.map(task => task.title)).toEqual(['Oddać raport', 'Zapłacić za internet 60 zł']);
     expect(result.warnings).toHaveLength(1);
   });
 
@@ -788,4 +792,12 @@ describe('relative day in clock dues', () => {
     expect(withWeekday(t('jutro 18:00'), u).due).toBe('jutro 18:00')
     expect(withWeekday(t('7'), u).due).toBe('7')
   })
+})
+
+test('modal duty recovery keeps only the plain present duty of the speaker', () => {
+  expect(modalTask({ id: 1, text: 'Jutro mam zajęcia trzeba pokazać plany testów jest to gotowe' })?.title).toBe('Pokazać plany testów')
+  expect(modalTask({ id: 1, text: 'Jutro mam zajęcia trzeba pokazać plany testów' })?.due).toBe('jutro')
+  expect(modalTask({ id: 2, text: 'Nie muszę kupować biletu' })).toBeNull()
+  expect(modalTask({ id: 3, text: 'Może trzeba będzie kiedyś zmienić opony' })).toBeNull()
+  expect(modalTask({ id: 4, text: 'Muszę to dzisiaj przejrzeć' })).toBeNull()
 })

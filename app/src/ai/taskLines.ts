@@ -2,7 +2,7 @@ import type { Language } from '../i18n/language'
 import { recordGeneration } from './generationMetrics'
 import { generate, getContextWindowSize, measureFormattedPromptTokens } from './llm'
 import { throwIfProcessingAborted, type ProcessingExecutionContext } from './processingContext'
-import { numberSpans } from './polishNumbers'
+import { numberSpans, spokenClockForPrompt } from './polishNumbers'
 import { noteSourceSystem, sourceFirstPrompt } from './sharedSourcePrompt'
 
 // Single-call task extractor: one batched pass over the candidate sentences of
@@ -1624,6 +1624,25 @@ export const answeredCount = (answer: string, batch: readonly { id: number }[]):
   const ids = [...answer.matchAll(/^\s*\[(\d+)\]/gmu)].map((m) => Number(m[1]))
   return ids.length ? batch.findIndex((unit) => unit.id === ids[ids.length - 1]) + 1 : 0
 }
+// 'zajęcia … trzeba pokazać plany testów' that the model left without a task: the
+// speaker's own present duty with a stated object. Guards downstream still apply.
+const MODAL_DUTY = /(?:^|\s)(?:muszę|trzeba|mam)\s+(?:(?:jeszcze|też|także|koniecznie|dziś|dzisiaj|jutro)\s+){0,2}(\p{L}{3,}ć)((?:\s+\p{L}+){1,5})/iu
+const DUTY_STOP = /^(?:i|a|ale|bo|że|żeby|więc|jest|są|był|była|było|to|je|go|jej|jak|który|która|które|jeśli|chyba|może)$/iu
+const DUTY_HEDGE = /(?:^|\s)(?:nie|jeśli|jeżeli|gdyby|może|kiedyś|ewentualnie)(?=\s)/iu
+export const modalTask = (unit: Unit): TaskDraft | null => {
+  const m = MODAL_DUTY.exec(unit.text)
+  if (!m || DUTY_HEDGE.test(unit.text.slice(Math.max(0, m.index - 20), m.index + m[0].length))) return null
+  const object: string[] = []
+  for (const word of m[2]!.trim().split(/\s+/u)) {
+    if (DUTY_STOP.test(word)) break
+    object.push(word)
+  }
+  if (!object.length) return null
+  const days = new Set(lettersOnly(unit.text).filter((w) => ['jutro', 'dzisiaj', 'dziś', 'pojutrze'].includes(w)).map((w) => (w === 'dziś' ? 'dzisiaj' : w)))
+  const verb = m[1]!.toLowerCase()
+  return { title: `${verb.charAt(0).toUpperCase()}${verb.slice(1)} ${object.join(' ')}`, due: days.size === 1 ? [...days][0]! : null, sourceIds: [unit.id], modelIds: [] }
+}
+
 // The half-written last line of a cut answer ('[75] Jechać'), when it belongs to the next sentence.
 export const cutLine = (text: string, nextId: number | undefined): string | null => {
   const last = text.slice(text.lastIndexOf('\n') + 1).trim()
@@ -1647,12 +1666,12 @@ export const extractTaskLines = async (
   const candidates = limitCandidates(selectCandidates(units.filter((unit) => !nominalIds.has(unit.id))), candidateLimit(units))
   if (!candidates.length && !nominal.length) return emptyResult()
   const system = noteSourceSystem(language)
-  const numbered = units.map((unit) => `[${unit.id}] ${unit.text}`).join('\n')
+  const numbered = units.map((unit) => `[${unit.id}] ${spokenClockForPrompt(unit.text)}`).join('\n')
   const head = `${TASK_LINES_PROMPT}\n\nTeraz zdania tej notatki.\nZDANIA:\n`
   const promptFor = (batch: readonly Unit[], partial: string | null): string =>
     sourceFirstPrompt(
       numbered,
-      `${head}${batch.map((unit) => `[${unit.id}] ${unit.text}`).join('\n')}\n${partial ? continuationHint(partial) : ''}ODPOWIEDŹ:\n`,
+      `${head}${batch.map((unit) => `[${unit.id}] ${spokenClockForPrompt(unit.text)}`).join('\n')}\n${partial ? continuationHint(partial) : ''}ODPOWIEDŹ:\n`,
     )
   const maxOutput = isLongNote(units) ? MAX_OUTPUT_TOKENS_LONG : MAX_OUTPUT_TOKENS
   const warnings: string[] = []
@@ -1731,6 +1750,8 @@ export const extractTaskLines = async (
     partial = cutLine(result.text, rest[0]?.id)
   }
   if (cut) warnings.push('Odpowiedź modelu została ucięta; część zadań mogła zostać pominięta.')
+  const answered = new Set(raw.flatMap((t) => t.sourceIds))
+  raw.push(...candidates.filter((unit) => !answered.has(unit.id)).flatMap((unit) => modalTask(unit) ?? []))
   const kept = dedupeTasks(mergeSimilar(mergeVague([...postprocessTaskLines(raw, units).kept, ...nominal]))).sort((a, b) => a.sourceIds[0]! - b.sourceIds[0]!)
   const tasks = kept.map((t): TaskLine => ({ title: t.title, due: t.due, sourceIds: [...t.sourceIds] }))
   return { tasks, rendered: tasks.map(renderTask), warnings }

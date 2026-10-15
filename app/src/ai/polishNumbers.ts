@@ -153,3 +153,45 @@ export const wordsToDigits = (text: string): string => {
     .replace(/(\d+),5 1000/gu, '$1,5 tys.')
     .replace(/\b(\d{1,3})\s*([–-])\s*(\d{1,3})000\b/gu, '$1$2$3 tys.');
 };
+
+// Model-facing view of a spoken clock time: "ósmą chyba 30 zajęcia" reads to the
+// model like thirty classes. "ok. 8:30" keeps the value and the speaker's hedge.
+// Only the prompt changes; the note and every check keep the original words.
+const CLOCK_HEDGE = /^(?:chyba|może|około|koło|jakoś)$/iu;
+const CLOCK_UNIT_AFTER = /^(?:zł|złot\p{L}*|euro|osób|osoby|minut\p{L}*|procent\p{L}*|razy|stopni|kilo|km)$/iu;
+const minuteValue = (token: string | undefined): number | null => {
+  if (!token) return null;
+  const value = /^\d{1,2}$/u.test(token) ? Number(token) : numberWordValue(token);
+  return value !== null && Number.isInteger(value) && value >= 1 && value <= 59 ? value : null;
+};
+export const spokenClockForPrompt = (text: string): string => {
+  const tokens = [...text.matchAll(/\S+/gu)];
+  const out: string[] = [];
+  let index = 0;
+  let last = 0;
+  while (index < tokens.length) {
+    const word = tokens[index][0];
+    const hour = /(?:ej|ą)$/u.test(word) ? numberWordValue(word) : null;
+    if (hour !== null && hour >= 1 && hour <= 24) {
+      let next = index + 1;
+      const hedged = CLOCK_HEDGE.test(tokens[next]?.[0] ?? '');
+      if (hedged) next += 1;
+      let minutes = minuteValue(tokens[next]?.[0]);
+      let end = next;
+      // "trzydzieści pięć" -> 35
+      const unit = minutes !== null && minutes % 10 === 0 && minutes >= 20 ? minuteValue(tokens[next + 1]?.[0]) : null;
+      if (minutes !== null && unit !== null && unit < 10 && !/^\d/u.test(tokens[next][0])) { minutes += unit; end = next + 1; }
+      // "dwudziestej 2" is 22, not 20:02.
+      if (minutes !== null && hour === 20 && minutes < 10) minutes = null;
+      if (minutes !== null && !CLOCK_UNIT_AFTER.test(tokens[end + 1]?.[0] ?? '')) {
+        out.push(text.slice(last, tokens[index].index), `${hedged ? 'ok. ' : ''}${hour}:${String(minutes).padStart(2, '0')}`);
+        last = tokens[end].index! + tokens[end][0].length;
+        index = end + 1;
+        continue;
+      }
+    }
+    index += 1;
+  }
+  out.push(text.slice(last));
+  return out.join('');
+};

@@ -2,7 +2,7 @@ import type { SummaryDocument } from '../domain/summary';
 import type { Language } from '../i18n/language';
 import { recordGeneration } from './generationMetrics';
 import { generate } from './llm';
-import { numberWordValue, pointNumbers, statedNumbers, wordsToDigits } from './polishNumbers';
+import { numberWordValue, pointNumbers, spokenClockForPrompt, statedNumbers, wordsToDigits } from './polishNumbers';
 import { throwIfProcessingAborted, type ProcessingExecutionContext } from './processingContext';
 import { noteSourceSystem, sourceFirstPrompt } from './sharedSourcePrompt';
 import { documentFromSummaryDraft } from './summaryProtocol';
@@ -260,7 +260,6 @@ const CURRENCIES: readonly (readonly [string, RegExp])[] = [
 ];
 const ANY_CURRENCY = /zł|złot|euro|€|dolar|\$/iu;
 
-const PREPOSITIONS = new Set(['do', 'na', 'w', 'we', 'z', 'ze', 'od', 'u', 'przy', 'po']);
 const PREP_PAIR = /(?<!\p{L})(do|na|w|we|z|ze|od|u|przy|po)\s+(\p{Ll}{5,})(?!\p{L})/giu;
 export const swappedPreposition = (text: string, src: string, noteText: string): string | null => {
   const note = noteText.toLowerCase();
@@ -272,7 +271,8 @@ export const swappedPreposition = (text: string, src: string, noteText: string):
     if (rx(`(?<![^\\W\\d_])${prep}\\s+${stem}`, 'i').test(note)) continue;
     const before = [...src.toLowerCase().matchAll(rx(`(?<![^\\W\\d_])(${stem}[^\\W\\d_]*)`, 'g'))]
       .map(hit => words(src.slice(0, hit.index ?? 0)).slice(-1)[0] ?? '');
-    if (before.length && before.every(w => PREPOSITIONS.has(w) && w !== prep)) return `${prep} ${word}`;
+    // Only a place turned into a direction changes the fact; "do psychologa" -> "u psychologa" does not.
+    if (prep === 'do' && before.length && before.every(w => w === 'na' || w === 'w' || w === 'we')) return `${prep} ${word}`;
   }
   return null;
 };
@@ -349,6 +349,11 @@ export const fixDroppedMinutes = (text: string, src: string): string => {
     }
     return match;
   });
+};
+
+export const hedgeClock = (text: string, src: string): string => {
+  const hedgedClocks = [...spokenClockForPrompt(src).matchAll(/ok\. (\d{1,2}:\d{2})/gu)].map(m => m[1]);
+  return hedgedClocks.reduce((value, clock) => value.replace(new RegExp(`(?<!ok\\. )${clock}`, 'u'), `ok. ${clock}`), text);
 };
 
 // "Poza tym O 18:00": a recognizer capital on a one-letter word mid-sentence.
@@ -720,6 +725,11 @@ export const repairPoint = (
   start: WorkPoint, byId: ReadonlyMap<number, Unit>, allUnits: readonly Unit[], language: Language = 'pl', radius = 2,
 ): { point: WorkPoint; issues: string[] } => {
   let point = start;
+  // "o 8:30" for "ósmą chyba 30": the speaker's hedge on the hour comes back as "ok.".
+  if (language === 'pl' && checkPoint(point, byId, allUnits, language).some(issue => issue.startsWith('hedge:'))) {
+    const hedged = hedgeClock(point.text, citedText(point.sourceIds, byId));
+    if (hedged !== point.text) point = { ...point, text: hedged };
+  }
   if (language === 'pl' && checkPoint(point, byId, allUnits, language).join() === 'tense') {
     const text = undoPlannedAsDone(point.text, citedText(point.sourceIds, byId));
     if (text !== null) point = { ...point, text };
@@ -745,7 +755,7 @@ const LEAD_FILLERS_PL = [
 const LEAD_RE_PL = rx(`^(?:(?:${LEAD_FILLERS_PL.join('|')})\\s*[,:]?\\s+)+`, 'i');
 const LEAD_RE_EN = rx(String.raw`^(?:(?:so|well|okay|ok|um|uh|oh|and|also|then|anyway|right|like|you\s+know|and\s+then)\s*[,:]?\s+)+`, 'i');
 const INNER_FILLERS_PL = rx(
-  String.raw`,?\s*(?<![^\W\d_])(?:znaczy|w\s+sumie|tak\s+na\s+szybko|no\s+wiesz|wiesz|serio|fuj|masakra|trudno|ha\s+ha|kurczę|matko(?:\s+ile\s+to\s+lat)?|jakby|tak\s+jakby|szczerze\s+mówiąc|powiem\s+szczerze|że\s+tak\s+powiem|no)(?![^\W\d_])\s*,?`,
+  String.raw`,?\s*(?<![^\W\d_])(?:jakąś\s+tam|jakiś\s+tam|jakieś\s+tam|jakichś\s+tam|znaczy|w\s+sumie|tak\s+na\s+szybko|no\s+wiesz|wiesz|serio|fuj|masakra|trudno|ha\s+ha|kurczę|matko(?:\s+ile\s+to\s+lat)?|jakby|tak\s+jakby|szczerze\s+mówiąc|powiem\s+szczerze|że\s+tak\s+powiem|no)(?![^\W\d_])\s*,?`,
   'gi',
 );
 const INNER_FILLERS_EN = rx(String.raw`,?\s*(?<![^\W\d_])(?:you\s+know|i\s+mean|honestly|basically|literally|um|uh)(?![^\W\d_])\s*,?`, 'gi');
@@ -915,7 +925,7 @@ const tidy = (text: string, language: Language): string => {
 // "do piątku, 23" -> "do piątku 23" (the month was never spoken).
 const WEEKDAY_COMMA_DAY = rx(String.raw`(?<![^\W\d_])((?:poniedział|wtor|środ|czwart|piąt|sobot|niedziel)[^\W\d_]*)\s*,\s*(\d{1,2})(?![\d:.])`, 'gi');
 const convert = (text: string, language: Language): string =>
-  (language === 'pl' ? wordsToDigits(text).replace(WEEKDAY_COMMA_DAY, '$1 $2') : text);
+  (language === 'pl' ? wordsToDigits(spokenClockForPrompt(text)).replace(WEEKDAY_COMMA_DAY, '$1 $2') : text);
 
 // "Kubo" -> "Kuba": a capitalised word in -o that the note only has in -a.
 const fixVocative = (text: string, noteWords: ReadonlySet<string>): string =>
@@ -1558,7 +1568,8 @@ export const generatePointSummaryDetailed = async (
       const share = options.pointsForNote(Math.round(noteWeight)) * weightOf(chunk) / noteWeight;
       const maxPoints = Math.max(rambling ? 2 : 3, chunks.length > 1 ? Math.ceil(share * CHUNK_ASK_FACTOR) : Math.round(share));
       const nPredict = outputTokensFor(maxPoints);
-      const prompt = sourceFirstPrompt(renderSummarySources(chunk), pointSummaryInstructions(language, maxPoints, options.promptVariant));
+      const shown = language === 'pl' ? chunk.map(unit => ({ ...unit, text: spokenClockForPrompt(unit.text) })) : chunk;
+      const prompt = sourceFirstPrompt(renderSummarySources(shown), pointSummaryInstructions(language, maxPoints, options.promptVariant));
       const result = await generate(prompt, () => undefined, {
         system, nPredict, temperature: 0.1, topP: 0.8, topK: 20, minP: 0, ...(execution?.signal ? { signal: execution.signal } : {}),
       });

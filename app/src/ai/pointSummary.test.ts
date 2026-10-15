@@ -7,6 +7,7 @@ import {
   fixDroppedMinutes,
   lowerStrayCapitals,
   snapToNoteSpelling,
+  hedgeClock,
   cleanLiteral,
   outputTokensFor,
   splitIntoChunks,
@@ -757,4 +758,15 @@ test('snaps a model typo to the note spelling without changing inflection', () =
   expect(snapToNoteSpelling('W czwartek o siedmastej w bibliotece', note)).toBe('W czwartek o siedemnastej w bibliotece');
   expect(snapToNoteSpelling('Wysłać podsumowanie postępów', note)).toBe('Wysłać podsumowanie postępów');
   expect(snapToNoteSpelling('Spotkamy się', note)).toBe('Spotkamy się');
+});
+
+test('restores the hedge on a spoken hour and allows u/do person paraphrase', () => {
+  expect(hedgeClock('Zajęcia o 8:30 jutro', 'Jutro mam na godzinę ósmą chyba 30 zajęcia')).toBe('Zajęcia o ok. 8:30 jutro');
+  expect(hedgeClock('Zajęcia o ok. 8:30', 'na ósmą chyba 30 zajęcia')).toBe('Zajęcia o ok. 8:30');
+  const src = 'O osiemnastej jutro jadę do psychologa';
+  expect(swappedPreposition('Jutro o 18:00 wizyta u psychologa', src, src)).toBeNull();
+});
+
+test('a literal keeps the hedged clock and drops "jakąś tam"', () => {
+  expect(cleanLiteral('zajęcia Jakość jakąś tam oprogramowania z panem mgr')).toBe('Zajęcia Jakość oprogramowania z panem mgr.');
 });

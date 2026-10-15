@@ -1,4 +1,5 @@
 import {
+  spokenClockForPrompt,
   numberWordValue,
   numberSpans,
   statedNumbers,
@@ -248,5 +249,18 @@ describe('wordsToDigits', () => {
   test('converts standalone 1000 to tys.', () => {
     const result = wordsToDigits('koszt tysiąc pięćset złotych');
     expect(result).toMatch(/1500\s+zł/);
+  });
+});
+
+describe('spoken clock for prompts', () => {
+  it('joins the hour and minutes, keeping a hedge', () => {
+    expect(spokenClockForPrompt('Jutro mam na godzinę ósmą chyba 30 zajęcia')).toBe('Jutro mam na godzinę ok. 8:30 zajęcia');
+    expect(spokenClockForPrompt('o szesnastej trzydzieści u dentysty')).toBe('o 16:30 u dentysty');
+    expect(spokenClockForPrompt('o osiemnastej czterdzieści pięć')).toBe('o 18:45');
+  });
+  it('leaves amounts, compound hours and plain ordinals alone', () => {
+    expect(spokenClockForPrompt('o ósmej 30 zł za parking')).toBe('o ósmej 30 zł za parking');
+    expect(spokenClockForPrompt('siedziałem do dwudziestej 2 nad testami')).toBe('siedziałem do dwudziestej 2 nad testami');
+    expect(spokenClockForPrompt('rozdział drugi do czwartku')).toBe('rozdział drugi do czwartku');
   });
 });
