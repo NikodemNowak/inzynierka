@@ -163,3 +163,19 @@ test.each(longCaptures)(
     expect(storage.setSetting).not.toHaveBeenCalled()
   },
 )
+
+test('a silent window is empty speech and the import continues', async () => {
+  native.transcribeWindow
+    .mockResolvedValueOnce('Pierwsza część')
+    .mockResolvedValueOnce('Druga część')
+    .mockRejectedValueOnce(new Error('No speech detected'))
+  const text = await transcribeImportedAudio('file:///import.m4a', 150000, 'pl', { signal: new AbortController().signal })
+  expect(text).toBe('Pierwsza część Druga część')
+  expect(JSON.parse(storage.setSetting.mock.calls.at(-1)![1]).windows).toHaveLength(3)
+})
+
+test('other window failures still stop the import', async () => {
+  native.transcribeWindow.mockRejectedValueOnce(new Error('On-device speech for this language is unavailable'))
+  await expect(transcribeImportedAudio('file:///import.m4a', 30000, 'pl', { signal: new AbortController().signal }))
+    .rejects.toThrow('unavailable')
+})

@@ -67,6 +67,10 @@ export const clearImportCheckpoint = async (
   await settings.setSetting(keyFor(uri, language), '')
 }
 
+// iOS reports a window without speech as an error ("No speech detected").
+export const isNoSpeechError = (error: unknown): boolean =>
+  /no speech detected|nie wykryto mowy/iu.test(error instanceof Error ? error.message : String(error))
+
 export const transcribeImportedAudio = async (
   uri: string,
   durationMs: number,
@@ -113,6 +117,10 @@ export const transcribeImportedAudio = async (
         localeForLanguage(language),
         requestId,
       )
+    } catch (error) {
+      // A silent window (often the tail of a file) is empty speech, not a failed import.
+      if (!isNoSpeechError(error) || options.signal.aborted) throw error
+      transcript = ''
     } finally {
       options.signal.removeEventListener('abort', cancel)
       options.onRequest?.(null)
