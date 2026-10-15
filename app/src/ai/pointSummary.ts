@@ -2,7 +2,7 @@ import type { SummaryDocument } from '../domain/summary';
 import type { Language } from '../i18n/language';
 import { recordGeneration } from './generationMetrics';
 import { generate } from './llm';
-import { pointNumbers, statedNumbers, wordsToDigits } from './polishNumbers';
+import { numberWordValue, pointNumbers, statedNumbers, wordsToDigits } from './polishNumbers';
 import { throwIfProcessingAborted, type ProcessingExecutionContext } from './processingContext';
 import { noteSourceSystem, sourceFirstPrompt } from './sharedSourcePrompt';
 import { documentFromSummaryDraft } from './summaryProtocol';
@@ -326,6 +326,38 @@ export const fixFirstPersonTail = (text: string, src: string): string => {
     return futureToInfinitive(word) ?? word;
   });
 };
+
+// "o 8:00" for "na godzinę ósmą chyba 30": the minutes the speaker added after the hour.
+const MINUTE_HEDGE = /^(?:chyba|może|około|jakoś|koło)$/u;
+const MINUTE_UNIT = /^(?:zł|złotych|minut\p{L}*|osób|razy|procent\p{L}*)$/u;
+const tokenValue = (token: string): number | null => (/^\d+$/u.test(token) ? Number(token) : numberWordValue(token));
+export const fixDroppedMinutes = (text: string, src: string): string => {
+  const tokens = src.toLowerCase().match(/\p{L}+|\d+(?::\d+)?/gu) ?? [];
+  // "o 8:00 30 zajęć": the model may also leave the minutes after the hour.
+  return text.replace(/(?<![\d:])(\d{1,2}):00(?![\d])(?:\s+(\d{1,2})(?![\d:]))?/gu, (match, hour: string, trailing?: string) => {
+    for (let index = 0; index < tokens.length; index += 1) {
+      const word = tokens[index];
+      if (!/(?:ej|ą)$/u.test(word) || numberWordValue(word) !== Number(hour)) continue;
+      let next = index + 1;
+      const hedged = MINUTE_HEDGE.test(tokens[next] ?? '');
+      if (hedged) next += 1;
+      const minutes = tokenValue(tokens[next] ?? '');
+      if (minutes === null || minutes < 1 || minutes > 59 || MINUTE_UNIT.test(tokens[next + 1] ?? '')) continue;
+      const clock = `${hour}:${String(minutes).padStart(2, '0')}`;
+      const rest = trailing && Number(trailing) !== minutes ? ` ${trailing}` : '';
+      return (hedged ? `ok. ${clock}` : clock) + rest;
+    }
+    return match;
+  });
+};
+
+// "Poza tym O 18:00": a recognizer capital on a one-letter word mid-sentence.
+export const lowerStrayCapitals = (text: string): string =>
+  text.replace(/(?<=[\p{L}\d,]\s)([AIOUWZ])(?=\s)/gu, letter => letter.toLowerCase());
+
+// Last deterministic pass over every final point, literal or generated.
+export const polishPoint = (text: string, src: string): string =>
+  fixFirstPersonTail(lowerStrayCapitals(fixDroppedMinutes(text, src)), src);
 
 const checkPointPl = (
   text: string, src: string, ids: readonly number[], allUnits: readonly Unit[] | null, minOverlap: number,
@@ -680,7 +712,7 @@ export const repairPoint = (
 
 // ---------------------------------------------------------------- literal cleaner
 const LEAD_FILLERS_PL = [
-  String.raw`no\s+(?:więc|dobra|i|to|ale|tak|nic)`, 'dobra', 'okej', 'ok', String.raw`aha(?:\s+i)?(?:\s+jeszcze)?`, String.raw`i\s+jeszcze`, 'jeszcze',
+  String.raw`(?:a\s+)?poza\s+tym`, String.raw`no\s+(?:więc|dobra|i|to|ale|tak|nic)`, 'dobra', 'okej', 'ok', String.raw`aha(?:\s+i)?(?:\s+jeszcze)?`, String.raw`i\s+jeszcze`, 'jeszcze',
   String.raw`a\s+propos(?:\s+\w+)?`, String.raw`swoją\s+drogą`, String.raw`w\s+ogóle`, 'generalnie', 'znaczy', 'tak', 'no', 'a', 'i', 'oraz',
   'czyli', String.raw`w\s+sumie`, 'ogólnie', 'ale', 'więc', String.raw`tak\s+serio`, 'serio', 'słuchaj', 'wiesz', 'kurczę', 'matko', String.raw`ostatnia\s+rzecz`, 'dalej', String.raw`chyba\s+wszystko`, String.raw`to\s+chyba\s+tyle`,
   String.raw`ważne(?:\s+jest)?(?:\s+tylko)?(?:\s+to)?,?\s+że`, String.raw`jeszcze\s+jedno`, String.raw`co\s+jeszcze`,
@@ -1521,7 +1553,7 @@ export const generatePointSummaryDetailed = async (
     if (language === 'pl') {
       // Recovered and literal points skip the per-point fixes; "…i wypchnę" can come back here.
       const byId = new Map(units.map(unit => [unit.id, unit]));
-      finalPoints = finalPoints.map(point => ({ ...point, text: fixFirstPersonTail(point.text, citedText(point.sourceIds, byId)) }));
+      finalPoints = finalPoints.map(point => ({ ...point, text: polishPoint(point.text, citedText(point.sourceIds, byId)) }));
     }
     rejected = finalized.rejected;
   }

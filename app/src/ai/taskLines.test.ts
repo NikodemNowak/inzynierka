@@ -778,3 +778,14 @@ describe('sentence lead day and object clause', () => {
     expect(completeObjectClause(t('Napisać rozdział o ograniczeniach', null, 72), u).title).toBe('Napisać rozdział o ograniczeniach')
   })
 })
+
+describe('relative day in clock dues', () => {
+  const u = [{ id: 3, text: 'Poza tym O osiemnastej jutro jadę do psychologa' }]
+  const t = (due: string | null) => ({ title: 'Wizyta u psychologa', due, sourceIds: [3], modelIds: [3] })
+  test('adds jutro and turns a bare hour into a clock time', () => {
+    expect(withWeekday(t('18:00'), u).due).toBe('jutro 18:00')
+    expect(withWeekday(t('18'), u).due).toBe('jutro 18:00')
+    expect(withWeekday(t('jutro 18:00'), u).due).toBe('jutro 18:00')
+    expect(withWeekday(t('7'), u).due).toBe('7')
+  })
+})

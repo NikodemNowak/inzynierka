@@ -4,6 +4,9 @@ import {
   trimLossyReason,
   fixSpeakerDuty,
   fixFirstPersonTail,
+  fixDroppedMinutes,
+  lowerStrayCapitals,
+  cleanLiteral,
   outputTokensFor,
   splitIntoChunks,
   parseSourceIds,
@@ -724,4 +727,26 @@ describe('first person leftovers', () => {
     expect(fixFirstPersonTail('Kupić mleko i kupię chleb', 'Kupię mleko i kupię chleb.')).toBe('Kupić mleko i kupić chleb');
     expect(fixFirstPersonTail('Zrobić kopię i prezentację', 'Zrobię kopię i prezentację.')).toBe('Zrobić kopię i prezentację');
   });
+});
+
+describe('final point polish', () => {
+  const src = 'Jutro mam na godzinę ósmą chyba 30 zajęcia';
+  it('keeps the minutes spoken after the hour', () => {
+    expect(fixDroppedMinutes('Zajęcia o 8:00 jutro', src)).toBe('Zajęcia o ok. 8:30 jutro');
+    expect(fixDroppedMinutes('Zajęcia o 8:00', 'Zajęcia o ósmej trzydzieści.')).toBe('Zajęcia o 8:30');
+    expect(fixDroppedMinutes('Zapłacić o 8:00', 'O ósmej 30 zł za parking.')).toBe('Zapłacić o 8:00');
+    expect(fixDroppedMinutes('Spotkanie o 18:00', 'O osiemnastej spotkanie.')).toBe('Spotkanie o 18:00');
+  });
+  it('lowers a stray one-letter capital mid-sentence', () => {
+    expect(lowerStrayCapitals('Jutro O 18:00 psycholog')).toBe('Jutro o 18:00 psycholog');
+    expect(lowerStrayCapitals('Format A1 i druk')).toBe('Format A1 i druk');
+    expect(lowerStrayCapitals('O 18:00 psycholog')).toBe('O 18:00 psycholog');
+  });
+  it('treats "poza tym" as a lead filler', () => {
+    expect(cleanLiteral('Poza tym o osiemnastej jutro jadę do psychologa')).toBe('O osiemnastej jutro jadę do psychologa.');
+  });
+});
+
+test('drops minutes the model left after a rounded hour', () => {
+  expect(fixDroppedMinutes('Jutro o 8:00 30 zajęć', 'Jutro mam na godzinę ósmą chyba 30 zajęcia')).toBe('Jutro o ok. 8:30 zajęć');
 });

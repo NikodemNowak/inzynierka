@@ -281,3 +281,16 @@ describe("deterministic split of unpunctuated speech", () => {
     expect(() => validateSourceUnitPlan(speech, forged)).toThrow();
   });
 });
+
+describe('unpunctuated recognizer transcript', () => {
+  const speech = 'Notatka po spotkaniu z promotorem i sprawy z tego tygodnia w poniedziałek o 10:30 spotkałem się z promotorem w jego gabinecie omówiliśmy stan pracy zostało mi dokończyć ekran nagrywania Promotor powiedział że najważniejsze jest działanie na telefonie zapłaciłem też 300 zł za druk plakatu odebrałem paczkę z nowym dyskiem dwa Terabajt kosztował 490 zł A wieczorem zadzwoniła Ola i ustaliliśmy termin';
+  test('cuts at recognizer capitals and first-person verbs, not inside phrases', () => {
+    const units = sourceUnitsFromPlan(speech, deterministicSourceUnitPlan(speech)!).map(unit => unit.text);
+    expect(units.some(unit => unit.startsWith('w poniedziałek o 10:30 spotkałem się'))).toBe(true);
+    expect(units.some(unit => unit.startsWith('Promotor powiedział'))).toBe(true);
+    expect(units.some(unit => unit.startsWith('zapłaciłem też 300 zł'))).toBe(true);
+    expect(units.some(unit => unit.startsWith('A wieczorem zadzwoniła Ola'))).toBe(true);
+    expect(units.some(unit => unit.endsWith('zostało'))).toBe(false);
+    expect(units.some(unit => unit.startsWith('Terabajt'))).toBe(false);
+  });
+});

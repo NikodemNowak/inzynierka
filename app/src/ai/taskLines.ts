@@ -776,14 +776,24 @@ const WEEKDAYS: readonly (readonly [RegExp, string])[] = [
 ]
 const weekdayOf = (word: string): string | null => WEEKDAYS.find(([pattern]) => pattern.test(word))?.[1] ?? null
 const CLOCK_DUE = /^\s*(?:o\s+|od\s+|do\s+)?\d{1,2}:\d{2}/u
+const RELATIVE_DAYS: Readonly<Record<string, string>> = { jutro: 'jutro', pojutrze: 'pojutrze', dziś: 'dzisiaj', dzisiaj: 'dzisiaj' }
+const dayWord = (word: string): string | null => weekdayOf(word) ?? RELATIVE_DAYS[word] ?? null
+const BARE_HOUR_DUE = /^\s*(?:o\s+)?(\d{1,2})\s*$/u
+// 'Wizyta u psychologa — 18' for 'O osiemnastej jutro jadę do psychologa': 'jutro 18:00'.
 export const withWeekday = (task: TaskDraft, units: readonly Unit[]): TaskDraft => {
-  if (!task.due || !CLOCK_DUE.test(task.due)) return task
-  if (lettersOnly(task.due).some((w) => weekdayOf(w) || MONTH_WORD.test(w) || ['jutro', 'dziś', 'dzisiaj', 'pojutrze'].includes(w))) return task
-  const hours = hourValues(task.due)
+  if (!task.due) return task
   const byId = new Map(units.map((u) => [u.id, u.text]))
-  const carriers = task.sourceIds.map((i) => byId.get(i) ?? '').filter((text) => [...hourValues(text)].some((h) => hours.has(h)))
-  const days = new Set(carriers.flatMap((text) => lettersOnly(text).map(weekdayOf).filter((d): d is string => d !== null)))
-  return days.size === 1 ? { ...task, due: `${[...days][0]} ${task.due.trim()}` } : task
+  const bare = BARE_HOUR_DUE.exec(task.due)
+  const hour = bare ? Number(bare[1]) : null
+  const sources = task.sourceIds.map((i) => byId.get(i) ?? '')
+  // A bare number is a clock hour only when the sentence says that hour.
+  const due = hour !== null && hour <= 24 && sources.some((text) => hourValues(text).has(hour)) ? `${hour}:00` : task.due
+  if (!CLOCK_DUE.test(due)) return task
+  if (lettersOnly(due).some((w) => dayWord(w) || MONTH_WORD.test(w))) return due === task.due ? task : { ...task, due }
+  const hours = hourValues(due)
+  const carriers = sources.filter((text) => [...hourValues(text)].some((h) => hours.has(h)))
+  const days = new Set(carriers.flatMap((text) => lettersOnly(text).map(dayWord).filter((d): d is string => d !== null)))
+  return days.size === 1 ? { ...task, due: `${[...days][0]} ${due.trim()}` } : due === task.due ? task : { ...task, due }
 }
 
 // 'Napisać rozdział' from 'W środę zajęcia…, wieczorem piszę rozdział': the sentence opens with its one weekday.

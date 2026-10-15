@@ -49,7 +49,8 @@ const correctionCue = (text: string): boolean => /^(?:poprawka|korekta|correctio
 
 const unsafeBoundary = (left: string, right: string): boolean => {
   if (/(?:^|\s)(?:nie|not|no|never|bez|without|if|unless|że|aby|żeby|bo|ponieważ|because|that|whether|do|przed|by|before|to|will|must|shall|would|could|might|may|ma|mam|masz|mamy|muszę|musimy|musisz|muszą)$/iu.test(left) ||
-      /^(?:że|aby|żeby|because|that|unless|whether|will|must|shall|would|could|might|may|ma|mam|masz|mamy|muszę|musimy|musisz|muszą)(?:\s|$)/iu.test(right)) return true;
+      // First-person "muszę/musimy" opens the speaker's own statement; no subject is stranded.
+      /^(?:że|aby|żeby|because|that|unless|whether|will|must|shall|would|could|might|may|ma|mam|masz|mamy|musisz|muszą)(?:\s|$)/iu.test(right)) return true;
   // An added cut before a third-person predicate can strand its subject in
   // introductory text. Retain that original context without guessing a name
   // or owner; explicit next subjects and first-person statements stay intact.
@@ -89,16 +90,52 @@ const STRONG_STARTS: readonly (readonly string[])[] = [
   ["a", "poza", "tym"], ["poza", "tym"], ["a", "propos"], ["no", "i"], ["no", "więc"],
   ["aha"], ["dobra"], ["okej"], ["ok"], ["potem"], ["następnie"], ["na", "koniec"], ["na", "początek"],
   ["i", "jeszcze"], ["kolejna", "rzecz"], ["kolejne"], ["tak", "czy", "inaczej"],
+  ["uwaga"], ["jeszcze", "jedna", "rzecz"], ["ostatnia", "rzecz"],
 ];
-const WEAK_STARTS = new Set(["a", "ale", "więc", "wtedy", "dalej"]);
-const SOFT_STARTS = new Set(["i", "oraz", "albo", "lub", "bo", "ale", "więc", "czyli", "wtedy", "potem", "ponieważ", "jeszcze"]);
 const DANGLING_END = /^(?:i|w|we|na|z|ze|do|od|po|za|o|u|nad|pod|przy|bez|dla|przez|oraz|albo|lub|a|ale|bo|nie|że|jak|ten|ta|te|tę|to|ma|mam|mój|moje)$/iu;
 const MAX_UNIT_WORDS = 30;
+// Speech recognizers capitalize where they hear a new phrase; a capital mid-text
+// is the strongest cue an unpunctuated transcript has.
+const CAPITALIZED = /^\p{Lu}\p{Ll}*$/u;
+const FIRST_PAST = /^\p{L}{3,}(?:łem|łam|liśmy|łyśmy)$/u;
+const FIRST_PRESENT = /^\p{L}{3,}uję$/u;
+const NUMBER_WORD = /^(?:\d+(?::\d+)?|jeden|jedna|jedno|dwa|dwie|trzy|cztery|pięć|sześć|siedem|osiem|dziewięć|dziesięć|\p{L}+naście|\p{L}*dzieści|\p{L}*dziesiąt|sto|dwieście|\p{L}*set|tysiąc\p{L}*|(?:pierwsz|drug|trzeci|ósm|siódm|szóst|dziewiąt|dziesiąt|\p{L}+nast|dwudziest|trzydziest)\p{L}*)$/iu;
+const WEEKDAY = /^(?:poniedziałek|wtorek|środę|środa|czwartek|piątek|sobotę|sobota|niedzielę|niedziela|weekend)$/iu;
+const TIME_STARTS = new Set(["jutro", "pojutrze", "dzisiaj", "dziś", "wczoraj", "później", "potem"]);
+const PRONOUN_STARTS = new Set(["on", "ona", "oni", "one", "trzeba"]);
+const WEAK_STARTS = new Set(["a", "ale", "więc", "wtedy", "dalej", "czyli"]);
+const SOFT_STARTS = new Set(["albo", "lub", "bo", "ponieważ", "jeszcze"]);
+const REPORT_NEXT = new Set(["też", "także", "że", "żebym", "żeby", "mi", "mnie", "nam", "jeszcze", "wtedy"]);
+const TIME_TAIL = /^(?:o|około|rano|wieczorem|jutro|dzisiaj|dziś|wczoraj)$/iu;
+
+// How strongly a new statement seems to begin at this word (0 = no cue).
+const boundaryScore = (index: number, raw: readonly string[], norm: readonly string[],
+  startsWith: (index: number, phrase: readonly string[]) => boolean): number => {
+  if (STRONG_STARTS.some((phrase) => startsWith(index, phrase))) return 5;
+  const previous = norm[index - 1];
+  // "dwa Terabajt", "dwudziestej 2": a number keeps its unit or second part.
+  if (NUMBER_WORD.test(previous) && (NUMBER_WORD.test(norm[index]) || CAPITALIZED.test(raw[index]))) return 0;
+  // "zadzwoniła Ola": a name right after a past verb is its subject.
+  if (CAPITALIZED.test(raw[index]))
+    return raw[index].length > 2 && !TIME_STARTS.has(norm[index]) && /\p{L}{2,}(?:ł|ła|ło|li|ły)$/u.test(previous) ? 0 : 4;
+  // "o 10:30 spotkałem się": the time before the verb belongs to its clause.
+  const afterTime = TIME_TAIL.test(previous) || NUMBER_WORD.test(previous) || WEEKDAY.test(previous);
+  if ((FIRST_PAST.test(norm[index]) || FIRST_PRESENT.test(norm[index])) && !afterTime) return 3;
+  if ((norm[index] === "w" || norm[index] === "we") && WEEKDAY.test(norm[index + 1] ?? "")) return previous === "się" ? 0 : 2;
+  if (TIME_STARTS.has(norm[index]) && previous === "się") return 0;
+  if (TIME_STARTS.has(norm[index]) || PRONOUN_STARTS.has(norm[index]) || norm[index] === "muszę" || norm[index] === "musimy") return 2;
+  // "poprosił też żebym…": another person's past verb starts a report.
+  if (/^\p{L}{3,}(?:ł|ła|li|ły)$/u.test(norm[index]) && !afterTime && REPORT_NEXT.has(norm[index + 1] ?? "")) return 1;
+  if (WEAK_STARTS.has(norm[index])) return 1;
+  if (SOFT_STARTS.has(norm[index])) return 0.5;
+  return 0;
+};
 
 const deterministicEnds = (content: string): number[] | null => {
   if (!needsSourceUnitPlan(content)) return null;
   const words = [...content.matchAll(/\S+/gu)];
-  const norm = words.map((word) => word[0].toLowerCase().replace(/[,;:]+$/u, ""));
+  const raw = words.map((word) => word[0].replace(/[,;:]+$/u, ""));
+  const norm = raw.map((word) => word.toLowerCase());
   const wordEnd = (index: number): number => words[index].index + words[index][0].length;
   const startsWith = (index: number, phrase: readonly string[]): boolean =>
     phrase.every((part, offset) => norm[index + offset] === part);
@@ -106,11 +143,10 @@ const deterministicEnds = (content: string): number[] | null => {
   let segment = 0;
   for (let index = 1; index < words.length; index += 1) {
     const length = index - segment;
-    const wanted = (length >= 3 && STRONG_STARTS.some((phrase) => startsWith(index, phrase))) ||
-      (length >= 10 && WEAK_STARTS.has(norm[index])) ||
-      (length >= 12 && norm[index] === "jeszcze") ||
-      (length >= 22 && SOFT_STARTS.has(norm[index])) ||
-      length >= MAX_UNIT_WORDS;
+    const score = boundaryScore(index, raw, norm, startsWith);
+    // Short units need a strong cue; a long run accepts a weaker one.
+    const wanted = (score >= 4 && length >= 3) || (score >= 3 && length >= 5) || (score >= 2 && length >= 9) ||
+      (score >= 1 && length >= 15) || (score > 0 && length >= 22) || length >= MAX_UNIT_WORDS;
     if (!wanted || DANGLING_END.test(norm[index - 1])) continue;
     const left = content.slice(words[segment].index, wordEnd(index - 1));
     const right = content.slice(words[index].index, wordEnd(Math.min(words.length - 1, index + 3)));

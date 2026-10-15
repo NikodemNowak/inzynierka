@@ -19,6 +19,9 @@ import { useReducedMotion } from '../../ui/Motion'
 import { TaskArrival, TaskCheck, TaskText, subscribePersistedTaskText, useTaskMotionActive, useTaskTextReveal } from '../../tasks/TaskMotion'
 import { radius, spacing, type, useTheme } from '../../ui/theme'
 
+const ENTRANCE_WINDOW_MS = 1400
+const STAGGER_ROWS = 20
+
 export default function TasksScreen() {
   const { colors } = useTheme()
   const { t } = useI18n()
@@ -44,6 +47,17 @@ export default function TasksScreen() {
     motionActiveRef.current = false
     visibilityEpoch.current += 1
   }, [])
+  // Rows on screen when the list opens enter on one quick stagger; rows that
+  // mount later while scrolling appear without an entrance.
+  const [entranceOpen, setEntranceOpen] = useState(true)
+  useEffect(() => {
+    if (!motionActive) {
+      setEntranceOpen(true)
+      return
+    }
+    const timer = setTimeout(() => setEntranceOpen(false), ENTRANCE_WINDOW_MS)
+    return () => clearTimeout(timer)
+  }, [motionActive])
   const pending = useMemo(() => tasks.filter((task) => !task.done), [tasks])
   const completed = useMemo(() => tasks.filter((task) => task.done), [tasks])
   const noteTitles = useMemo(
@@ -126,7 +140,8 @@ export default function TasksScreen() {
           renderItem={({ item, index, section }) => (
             <TaskArrival
               index={index + (section.key === 'completed' ? pending.length : 0)}
-              active={motionActive}
+              count={Math.min(tasks.length, STAGGER_ROWS)}
+              active={motionActive && entranceOpen}
               reducedMotion={reducedMotion}
               style={styles.taskRow}
             >
