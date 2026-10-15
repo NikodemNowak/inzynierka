@@ -2,9 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Stack, useNavigation, useRouter } from 'expo-router'
 import { usePreventRemove } from 'expo-router/react-navigation'
 import {
-  Animated,
   ActivityIndicator,
-  Easing,
   ScrollView,
   StyleSheet,
   Text,
@@ -31,11 +29,10 @@ import {
 } from '../stt/useSpeechRecorder'
 import { LiveTranscript } from '../stt/LiveTranscript'
 import { PermissionSettingsButton } from '../stt/PermissionSettingsButton'
-import { waveformScaleForVolume } from '../stt/microphoneMeter'
+import { pushWaveformSample, waveformBarHeight } from '../stt/microphoneMeter'
 import { BottomSheet } from '../ui/BottomSheet'
 import { Button } from '../ui/Button'
 import { Icon } from '../ui/Icon'
-import { useReducedMotion } from '../ui/Motion'
 import { spacing, type, useTheme } from '../ui/theme'
 
 const formatDuration = (durationMs: number): string => {
@@ -78,10 +75,9 @@ const statusLabel = (
   return translate('Gotowe do nagrania', 'Ready to record')
 }
 
-const WAVEFORM_HEIGHTS = [
-  2, 2, 2, 2, 2, 2, 2, 2, 3, 4, 7, 12, 7, 4, 3, 2, 5, 9, 16, 26, 36, 26, 16, 9,
-  5, 2, 3, 4, 7, 12, 7, 4, 3, 2, 2, 2, 2, 2, 2,
-]
+const WAVEFORM_BARS = 36
+const WAVEFORM_TICK_MS = 70
+const silentWaveform = (): number[] => Array.from({ length: WAVEFORM_BARS }, () => 0)
 
 function RecordingWaveform({
   status,
@@ -91,29 +87,24 @@ function RecordingWaveform({
   volumeLevel: number
 }) {
   const { colors } = useTheme()
-  const reducedMotion = useReducedMotion()
-  const amplitude = useRef(
-    new Animated.Value(waveformScaleForVolume(volumeLevel)),
-  ).current
-  const color = status === 'recording' ? colors.accent : colors.faint
+  const recording = status === 'recording'
+  const level = useRef(0)
+  level.current = recording ? volumeLevel : 0
+  const [history, setHistory] = useState<readonly number[]>(silentWaveform)
+  const color = recording ? colors.accent : colors.faint
 
+  // Sample on a fixed clock so the trace keeps moving while the level holds.
   useEffect(() => {
-    const target = waveformScaleForVolume(
-      status === 'recording' ? volumeLevel : 0,
-    )
-    if (reducedMotion) {
-      amplitude.setValue(target)
+    if (!recording) {
+      setHistory(silentWaveform())
       return
     }
-    const animation = Animated.timing(amplitude, {
-      toValue: target,
-      duration: 90,
-      easing: Easing.out(Easing.quad),
-      useNativeDriver: true,
-    })
-    animation.start()
-    return () => animation.stop()
-  }, [amplitude, reducedMotion, status, volumeLevel])
+    const timer = setInterval(
+      () => setHistory((current) => pushWaveformSample(current, level.current)),
+      WAVEFORM_TICK_MS,
+    )
+    return () => clearInterval(timer)
+  }, [recording])
 
   return (
     <View
@@ -121,13 +112,12 @@ function RecordingWaveform({
       accessibilityElementsHidden
       importantForAccessibility="no-hide-descendants"
     >
-      {WAVEFORM_HEIGHTS.map((height, index) => (
-        <Animated.View
+      {history.map((value, index) => (
+        <View
           key={index}
           style={[
             styles.waveformBar,
-            { height, backgroundColor: color },
-            { transform: [{ scaleY: amplitude }] },
+            { height: waveformBarHeight(value), backgroundColor: color },
           ]}
         />
       ))}

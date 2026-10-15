@@ -379,3 +379,13 @@ test('a captured reveal crossing a source revision is rejected and the complete 
   expect(tree!.root.findByType(RevealText).props).toMatchObject({ text: 'Preserve the complete literal task', animate: false })
   await act(async () => { tree!.unmount() })
 })
+
+test('a long list enters every row on a stagger that ends within about a second', () => {
+  const count = 22
+  const timings = Array.from({ length: count }, (_, index) => taskEntranceTiming(index, true, false, count)!)
+  expect(timings.every(Boolean)).toBe(true)
+  const last = timings[count - 1]!
+  expect(last.delay + last.duration).toBeLessThanOrEqual(1200)
+  expect(taskEntranceTiming(5, true, false, 4)).toBeNull()
+  expect(taskEntranceTiming(3, true, true, count)).toBeNull()
+})

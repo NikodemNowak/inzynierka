@@ -11,7 +11,7 @@ import { useIsFocused } from 'expo-router/react-navigation'
 import { Button } from '../ui/Button'
 import { Icon } from '../ui/Icon'
 import { ProcessingIndicator, SkeletonText, useReducedMotion } from '../ui/Motion'
-import { TaskArrival, TaskCheck, TaskText, TaskPlaceholder, publishPersistedTaskText, useTaskMotionActive, useTaskTextReveal, usePlaceholderExit, useTaskRevealSequence } from './TaskMotion'
+import { TaskArrival, TaskCheck, TaskText, TaskPlaceholder, isFastReveal, publishPersistedTaskText, useTaskMotionActive, useTaskTextReveal, usePlaceholderExit, useTaskRevealSequence } from './TaskMotion'
 import { useLayoutTransition } from '../ui/LayoutMotion'
 import { radius, spacing, type, useTheme } from '../ui/theme'
 import { useTasksStore } from '../state/tasksStore'
@@ -451,7 +451,7 @@ export function NoteTasks({
       </Text>
 
       {shown.tasks.map((task, index) => (
-        <TaskArrival key={task.id} index={index} active={motionActive} reducedMotion={reducedMotion} style={styles.row}>
+        <TaskArrival key={task.id} index={index} count={shown.tasks.length} active={motionActive} reducedMotion={reducedMotion} style={styles.row}>
           <Pressable
             accessibilityRole="checkbox"
             accessibilityLabel={task.text}
@@ -483,7 +483,7 @@ export function NoteTasks({
             key={`${currentIdentity}:${task.id}`}
             text={task.text}
             index={index}
-            reveal={savedReveal.ids.has(task.id)}
+            reveal={!isFastReveal(shown.tasks.length) && savedReveal.ids.has(task.id)}
             active={motionActive}
             reducedMotion={reducedMotion}
             onRevealConsumed={() => savedReveal.consume(task.id)}
@@ -570,7 +570,7 @@ export function NoteTasks({
             const disabled = busy || noteProcessing || Boolean(note?.transcriptionIncomplete)
             const ready = Boolean(text) && proposalSequence.ready(index)
             return (
-              <TaskArrival key={`proposal-slot-${index}`} index={0} active={motionActive} reducedMotion={reducedMotion}
+              <TaskArrival key={`proposal-slot-${index}`} index={proposalSequence.fast ? index : 0} count={proposalSequence.fast ? shown.proposals.length : 0} active={motionActive} reducedMotion={reducedMotion}
                 enter={proposalSequence.enter(index)} eventKey={ready ? `${proposalBatch}:${text}` : undefined}
                 onArrivalComplete={() => proposalSequence.arrivalComplete(text)}>
                 <TaskPlaceholder index={index} count={shown.proposals.length} exiting={!shown.loading && !text} active={motionActive} reducedMotion={reducedMotion}>
@@ -597,7 +597,7 @@ export function NoteTasks({
                     text={text}
                     index={0}
                     placeholderLines={index === 1 ? 1 : 2}
-                    reveal={proposalReveal.ids.has(text)}
+                    reveal={!proposalSequence.fast && proposalReveal.ids.has(text)}
                     active={motionActive}
                     reducedMotion={reducedMotion}
                     onRevealConsumed={() => proposalReveal.consume(text)}

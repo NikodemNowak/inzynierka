@@ -130,21 +130,32 @@ export function useTaskRevealSequence(items: readonly string[], eventKey: string
     return () => clearTimeout(timer)
   }, [fresh, completed, signature, complete])
   useEffect(() => () => { owner.current = { ...owner.current, active: false } }, [])
+  // A long list does not chain letter reveals: every row is ready and enters on its own stagger.
+  const fast = isFastReveal(items.length)
   return {
-    ready: (index: number) => !fresh || index >= keys.length || index <= shownCompleted,
-    enter: (index: number) => fresh && index < keys.length && index === shownCompleted,
+    fast,
+    ready: (index: number) => fast || !fresh || index >= keys.length || index <= shownCompleted,
+    enter: (index: number) => fresh && (fast ? index < items.length : index < keys.length && index === shownCompleted),
     complete, textComplete, arrivalComplete,
   }
 }
+
+// Up to this many rows get the full letter reveal one after another; a longer
+// list fades in row by row instead, finishing within about a second.
+export const CALM_REVEAL_COUNT = 4
+export const isFastReveal = (count: number): boolean => count > CALM_REVEAL_COUNT
+const FAST_SPAN_MS = 900
 
 export const taskEntranceTiming = (
   index: number,
   active: boolean,
   reducedMotion: boolean,
-): { duration: number; delay: number } | null =>
-  active && !reducedMotion && Number.isInteger(index) && index >= 0 && index < 4
-    ? { duration: 260, delay: index * 140 }
-    : null
+  count = 0,
+): { duration: number; delay: number } | null => {
+  if (!active || reducedMotion || !Number.isInteger(index) || index < 0) return null
+  if (isFastReveal(count)) return index < count ? { duration: 200, delay: index * Math.min(60, Math.floor(FAST_SPAN_MS / count)) } : null
+  return index < CALM_REVEAL_COUNT ? { duration: 260, delay: index * 140 } : null
+}
 
 export function useTaskMotionActive(focused: boolean): boolean {
   const [foreground, setForeground] = useState(AppState.currentState === 'active')
@@ -156,9 +167,10 @@ export function useTaskMotionActive(focused: boolean): boolean {
 }
 
 // Reveal complete, already available content. No character clocks or layout changes.
-export function TaskArrival({ children, index, active, reducedMotion, style, enter = true, eventKey, onArrivalComplete }: {
+export function TaskArrival({ children, index, count = 0, active, reducedMotion, style, enter = true, eventKey, onArrivalComplete }: {
   children: ReactNode
   index: number
+  count?: number
   active: boolean
   reducedMotion: boolean
   style?: StyleProp<ViewStyle>
@@ -171,7 +183,7 @@ export function TaskArrival({ children, index, active, reducedMotion, style, ent
   completion.current = onArrivalComplete
   useLayoutEffect(() => {
     progress.stopAnimation()
-    const timing = taskEntranceTiming(index, active && enter, reducedMotion)
+    const timing = taskEntranceTiming(index, active && enter, reducedMotion, count)
     if (!timing) {
       progress.setValue(1)
       return
@@ -195,7 +207,7 @@ export function TaskArrival({ children, index, active, reducedMotion, style, ent
       animation.stop()
       progress.setValue(1)
     }
-  }, [progress, index, active, reducedMotion, enter, eventKey])
+  }, [progress, index, count, active, reducedMotion, enter, eventKey])
   return (
     <Animated.View style={[style, {
       opacity: progress,

@@ -2,6 +2,10 @@ import {
   normalizeRecognitionVolume,
   normalizeCaptureVolume,
   waveformScaleForVolume,
+  waveformBarHeight,
+  pushWaveformSample,
+  WAVEFORM_MIN_HEIGHT,
+  WAVEFORM_MAX_HEIGHT,
 } from './microphoneMeter'
 
 describe('microphone input metering', () => {
@@ -35,5 +39,18 @@ describe('microphone input metering', () => {
     expect(
       waveformScaleForVolume(0.75) - waveformScaleForVolume(0.1),
     ).toBeGreaterThan(0.5)
+  })
+})
+
+describe('scrolling waveform', () => {
+  it('draws silence as an even row of dots', () => {
+    expect(waveformBarHeight(0)).toBe(WAVEFORM_MIN_HEIGHT)
+    expect(waveformBarHeight(Number.NaN)).toBe(WAVEFORM_MIN_HEIGHT)
+    expect(waveformBarHeight(1)).toBe(WAVEFORM_MAX_HEIGHT)
+    expect(waveformBarHeight(0.5)).toBeGreaterThan(waveformBarHeight(0.2))
+  })
+  it('pushes the newest level in on the right', () => {
+    expect(pushWaveformSample([0, 0.2, 0.4], 0.9)).toEqual([0.2, 0.4, 0.9])
+    expect(pushWaveformSample([0, 0], 3)).toEqual([0, 1])
   })
 })

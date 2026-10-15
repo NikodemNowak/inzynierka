@@ -49,6 +49,9 @@ import { supportsBackgroundProcessing } from '../../processing/nativeProcessing'
 type ProposalField = keyof NoteProposalSelection
 type SheetMode = 'confirm' | 'choose' | null
 
+// A title reveal longer than this is treated as stuck and replaced by plain text.
+const TITLE_REVEAL_DEADLINE_MS = 3000
+
 const NO_SELECTION: NoteProposalSelection = {
   title: false,
   summary: false,
@@ -246,7 +249,13 @@ export default function NoteDetailScreen() {
   const resultPublished = titleResultChanged || summaryResultChanged
   const titleLoading = processing && !resultPublished && !readyFields.title && (pendingTitle || !note?.title.trim())
   const summaryLoading = processing && !resultPublished && !readyFields.summary
-  const titleRevealComplete = useCallback((value: string) => setRevealTitle(current => current === value ? null : current), [])
+  // After its reveal (or a stuck one) the title remounts as plain text. On iOS an
+  // interrupted layout animation can leave the revealed view invisible until remount.
+  const [titleSettled, setTitleSettled] = useState({ text: '', epoch: 0 })
+  const titleRevealComplete = useCallback((value: string) => {
+    setRevealTitle(current => current === value ? null : current)
+    setTitleSettled(current => ({ text: value, epoch: current.epoch + 1 }))
+  }, [])
   const summaryRevealComplete = useCallback((value: string) => setRevealSummary(current => current === value ? null : current), [])
   const desiredPresentation = { title: note?.title ?? '', summary: note?.summary ?? null, tags: note?.tags ?? [], titleLoading, summaryLoading, processing }
   const shown = useLayoutTransition(desiredPresentation, JSON.stringify(desiredPresentation), id ?? '', isFocused, reducedMotion)
@@ -319,6 +328,12 @@ export default function NoteDetailScreen() {
       setRevealSummary(null)
     } else if (processError && !processing) setPendingTitle(false)
   }, [isFocused, processError, processing])
+
+  useEffect(() => {
+    if (!revealTitle) return
+    const timeout = setTimeout(() => titleRevealComplete(revealTitle), TITLE_REVEAL_DEADLINE_MS)
+    return () => clearTimeout(timeout)
+  }, [revealTitle, titleRevealComplete])
 
   useEffect(() => {
     if (!appliedNotice) return
@@ -568,10 +583,11 @@ export default function NoteDetailScreen() {
           <SkeletonText title lines={1} animate={!preparingModel} active={isFocused} />
         ) : (
           <RevealText
+            key={`title-${titleSettled.epoch}`}
             accessibilityRole="header"
             active={isFocused}
             text={shown.title.trim() || t('Bez tytułu', 'Untitled')}
-            animate={isFocused && (revealTitle === shown.title || titleResultChanged && shown.title === note.title)}
+            animate={isFocused && titleSettled.text !== shown.title && (revealTitle === shown.title || titleResultChanged && shown.title === note.title)}
             onRevealComplete={titleRevealComplete}
             placeholderLines={1}
             style={[styles.noteTitle, { color: colors.ink }]}

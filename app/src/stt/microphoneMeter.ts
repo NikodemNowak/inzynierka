@@ -21,3 +21,18 @@ export function waveformScaleForVolume(volume: number): number {
   const normalized = Number.isFinite(volume) ? clamp(volume) : 0
   return baseline + (1 - baseline) * normalized
 }
+
+export const WAVEFORM_MIN_HEIGHT = 3
+export const WAVEFORM_MAX_HEIGHT = 44
+
+/** Silence is an even row of dots; speech grows bars on a gentle curve. */
+export function waveformBarHeight(volume: number): number {
+  const normalized = Number.isFinite(volume) ? clamp(volume) : 0
+  return Math.round(WAVEFORM_MIN_HEIGHT + (WAVEFORM_MAX_HEIGHT - WAVEFORM_MIN_HEIGHT) * normalized ** 0.75)
+}
+
+/** Scrolling history: the newest level enters on the right. */
+export function pushWaveformSample(history: readonly number[], volume: number): number[] {
+  const normalized = Number.isFinite(volume) ? clamp(volume) : 0
+  return [...history.slice(1), normalized]
+}

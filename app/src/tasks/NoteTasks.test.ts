@@ -179,17 +179,17 @@ test.each(['focus', 'motion'])('a generation crossing %s loss and return shows e
   expect(mockTasksState.addForNote).not.toHaveBeenCalled()
 })
 
-test.each([6, 100])('keeps a %s-task result immediately selectable while limiting native entrances to the four sequenced rows', async count => {
+test.each([6, 100])('keeps a %s-task result immediately selectable and lets every row enter on a fast stagger', async count => {
   mockRevealCompletes = false
   const tasks = Array.from({ length: count }, (_, index) => `Rzeczywiste zadanie ${index}`)
   jest.mocked(createTaskProposal).mockResolvedValueOnce({ tasks, warnings: [] })
   await press('Zaproponuj zadania')
   expect(tree.root.findAll(item => item.props.accessibilityRole === 'checkbox' && typeof item.props.onPress === 'function')).toHaveLength(count)
-  expect(tree.root.findAllByType(TaskArrival).filter(row => row.props.enter)).toHaveLength(1)
-  for (let index = 0; index < 3; index++) {
-    await act(async () => { tree.root.findAllByType(RevealText).find(node => node.props.text === tasks[index])!.props.onRevealComplete(tasks[index]) })
-  }
-  expect(tree.root.findAllByType(TaskArrival).filter(row => row.props.enter)).toHaveLength(1)
+  const entering = tree.root.findAllByType(TaskArrival).filter(row => row.props.enter)
+  expect(entering).toHaveLength(count)
+  expect(entering.map(row => row.props.index)).toEqual(tasks.map((_, index) => index))
+  // A long list skips the slow letter reveal.
+  expect(revealed()).toHaveLength(0)
   expect(tree.root.findAllByType(RevealText).map(node => node.props.text)).toEqual(tasks)
   expect(mockTasksState.addForNote).not.toHaveBeenCalled()
 })
@@ -313,11 +313,11 @@ test('keeps completed proposals inline without opening a modal when focus was lo
 const sixTasks = Array.from({ length: 6 }, (_, index) => `Daniel ma sprawdzić tabelę numer ${index + 1}`)
 const revealed = () => tree.root.findAllByType(RevealText).filter((node) => node.props.animate === true)
 
-test('fresh proposals reveal at most four literal texts with immediate selection and no replay after hiding', async () => {
+test('fresh long proposals enter without letter reveals, select immediately and do not replay after hiding', async () => {
   jest.mocked(createTaskProposal).mockResolvedValueOnce({ tasks: sixTasks, warnings: [] })
   await press('Zaproponuj zadania')
   expect(tree.root.findAll((item) => item.props.accessibilityRole === 'checkbox' && typeof item.props.onPress === 'function')).toHaveLength(6)
-  expect(revealed().map((item) => item.props.text)).toEqual(sixTasks.slice(0, 4))
+  expect(revealed()).toHaveLength(0)
   expect(tree.root.findAllByType(RevealText).map((item) => item.props.text)).toEqual(sixTasks)
   mockFocused = false
   await act(async () => { tree.update(createElement(NoteTasks, { noteId: mockNote.id, content: mockNote.content })) })
@@ -339,7 +339,9 @@ test('reveals only IDs confirmed by a completed durable Add and never pending op
   expect(mockTasksState.tasks).toHaveLength(0)
   await act(async () => { write.resolve(); await write.promise })
   expect(mockTasksState.tasks).toHaveLength(6)
-  expect(revealed().map((item) => item.props.text)).toEqual(sixTasks.slice(0, 4))
+  // Six saved rows fade in on a fast stagger instead of four letter reveals.
+  expect(revealed()).toHaveLength(0)
+  expect(tree.root.findAllByType(TaskArrival).filter((row) => row.props.count === 6)).toHaveLength(6)
   expect(tree.root.findAllByType(RevealText).map((item) => item.props.text)).toEqual(sixTasks)
 })
 
