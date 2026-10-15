@@ -1,68 +1,149 @@
+import { useI18n } from '../i18n/useI18n'
 import { Pressable, StyleSheet, Text, View } from 'react-native'
 import type { Note } from '../domain/note'
-import { isCategory } from '../domain/categories'
-import { colors, spacing, type } from '../ui/theme'
+import { categoryLabel, isCategory } from '../domain/categories'
+import { Icon } from '../ui/Icon'
+import { type, useTheme } from '../ui/theme'
+import { useNotesStore } from '../state/notesStore'
 
-const formatDate = (ms: number): string =>
-  new Date(ms).toLocaleDateString('pl-PL', {
-    day: '2-digit',
-    month: '2-digit',
+const formatDuration = (ms: number): string => {
+  const seconds = Math.round(ms / 1000)
+  return `${Math.floor(seconds / 60)}:${(seconds % 60).toString().padStart(2, '0')}`
+}
+export function NoteRow({
+  note,
+  timestamp,
+  groupPosition = 'only',
+  onPress,
+}: {
+  note: Note
+  timestamp: number
+  groupPosition?: 'first' | 'middle' | 'last' | 'only'
+  onPress: () => void
+}) {
+  const { colors } = useTheme()
+  const { t, language, locale } = useI18n()
+  const processingPhase = useNotesStore((s) => s.processing[note.id]?.phase)
+  const processing = processingPhase !== undefined
+  const categories = note.tags.filter(isCategory)
+  const preview = note.summary?.trim() || note.content.trim()
+  const time = new Date(timestamp).toLocaleTimeString(locale, {
     hour: '2-digit',
     minute: '2-digit',
   })
-
-const formatDuration = (ms: number): string => {
-  const totalSeconds = Math.round(ms / 1000)
-  return `${Math.floor(totalSeconds / 60)}:${(totalSeconds % 60).toString().padStart(2, '0')}`
-}
-
-interface NoteRowProps {
-  note: Note
-  // Which date the row shows: the caller passes the one the list is sorted by,
-  // so a list ordered by recording date does not display modification dates.
-  timestamp: number
-  onPress: () => void
-}
-
-export function NoteRow({ note, timestamp, onPress }: NoteRowProps) {
-  const categories = note.tags.filter(isCategory)
-  const preview = note.summary?.trim() || note.content.trim()
-
+  const hasSeparator = groupPosition === 'first' || groupPosition === 'middle'
   return (
     <Pressable
-      style={({ pressed }) => [styles.row, pressed && styles.pressed]}
-      onPress={onPress}
       accessibilityRole="button"
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.row,
+        styles[groupPosition],
+        { backgroundColor: pressed ? colors.surface : colors.paper },
+      ]}
     >
-      <Text style={styles.title} numberOfLines={1}>
-        {note.title.trim().length > 0 ? note.title : 'Bez tytułu'}
-      </Text>
-
-      {preview.length > 0 && (
-        <Text style={styles.preview} numberOfLines={2}>
-          {preview}
+      <View style={styles.copy}>
+        <Text
+          style={{
+            ...type.title,
+            fontSize: 16,
+            lineHeight: 21,
+            color: colors.ink,
+          }}
+          numberOfLines={1}
+        >
+          {note.title.trim() || t('Bez tytułu', 'Untitled')}
         </Text>
-      )}
-
-      <View style={styles.meta}>
-        <Text style={styles.time}>{formatDate(timestamp)}</Text>
-        {note.durationMs !== null && (
-          <Text style={styles.time}>· {formatDuration(note.durationMs)}</Text>
+        {!!preview && (
+          <Text
+            style={{
+              ...type.body,
+              fontSize: 14,
+              lineHeight: 19,
+              color: colors.body,
+            }}
+            numberOfLines={1}
+          >
+            {preview}
+          </Text>
         )}
-        {categories.length > 0 && <Text style={styles.categories}>· {categories.join(' · ')}</Text>}
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 6,
+            marginTop: 1,
+          }}
+        >
+          <Icon
+            name={processing ? 'sparkles' : note.audioUri ? 'waveform' : 'note'}
+            size={13}
+            color={processing ? colors.accent : colors.muted}
+          />
+          <Text style={{ ...type.meta, color: colors.muted }}>
+            {processing
+              ? processingPhase === 'loading'
+                ? t('Wczytywanie modelu', 'Loading model')
+                : processingPhase === 'queued'
+                  ? t('Oczekiwanie na model', 'Waiting for model')
+                  : t('Opracowywanie', 'Processing')
+              : note.audioUri && note.durationMs !== null
+                ? formatDuration(note.durationMs)
+                : note.audioUri
+                  ? t('Nagranie', 'Recording')
+                  : t('Tekst', 'Text')}
+          </Text>
+          <Text style={{ ...type.meta, color: colors.muted }}>· {time}</Text>
+          {!!categories.length && (
+            <Text
+              numberOfLines={1}
+              style={{
+                ...type.meta,
+                color: colors.accent,
+                flexShrink: 1,
+                marginLeft: 2,
+              }}
+            >
+              {categories
+                .slice(0, 2)
+                .map((category) => categoryLabel(category, language))
+                .join(' · ')}
+              {categories.length > 2 ? ` +${categories.length - 2}` : ''}
+            </Text>
+          )}
+        </View>
       </View>
+      <Icon name="chevron-right" color={colors.faint} size={17} />
+      {hasSeparator && (
+        <View
+          pointerEvents="none"
+          style={[styles.separator, { backgroundColor: colors.line }]}
+        />
+      )}
     </Pressable>
   )
 }
 
 const styles = StyleSheet.create({
-  row: { paddingHorizontal: spacing.lg, paddingVertical: spacing.md, gap: 3 },
-  pressed: { backgroundColor: colors.surface },
-  title: { ...type.title, color: colors.ink },
-  preview: { ...type.body, color: colors.muted },
-  // Time, length and categories read as one line of record metadata rather than
-  // three competing decorations.
-  meta: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, marginTop: 2 },
-  time: { ...type.meta, color: colors.faint },
-  categories: { ...type.meta, color: colors.navy },
+  row: {
+    minHeight: 88,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    position: 'relative',
+  },
+  only: { borderRadius: 16 },
+  first: { borderTopLeftRadius: 16, borderTopRightRadius: 16 },
+  middle: { borderRadius: 0 },
+  last: { borderBottomLeftRadius: 16, borderBottomRightRadius: 16 },
+  copy: { flex: 1, gap: 4, minWidth: 0 },
+  separator: {
+    position: 'absolute',
+    bottom: 0,
+    left: 12,
+    right: 12,
+    height: StyleSheet.hairlineWidth,
+  },
 })

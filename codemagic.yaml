@@ -31,6 +31,11 @@ workflows:
             -derivedDataPath "$CM_BUILD_DIR/ios-build" \
             CODE_SIGNING_ALLOWED=NO \
             build
+      - name: Validate ExpoModulesJSI ABI
+        script: |
+          set -eu
+          python3 "$CM_BUILD_DIR/scripts/check-ios-expo-abi.py" \
+            "$CM_BUILD_DIR/ios-build/Build/Products/Release-iphoneos/Notatki.app"
       - name: Package unsigned IPA
         script: |
           set -eu

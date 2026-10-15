@@ -1,19 +1,34 @@
 import { AppState, type AppStateStatus } from 'react-native'
 import { isModelLoaded, unloadModel } from './llm'
 import { enqueueLlm } from './llmQueue'
+import {
+  hasBackgroundProcessingLease,
+  pauseAllProcessing,
+} from '../processing/jobRunner'
 
-// A backgrounded app holding the model is the first thing iOS reclaims memory
-// from, and it is killed rather than paused. Drop the weights whenever the app
-// leaves the foreground; the next note processing reloads them.
+// Drop weights when the app enters the background or iOS reports memory
+// pressure. The next user-requested LLM operation reloads them.
 export const startModelMemoryGuard = (): (() => void) => {
+  const releaseIfLoaded = (reason: string): void => {
+    void pauseAllProcessing(reason)
+      .then(() => {
+        if (!isModelLoaded()) return
+        return enqueueLlm(unloadModel)
+      })
+      .catch(() => undefined)
+  }
   const onChange = (state: AppStateStatus): void => {
-    if (state === 'active') return
-    if (!isModelLoaded()) return
-    // Queued, so it can never release the shared context mid-generation:
-    // a background run started from the record screen finishes first.
-    void enqueueLlm(unloadModel)
+    if (state !== 'background') return
+    if (!hasBackgroundProcessingLease()) releaseIfLoaded('background')
   }
 
   const subscription = AppState.addEventListener('change', onChange)
-  return () => subscription.remove()
+  const memoryWarningSubscription = AppState.addEventListener(
+    'memoryWarning',
+    () => releaseIfLoaded('memory'),
+  )
+  return () => {
+    subscription.remove()
+    memoryWarningSubscription.remove()
+  }
 }

@@ -1,16 +1,33 @@
 import { useState } from 'react'
-import { ActivityIndicator, Button, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
+import {
+  ActivityIndicator,
+  Button,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native'
 import { Stack } from 'expo-router'
-import { downloadModel, getModelPath, isModelDownloaded } from '../../ai/modelDownload'
+import {
+  downloadModel,
+  getModelPath,
+  isModelDownloaded,
+} from '../../ai/modelDownload'
 import { generate, isModelLoaded, loadModel } from '../../ai/llm'
+import { MODEL_CONFIG } from '../../ai/modelConfig'
+import { useI18n } from '../../i18n/useI18n'
 
 type Phase = 'idle' | 'downloading' | 'loading' | 'ready' | 'generating'
 
 export default function PocScreen() {
+  const { t } = useI18n()
   const [phase, setPhase] = useState<Phase>('idle')
   const [downloadPercent, setDownloadPercent] = useState(0)
   const [loadPercent, setLoadPercent] = useState(0)
-  const [prompt, setPrompt] = useState('Napisz krótkie powitanie.')
+  const [prompt, setPrompt] = useState(() =>
+    t('Napisz krótkie powitanie.', 'Write a short greeting.'),
+  )
   const [output, setOutput] = useState('')
   const [ttftMs, setTtftMs] = useState<number | null>(null)
   const [tokensPerSecond, setTokensPerSecond] = useState<number | null>(null)
@@ -58,16 +75,27 @@ export default function PocScreen() {
   return (
     <ScrollView contentContainerStyle={styles.container}>
       <Stack.Screen options={{ title: 'POC LLM' }} />
-      <Text style={styles.subtitle}>Qwen3-1.7B Q4_K_M · CPU</Text>
+      <Text style={styles.subtitle}>{MODEL_CONFIG.displayName}</Text>
 
       {error && <Text style={styles.error}>{error}</Text>}
 
-      {phase === 'idle' && <Button title="Przygotuj model" onPress={prepare} />}
+      {phase === 'idle' && (
+        <Button
+          title={t('Przygotuj model', 'Prepare model')}
+          onPress={prepare}
+        />
+      )}
       {phase === 'downloading' && (
-        <Text style={styles.status}>Pobieranie modelu: {downloadPercent.toFixed(0)}%</Text>
+        <Text style={styles.status}>
+          {t('Pobieranie modelu', 'Downloading model')}:{' '}
+          {downloadPercent.toFixed(0)}%
+        </Text>
       )}
       {phase === 'loading' && (
-        <Text style={styles.status}>Ładowanie do pamięci: {loadPercent.toFixed(0)}%</Text>
+        <Text style={styles.status}>
+          {t('Ładowanie do pamięci', 'Loading into memory')}:{' '}
+          {loadPercent.toFixed(0)}%
+        </Text>
       )}
 
       {(phase === 'ready' || phase === 'generating') && (
@@ -79,16 +107,26 @@ export default function PocScreen() {
             style={styles.input}
             editable={phase === 'ready'}
           />
-          <Button title="Generuj" onPress={run} disabled={phase === 'generating' || !isModelLoaded()} />
-          {phase === 'generating' && <ActivityIndicator style={styles.spinner} />}
+          <Button
+            title={t('Generuj', 'Generate')}
+            onPress={run}
+            disabled={phase === 'generating' || !isModelLoaded()}
+          />
+          {phase === 'generating' && (
+            <ActivityIndicator style={styles.spinner} />
+          )}
           {output.length > 0 && (
             <Text selectable style={styles.output}>
               {output}
             </Text>
           )}
-          {ttftMs !== null && <Text style={styles.metric}>TTFT: {ttftMs} ms</Text>}
+          {ttftMs !== null && (
+            <Text style={styles.metric}>TTFT: {ttftMs} ms</Text>
+          )}
           {tokensPerSecond !== null && (
-            <Text style={styles.metric}>Prędkość: {tokensPerSecond.toFixed(2)} tok/s</Text>
+            <Text style={styles.metric}>
+              {t('Prędkość', 'Speed')}: {tokensPerSecond.toFixed(2)} tok/s
+            </Text>
           )}
         </View>
       )}

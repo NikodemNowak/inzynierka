@@ -1,197 +1,248 @@
-import { useMemo, useState } from 'react'
-import { Platform, Pressable, StyleSheet, Text, View } from 'react-native'
-import { setAudioModeAsync, useAudioPlayer, useAudioPlayerStatus } from 'expo-audio'
-import { colors, radius, spacing, type } from '../ui/theme'
+import { useI18n } from '../i18n/useI18n'
+import { useState } from 'react'
+import { Platform, Pressable, Text, View } from 'react-native'
+import {
+  setAudioModeAsync,
+  useAudioPlayer,
+  useAudioPlayerStatus,
+} from 'expo-audio'
+import { Icon } from '../ui/Icon'
+import { useTheme } from '../ui/theme'
+import { nextPlaybackRate, type PlaybackRate } from './playbackRate'
+import { nativeCapture } from '../stt/nativeCapture'
 
-type Props = {
-  uri: string
-  durationMs: number | null
-}
-
-const playbackRates = [0.75, 1, 1.25, 1.5, 2] as const
-const waveformBarCount = 42
-
+type Props = { uri: string; durationMs: number | null }
 export const formatAudioTime = (seconds: number): string => {
-  const safeSeconds = Number.isFinite(seconds) ? Math.max(0, Math.floor(seconds)) : 0
-  const minutes = Math.floor(safeSeconds / 60)
-  const remainingSeconds = safeSeconds % 60
-  return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`
+  const safe = Number.isFinite(seconds) ? Math.max(0, Math.floor(seconds)) : 0
+  return `${Math.floor(safe / 60)}:${(safe % 60).toString().padStart(2, '0')}`
 }
-
-const createWaveformBars = (uri: string): number[] => {
-  let seed = 0
-  for (let i = 0; i < uri.length; i += 1) {
-    seed = (seed + uri.charCodeAt(i) * (i + 1)) % 997
-  }
-
-  return Array.from({ length: waveformBarCount }, (_, index) => {
-    const value =
-      Math.sin((index + 1) * 0.85 + seed) * 0.28 +
-      Math.sin((index + 1) * 0.31 + seed * 0.17) * 0.22 +
-      0.5
-    return Math.max(0.18, Math.min(1, value))
-  })
-}
-
 export function AudioNotePlayer({ uri, durationMs }: Props) {
+  const { colors } = useTheme()
+  const { t } = useI18n()
   const player = useAudioPlayer({ uri }, { updateInterval: 250 })
   const status = useAudioPlayerStatus(player)
+  const [selectedRate, setSelectedRate] = useState<PlaybackRate>(1)
   const [scrubberWidth, setScrubberWidth] = useState(0)
   const [playbackError, setPlaybackError] = useState<string | null>(null)
-
-  const bars = useMemo(() => createWaveformBars(uri), [uri])
-  const durationSeconds = status.duration > 0 ? status.duration : (durationMs ?? 0) / 1000
-  const currentSeconds = Math.min(status.currentTime, durationSeconds || status.currentTime)
-  const progress = durationSeconds > 0 ? currentSeconds / durationSeconds : 0
-  const activeRate = status.playbackRate || 1
-
+  const durationSeconds =
+    status.duration > 0 ? status.duration : (durationMs ?? 0) / 1000
+  const currentSeconds = Math.min(
+    status.currentTime,
+    durationSeconds || status.currentTime,
+  )
+  const progress =
+    durationSeconds > 0
+      ? Math.min(1, Math.max(0, currentSeconds / durationSeconds))
+      : 0
+  const activeRate = selectedRate
+  const handleError = (error: unknown) =>
+    setPlaybackError(error instanceof Error ? error.message : String(error))
   const togglePlayback = async () => {
-    if (status.playing) {
-      player.pause()
-      return
-    }
-    setPlaybackError(null)
     try {
-      // Restore speaker playback after speech recognition used the shared session.
-      if (Platform.OS === 'ios') {
-        await setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true })
+      if (status.playing) {
+        player.pause()
+        return
       }
+      setPlaybackError(null)
+      const capture = await nativeCapture?.getSnapshot()
+      if (capture?.manifest.state === 'recording') {
+        setPlaybackError(
+          t(
+            'Odtwarzanie jest dostępne po zatrzymaniu mikrofonu.',
+            'Playback is available after stopping the microphone.',
+          ),
+        )
+        return
+      }
+      // Required after recording: restore the shared iOS session to speaker playback.
+      if (Platform.OS === 'ios')
+        await setAudioModeAsync({
+          allowsRecording: false,
+          playsInSilentMode: true,
+        })
       if (status.didJustFinish) await player.seekTo(0)
+      player.setPlaybackRate(selectedRate)
       player.play()
     } catch (error) {
-      setPlaybackError(error instanceof Error ? error.message : String(error))
+      handleError(error)
     }
   }
-
-  const seekToPosition = (locationX: number) => {
-    if (scrubberWidth <= 0 || durationSeconds <= 0) return
-    const ratio = Math.max(0, Math.min(1, locationX / scrubberWidth))
-    void player.seekTo(durationSeconds * ratio)
+  const seek = async (seconds: number) => {
+    if (durationSeconds <= 0) return
+    try {
+      await player.seekTo(Math.max(0, Math.min(durationSeconds, seconds)))
+    } catch (error) {
+      handleError(error)
+    }
   }
-
-  const setRate = (rate: number) => {
-    player.setPlaybackRate(rate)
+  const cycleRate = () => {
+    try {
+      const nextRate = nextPlaybackRate(selectedRate)
+      player.setPlaybackRate(nextRate)
+      setSelectedRate(nextRate)
+    } catch (error) {
+      handleError(error)
+    }
   }
-
   return (
-    <View style={styles.container}>
-      <View style={styles.topRow}>
+    <View
+      style={{
+        backgroundColor: colors.surface,
+        borderRadius: 16,
+        padding: 12,
+        gap: 8,
+      }}
+    >
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel={status.playing ? 'Pauza' : 'Odtwórz'}
+          accessibilityLabel={
+            status.playing
+              ? t('Pauza', 'Pause')
+              : t('Odtwórz nagranie', 'Play recording')
+          }
           onPress={() => void togglePlayback()}
-          style={({ pressed }) => [styles.playButton, pressed && styles.pressed]}
+          style={({ pressed }) => ({
+            width: 44,
+            height: 44,
+            borderRadius: 22,
+            backgroundColor: colors.action,
+            alignItems: 'center',
+            justifyContent: 'center',
+            opacity: pressed ? 0.7 : 1,
+          })}
         >
-          <Text style={styles.playButtonText}>{status.playing ? 'Pauza' : 'Play'}</Text>
+          <Icon
+            name={status.playing ? 'pause' : 'play'}
+            color={colors.onAction}
+            size={21}
+          />
         </Pressable>
-        <Text style={styles.timeText}>
-          {formatAudioTime(currentSeconds)} / {formatAudioTime(durationSeconds)}
-        </Text>
+        <View style={{ flex: 1 }}>
+          <Pressable
+            accessibilityRole="adjustable"
+            accessibilityLabel={t('Pozycja nagrania', 'Recording position')}
+            accessibilityValue={{
+              min: 0,
+              max: Math.max(1, Math.floor(durationSeconds)),
+              now: Math.floor(currentSeconds),
+            }}
+            accessibilityActions={[
+              {
+                name: 'increment',
+                label: t('Przewiń o 10 sekund', 'Skip forward 10 seconds'),
+              },
+              {
+                name: 'decrement',
+                label: t('Cofnij o 10 sekund', 'Skip back 10 seconds'),
+              },
+            ]}
+            onAccessibilityAction={(event) => {
+              if (event.nativeEvent.actionName === 'increment')
+                void seek(currentSeconds + 10)
+              if (event.nativeEvent.actionName === 'decrement')
+                void seek(currentSeconds - 10)
+            }}
+            onLayout={(event) =>
+              setScrubberWidth(event.nativeEvent.layout.width)
+            }
+            onPress={(event) => {
+              if (scrubberWidth > 0)
+                void seek(
+                  (durationSeconds * event.nativeEvent.locationX) /
+                    scrubberWidth,
+                )
+            }}
+            style={{ minHeight: 44, justifyContent: 'center' }}
+          >
+            <View
+              style={{
+                height: 4,
+                borderRadius: 2,
+                backgroundColor: colors.line,
+              }}
+            >
+              <View
+                style={{
+                  width: `${progress * 100}%`,
+                  height: 4,
+                  backgroundColor: colors.accent,
+                  borderRadius: 2,
+                }}
+              />
+              <View
+                style={{
+                  position: 'absolute',
+                  left: Math.max(0, progress * scrubberWidth - 6),
+                  top: -4,
+                  width: 12,
+                  height: 12,
+                  borderRadius: 6,
+                  backgroundColor: colors.paper,
+                  borderWidth: 1,
+                  borderColor: colors.faint,
+                }}
+              />
+            </View>
+          </Pressable>
+          <View
+            style={{
+              flexDirection: 'row',
+              justifyContent: 'space-between',
+              marginTop: -7,
+            }}
+          >
+            <Text
+              style={{
+                fontSize: 11,
+                lineHeight: 17,
+                color: colors.muted,
+                fontVariant: ['tabular-nums'],
+              }}
+            >
+              {formatAudioTime(currentSeconds)}
+            </Text>
+            <Text
+              style={{
+                fontSize: 11,
+                lineHeight: 17,
+                color: colors.muted,
+                fontVariant: ['tabular-nums'],
+              }}
+            >
+              {formatAudioTime(durationSeconds)}
+            </Text>
+          </View>
+        </View>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={t(
+            `Prędkość ${activeRate}. Dotknij, aby zmienić`,
+            `Speed ${activeRate}. Tap to change`,
+          )}
+          onPress={cycleRate}
+          style={{
+            minWidth: 44,
+            minHeight: 44,
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <Text
+            style={{ color: colors.accent, fontSize: 14, fontWeight: '600' }}
+          >
+            {activeRate}×
+          </Text>
+        </Pressable>
       </View>
       {(playbackError || status.error) && (
-        <Text style={styles.error}>{playbackError || status.error}</Text>
+        <Text
+          accessibilityLiveRegion="polite"
+          style={{ color: colors.danger, fontSize: 13, lineHeight: 19 }}
+        >
+          {playbackError || status.error}
+        </Text>
       )}
-
-      <Pressable
-        accessibilityRole="adjustable"
-        accessibilityLabel="Pozycja nagrania"
-        onLayout={(event) => setScrubberWidth(event.nativeEvent.layout.width)}
-        onPress={(event) => seekToPosition(event.nativeEvent.locationX)}
-        style={styles.waveform}
-      >
-        {bars.map((height, index) => {
-          const barProgress = (index + 1) / bars.length
-          const active = barProgress <= progress
-          return (
-            <View
-              key={`${uri}-${index}`}
-              style={[
-                styles.waveformBar,
-                { height: 10 + height * 34 },
-                active ? styles.waveformBarActive : styles.waveformBarInactive,
-              ]}
-            />
-          )
-        })}
-      </Pressable>
-
-      <View style={styles.rateRow}>
-        {playbackRates.map((rate) => {
-          const active = Math.abs(activeRate - rate) < 0.01
-          return (
-            <Pressable
-              key={rate}
-              accessibilityRole="button"
-              accessibilityLabel={`Prędkość ${rate}x`}
-              onPress={() => setRate(rate)}
-              style={({ pressed }) => [
-                styles.rateButton,
-                active && styles.rateButtonActive,
-                pressed && styles.pressed,
-              ]}
-            >
-              <Text style={[styles.rateText, active && styles.rateTextActive]}>
-                {rate}x
-              </Text>
-            </Pressable>
-          )
-        })}
-      </View>
     </View>
   )
 }
-
-const styles = StyleSheet.create({
-  container: {
-    borderRadius: radius.md,
-    padding: spacing.md,
-    gap: spacing.md,
-    backgroundColor: colors.surface,
-  },
-  topRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacing.md,
-  },
-  playButton: {
-    backgroundColor: colors.navy,
-    borderRadius: radius.sm,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: 9,
-    minWidth: 76,
-    alignItems: 'center',
-  },
-  playButtonText: { ...type.label, color: colors.paper },
-  timeText: { ...type.meta, color: colors.body, fontSize: 13 },
-  error: { ...type.meta, color: colors.danger },
-  waveform: {
-    height: 48,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
-  },
-  waveformBar: {
-    flex: 1,
-    borderRadius: 1,
-  },
-  waveformBarActive: { backgroundColor: colors.navy },
-  waveformBarInactive: { backgroundColor: '#D5DBE3' },
-  rateRow: { flexDirection: 'row', gap: spacing.sm },
-  rateButton: {
-    flex: 1,
-    borderWidth: 1,
-    borderColor: colors.line,
-    borderRadius: radius.sm,
-    paddingVertical: 7,
-    alignItems: 'center',
-    backgroundColor: colors.paper,
-  },
-  rateButtonActive: {
-    backgroundColor: colors.navySoft,
-    borderColor: colors.navy,
-  },
-  rateText: { ...type.meta, color: colors.muted, fontSize: 12 },
-  rateTextActive: { color: colors.navy },
-  pressed: { opacity: 0.75 },
-})

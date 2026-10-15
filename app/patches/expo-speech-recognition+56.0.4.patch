@@ -1,0 +1,182 @@
+diff --git a/node_modules/expo-speech-recognition/android/src/main/java/expo/modules/speechrecognition/ExpoAudioRecorder.kt b/node_modules/expo-speech-recognition/android/src/main/java/expo/modules/speechrecognition/ExpoAudioRecorder.kt
+index aaa462a..73cebe5 100644
+--- a/node_modules/expo-speech-recognition/android/src/main/java/expo/modules/speechrecognition/ExpoAudioRecorder.kt
++++ b/node_modules/expo-speech-recognition/android/src/main/java/expo/modules/speechrecognition/ExpoAudioRecorder.kt
+@@ -8,6 +8,7 @@ import android.media.MediaRecorder
+ import android.os.ParcelFileDescriptor
+ import android.os.ParcelFileDescriptor.AutoCloseOutputStream
+ import android.os.Build
++import android.os.SystemClock
+ import android.util.Log
+ import androidx.annotation.RequiresApi
+ import java.io.DataOutputStream
+@@ -16,6 +17,8 @@ import java.io.FileOutputStream
+ import java.io.IOException
+ import java.util.UUID
+ import kotlin.concurrent.thread
++import kotlin.math.log10
++import kotlin.math.sqrt
+ 
+ interface AudioRecorder {
+     fun start()
+@@ -63,7 +66,33 @@ class ExpoAudioRecorder(
+     private val bufferSizeInBytes = AudioRecord.getMinBufferSize(sampleRateInHz, channelConfig, audioFormat)
+ 
+     private var recordingThread: Thread? = null
++    @Volatile
+     private var isRecordingAudio = false
++    var onVolumeChange: ((Float) -> Unit)? = null
++    var volumeChangeIntervalMillis: Long = 100L
++    private var lastVolumeTime = 0L
++
++    // SpeechRecognizer.onRmsChanged is not guaranteed for EXTRA_AUDIO_SOURCE.
++    // Meter the same PCM16 samples that are saved and sent to recognition.
++    private fun reportVolume(data: ByteArray, size: Int) {
++        val callback = onVolumeChange ?: return
++        val now = SystemClock.elapsedRealtime()
++        if (now - lastVolumeTime < volumeChangeIntervalMillis) return
++        lastVolumeTime = now
++        val samples = size / 2
++        if (samples == 0) return
++        var sumSquares = 0.0
++        for (index in 0 until samples) {
++            val offset = index * 2
++            val sample = ((data[offset].toInt() and 0xff) or
++                (data[offset + 1].toInt() shl 8)).toShort().toDouble() / 32768.0
++            sumSquares += sample * sample
++        }
++        val rms = sqrt(sumSquares / samples)
++        val db = 20.0 * log10(rms.coerceAtLeast(0.000001))
++        // Match the public volumechange range used by the iOS implementation.
++        callback((((db + 60.0) / 60.0).coerceIn(0.0, 1.0) * 12.0 - 2.0).toFloat())
++    }
+ 
+     companion object {
+         private const val TAG = "ExpoAudioRecorder"
+@@ -212,6 +241,7 @@ class ExpoAudioRecorder(
+ 
+             when {
+                 read > 0 -> {
++                    reportVolume(data, read)
+                     try {
+                         outputStream?.write(data, 0, read)
+                         outputStream?.flush()
+diff --git a/node_modules/expo-speech-recognition/android/src/main/java/expo/modules/speechrecognition/ExpoSpeechService.kt b/node_modules/expo-speech-recognition/android/src/main/java/expo/modules/speechrecognition/ExpoSpeechService.kt
+index 0e6b676..a5fe36a 100644
+--- a/node_modules/expo-speech-recognition/android/src/main/java/expo/modules/speechrecognition/ExpoSpeechService.kt
++++ b/node_modules/expo-speech-recognition/android/src/main/java/expo/modules/speechrecognition/ExpoSpeechService.kt
+@@ -281,6 +281,19 @@ class ExpoSpeechService(
+ 
+             // Set common intent extras if audioRecorder is initialized
+             audioRecorder?.let {
++                val recorder = it
++                if (options.volumeChangeEventOptions?.enabled == true) {
++                    recorder.volumeChangeIntervalMillis =
++                        (options.volumeChangeEventOptions?.intervalMillis ?: 100).toLong().coerceAtLeast(16L)
++                    recorder.onVolumeChange = { volume ->
++                        mainHandler.post {
++                            // Ignore already queued readings from a stopped/replaced session.
++                            if (audioRecorder === recorder && recognitionState == RecognitionState.ACTIVE) {
++                                sendEvent("volumechange", mapOf("value" to volume))
++                            }
++                        }
++                    }
++                }
+                 intent.putExtra(RecognizerIntent.EXTRA_AUDIO_SOURCE, it.recordingParcel)
+                 intent.putExtra(RecognizerIntent.EXTRA_AUDIO_SOURCE_CHANNEL_COUNT, 1)
+                 intent.putExtra(RecognizerIntent.EXTRA_AUDIO_SOURCE_ENCODING, it.audioFormat)
+@@ -467,6 +480,8 @@ class ExpoSpeechService(
+     }
+ 
+     override fun onRmsChanged(rmsdB: Float) {
++        // The PCM recorder is authoritative when we supply EXTRA_AUDIO_SOURCE.
++        if (audioRecorder != null) return
+         if (options.volumeChangeEventOptions?.enabled != true) {
+             return
+         }
+diff --git a/node_modules/expo-speech-recognition/build/ExpoSpeechRecognitionModule.types.d.ts b/node_modules/expo-speech-recognition/build/ExpoSpeechRecognitionModule.types.d.ts
+index 319bdcb..57c3483 100644
+--- a/node_modules/expo-speech-recognition/build/ExpoSpeechRecognitionModule.types.d.ts
++++ b/node_modules/expo-speech-recognition/build/ExpoSpeechRecognitionModule.types.d.ts
+@@ -644,7 +644,7 @@ export declare class ExpoSpeechRecognitionModuleType extends NativeModule<ExpoSp
+     /**
+      * Whether the on-device speech recognition is available on the device.
+      */
+-    supportsOnDeviceRecognition(): boolean;
++    supportsOnDeviceRecognition(locale?: string): boolean;
+     /**
+      * Whether the recording feature is available on the device.
+      *
+diff --git a/node_modules/expo-speech-recognition/ios/ExpoSpeechRecognitionModule.swift b/node_modules/expo-speech-recognition/ios/ExpoSpeechRecognitionModule.swift
+index daec776..e9f0d85 100644
+--- a/node_modules/expo-speech-recognition/ios/ExpoSpeechRecognitionModule.swift
++++ b/node_modules/expo-speech-recognition/ios/ExpoSpeechRecognitionModule.swift
+@@ -185,6 +185,21 @@ public class ExpoSpeechRecognitionModule: Module {
+           // Reset the previous result
+           self.previousResult = nil
+ 
++          // Validate the requested locale, not the device's default language.
++          // An offline-only request must never silently become a network task.
++          if options.requiresOnDeviceRecognition {
++            guard let offlineLocale = resolveLocale(localeIdentifier: options.lang),
++              let offlineRecognizer = SFSpeechRecognizer(locale: offlineLocale),
++              offlineRecognizer.supportsOnDeviceRecognition
++            else {
++              sendErrorAndStop(
++                error: "language-not-supported",
++                message: "On-device recognition is unavailable for \(options.lang)."
++              )
++              return
++            }
++          }
++
+           // Re-create the speech recognizer when locales change
+           if self.speechRecognizer == nil || currentLocale != options.lang {
+             guard let locale = resolveLocale(localeIdentifier: options.lang) else {
+@@ -349,8 +364,16 @@ public class ExpoSpeechRecognitionModule: Module {
+       try AVAudioSession.sharedInstance().setActive(value, options: setActiveOptions)
+     }
+ 
+-    Function("supportsOnDeviceRecognition") { () -> Bool in
+-      let recognizer = SFSpeechRecognizer()
++    Function("supportsOnDeviceRecognition") { (localeIdentifier: String?) -> Bool in
++      let recognizer: SFSpeechRecognizer?
++      if let localeIdentifier {
++        guard let locale = resolveLocale(localeIdentifier: localeIdentifier) else {
++          return false
++        }
++        recognizer = SFSpeechRecognizer(locale: locale)
++      } else {
++        recognizer = SFSpeechRecognizer()
++      }
+       return recognizer?.supportsOnDeviceRecognition ?? false
+     }
+ 
+diff --git a/node_modules/expo-speech-recognition/ios/ExpoSpeechRecognizer.swift b/node_modules/expo-speech-recognition/ios/ExpoSpeechRecognizer.swift
+index c474f80..43848da 100644
+--- a/node_modules/expo-speech-recognition/ios/ExpoSpeechRecognizer.swift
++++ b/node_modules/expo-speech-recognition/ios/ExpoSpeechRecognizer.swift
+@@ -576,9 +576,7 @@ actor ExpoSpeechRecognizer: ObservableObject {
+     // These won't get emitted to the user, however
+     request.shouldReportPartialResults = options.interimResults || !options.continuous
+ 
+-    if recognizer.supportsOnDeviceRecognition {
+-      request.requiresOnDeviceRecognition = options.requiresOnDeviceRecognition
+-    }
++    request.requiresOnDeviceRecognition = options.requiresOnDeviceRecognition
+ 
+     if let taskHint = options.iosTaskHint {
+       request.taskHint = taskHint.sfSpeechRecognitionTaskHint
+diff --git a/node_modules/expo-speech-recognition/src/ExpoSpeechRecognitionModule.types.ts b/node_modules/expo-speech-recognition/src/ExpoSpeechRecognitionModule.types.ts
+index 28f323f..6a4b6b4 100644
+--- a/node_modules/expo-speech-recognition/src/ExpoSpeechRecognitionModule.types.ts
++++ b/node_modules/expo-speech-recognition/src/ExpoSpeechRecognitionModule.types.ts
+@@ -690,7 +690,7 @@ export declare class ExpoSpeechRecognitionModuleType extends NativeModule<ExpoSp
+   /**
+    * Whether the on-device speech recognition is available on the device.
+    */
+-  supportsOnDeviceRecognition(): boolean;
++  supportsOnDeviceRecognition(locale?: string): boolean;
+   /**
+    * Whether the recording feature is available on the device.
+    *

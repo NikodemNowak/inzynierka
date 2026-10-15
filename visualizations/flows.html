@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="pl" data-theme="light">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Notatki — mapa przepływów</title>
+    <link rel="stylesheet" href="flows.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="masthead">
+        <div>
+          <h1>Notatki — mapa przepływów</h1>
+          <p class="lead">
+            30 widoków w jasnym i ciemnym motywie. Kliknij telefon, aby
+            powiększyć ekran lub zobaczyć całą planszę.
+          </p>
+        </div>
+        <div class="switch" role="group" aria-label="Motyw wizualizacji">
+          <button id="light-button" type="button" aria-pressed="true">
+            Jasny</button
+          ><button id="dark-button" type="button" aria-pressed="false">
+            Ciemny
+          </button>
+        </div>
+      </header>
+      <nav class="jump" id="jump" aria-label="Przepływy"></nav>
+      <div id="flows"></div>
+      <p class="end-note">
+        <a href="processing.html"
+          >Zobacz animację wspólnego statusu i wiele kategorii</a
+        ><br />Koncepcja wizualna ·
+        <a href="index.html">Przegląd wszystkich 20 plansz</a><br />Animacje
+        pokazano jako kolejne klatki. Warianty ilustrują projekt interfejsu, nie
+        aktualny build aplikacji.
+      </p>
+      <noscript
+        >Włącz JavaScript, aby otworzyć galerię. Wszystkie plansze są też
+        dostępne w katalogu assets.</noscript
+      >
+    </main>
+    <dialog id="viewer" aria-labelledby="viewer-title">
+      <div class="viewer-head">
+        <div>
+          <strong id="viewer-title"></strong
+          ><small id="viewer-position"></small>
+        </div>
+        <button class="plain-button" id="viewer-close" type="button">
+          Zamknij ×
+        </button>
+      </div>
+      <div class="viewer-body">
+        <div class="viewer-stage" id="viewer-stage">
+          <span class="phone-crop viewer-crop" id="viewer-crop"
+            ><img
+              id="viewer-image"
+              width="1536"
+              height="1024"
+              alt="Powiększony ekran wizualizacji"
+          /></span>
+        </div>
+        <div class="viewer-side">
+          <p id="viewer-description"></p>
+          <div class="viewer-controls">
+            <button class="plain-button" id="viewer-prev" type="button">
+              Poprzedni</button
+            ><button class="plain-button" id="viewer-next" type="button">
+              Następny
+            </button>
+          </div>
+          <button class="plain-button" id="viewer-board" type="button">
+            Pokaż całą planszę</button
+          ><a id="viewer-file" href="#" download="plansza-notatki.png"
+            >Pobierz planszę PNG</a
+          >
+        </div>
+      </div>
+    </dialog>
+    <script src="screens.js"></script>
+    <script src="flows.js"></script>
+  </body>
+</html>

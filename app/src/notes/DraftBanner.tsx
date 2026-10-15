@@ -1,92 +1,119 @@
+import { useI18n } from '../i18n/useI18n'
 import { useState } from 'react'
-import { Pressable, StyleSheet, Text, View } from 'react-native'
+import { Alert, Text, View } from 'react-native'
 import { useDraftStore } from '../state/draftStore'
 import { useNotesStore } from '../state/notesStore'
-import { colors, radius, spacing, type } from '../ui/theme'
+import { Button } from '../ui/Button'
+import { Icon } from '../ui/Icon'
+import { type, useTheme } from '../ui/theme'
 
-const formatTime = (ms: number): string =>
-  new Date(ms).toLocaleString('pl-PL', {
-    day: '2-digit',
-    month: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
-
-const defaultTitle = (startedAt: number): string => `Odzyskane nagranie ${formatTime(startedAt)}`
-
-// A recording that the system interrupted leaves its transcript here. Recovery
-// is offered rather than performed: the user decides whether an interrupted
-// recording is worth keeping, and until they do it stays out of the note list.
 export function DraftBanner() {
+  const { colors } = useTheme()
+  const { t } = useI18n()
   const draft = useDraftStore((state) => state.draft)
   const clear = useDraftStore((state) => state.clear)
   const add = useNotesStore((state) => state.add)
   const [busy, setBusy] = useState(false)
-
   if (!draft) return null
-
   const keep = async () => {
     setBusy(true)
     try {
       await add({
-        title: defaultTitle(draft.startedAt),
+        title:
+          draft.language === 'en'
+            ? 'Interrupted recording'
+            : 'Przerwane nagranie',
         content: draft.transcript,
         summary: null,
         tags: [],
         audioUri: null,
         durationMs: null,
+        language: draft.language ?? 'pl',
       })
       await clear()
+    } catch {
+      Alert.alert(
+        t('Nie zapisano notatki', 'Note not saved'),
+        t(
+          'Odzyskany tekst nadal czeka tutaj. Spróbuj ponownie.',
+          'Your recovered text is still here. Try again.',
+        ),
+      )
     } finally {
       setBusy(false)
     }
   }
-
-  const discard = async () => {
-    setBusy(true)
-    try {
-      await clear()
-    } finally {
-      setBusy(false)
-    }
-  }
-
+  const discard = () =>
+    Alert.alert(
+      t('Odrzucić odzyskany tekst?', 'Discard recovered text?'),
+      t(
+        'Ten szkic nie został jeszcze zapisany jako notatka.',
+        'This draft has not been saved as a note yet.',
+      ),
+      [
+        { text: t('Zachowaj', 'Keep'), style: 'cancel' },
+        {
+          text: t('Odrzuć', 'Discard'),
+          style: 'destructive',
+          onPress: () => {
+            setBusy(true)
+            void clear()
+              .catch(() =>
+                Alert.alert(
+                  t('Nie odrzucono szkicu', 'Draft not discarded'),
+                  t('Spróbuj ponownie.', 'Try again.'),
+                ),
+              )
+              .finally(() => setBusy(false))
+          },
+        },
+      ],
+    )
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Przerwane nagranie z {formatTime(draft.startedAt)}</Text>
-      <Text style={styles.preview} numberOfLines={2}>
+    <View
+      style={{
+        marginHorizontal: 24,
+        marginBottom: 14,
+        padding: 16,
+        borderRadius: 16,
+        backgroundColor: colors.paper,
+        borderWidth: 1,
+        borderColor: colors.line,
+        gap: 8,
+      }}
+    >
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+        <Icon name="note" color={colors.accent} size={21} />
+        <Text style={{ ...type.label, color: colors.ink }}>
+          {t('Odzyskane nagranie', 'Recovered recording')}
+        </Text>
+      </View>
+      <Text
+        numberOfLines={2}
+        style={{ ...type.body, fontSize: 14, color: colors.body }}
+      >
         {draft.transcript}
       </Text>
-      <Text style={styles.note}>Odzyskano sam transkrypt — nagranie audio nie zostało zapisane.</Text>
-      <View style={styles.actions}>
-        <Pressable onPress={keep} disabled={busy} hitSlop={6}>
-          <Text style={styles.keep}>Zapisz jako notatkę</Text>
-        </Pressable>
-        <Pressable onPress={discard} disabled={busy} hitSlop={6}>
-          <Text style={styles.discard}>Odrzuć</Text>
-        </Pressable>
+      <Text style={{ ...type.meta, color: colors.muted }}>
+        {t(
+          'Zachowano tekst. Audio jest niedostępne.',
+          'Text recovered. Audio is unavailable.',
+        )}
+      </Text>
+      <View style={{ flexDirection: 'row', gap: 8 }}>
+        <Button
+          label={t('Zapisz notatkę', 'Save note')}
+          onPress={() => void keep()}
+          disabled={busy}
+          style={{ flex: 1 }}
+        />
+        <Button
+          label={t('Odrzuć', 'Discard')}
+          variant="danger"
+          onPress={discard}
+          disabled={busy}
+        />
       </View>
     </View>
   )
 }
-
-const styles = StyleSheet.create({
-  // Amber marks recording state elsewhere in the app; an interrupted recording
-  // is exactly that state, unfinished — so the banner belongs to the same family.
-  container: {
-    marginHorizontal: spacing.lg,
-    marginTop: spacing.md,
-    padding: spacing.md,
-    gap: spacing.xs,
-    borderRadius: radius.md,
-    backgroundColor: colors.emberSoft,
-    borderWidth: 1,
-    borderColor: '#F3D9B5',
-  },
-  title: { ...type.label, color: colors.ember, fontSize: 14 },
-  preview: { ...type.body, color: colors.body },
-  note: { ...type.meta, color: colors.muted },
-  actions: { flexDirection: 'row', gap: spacing.xl, marginTop: spacing.xs },
-  keep: { ...type.label, color: colors.navy },
-  discard: { ...type.label, color: colors.danger },
-})

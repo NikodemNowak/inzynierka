@@ -1,17 +1,24 @@
-import { ActivityIndicator, Pressable, StyleSheet, Text, View, type ViewStyle } from 'react-native'
-import { colors, radius, spacing } from './theme'
+import {
+  ActivityIndicator,
+  Pressable,
+  Text,
+  View,
+  type StyleProp,
+  type ViewStyle,
+} from 'react-native'
+import { radius, useTheme } from './theme'
+import { Icon, type IconName } from './Icon'
 
 export type ButtonVariant = 'primary' | 'secondary' | 'danger' | 'quiet'
-
 interface ButtonProps {
   label: string
   onPress: () => void
   variant?: ButtonVariant
   disabled?: boolean
   busy?: boolean
-  style?: ViewStyle
+  style?: StyleProp<ViewStyle>
+  icon?: IconName
 }
-
 export function Button({
   label,
   onPress,
@@ -19,8 +26,16 @@ export function Button({
   disabled = false,
   busy = false,
   style,
+  icon,
 }: ButtonProps) {
+  const { colors } = useTheme()
   const inactive = disabled || busy
+  const foreground =
+    variant === 'primary'
+      ? colors.onAction
+      : variant === 'danger'
+        ? colors.danger
+        : colors.accent
   return (
     <Pressable
       onPress={onPress}
@@ -28,48 +43,50 @@ export function Button({
       accessibilityRole="button"
       accessibilityState={{ disabled: inactive, busy }}
       style={({ pressed }) => [
-        styles.base,
-        styles[variant],
-        pressed && !inactive && styles.pressed,
-        inactive && styles.inactive,
+        {
+          minHeight: 50,
+          borderRadius: radius.md,
+          paddingVertical: 13,
+          paddingHorizontal: 18,
+          alignItems: 'center',
+          justifyContent: 'center',
+          backgroundColor:
+            variant === 'primary'
+              ? colors.action
+              : variant === 'secondary'
+                ? colors.accentSoft
+                : 'transparent',
+          opacity: inactive ? 0.45 : pressed ? 0.7 : 1,
+        },
         style,
       ]}
     >
-      <View style={styles.content}>
-        {busy && <ActivityIndicator size="small" color={variant === 'primary' ? colors.paper : colors.navy} />}
-        <Text style={[styles.label, textStyles[variant], inactive && styles.inactiveLabel]}>
+      <View
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 9,
+        }}
+      >
+        {busy ? (
+          <ActivityIndicator size="small" color={foreground} />
+        ) : icon ? (
+          <Icon name={icon} size={20} color={foreground} />
+        ) : null}
+        <Text
+          style={{
+            color: foreground,
+            fontSize: 15,
+            lineHeight: 22,
+            fontWeight: '600',
+            flexShrink: 1,
+            textAlign: 'center',
+          }}
+        >
           {label}
         </Text>
       </View>
     </Pressable>
   )
 }
-
-const styles = StyleSheet.create({
-  base: {
-    borderRadius: radius.md,
-    paddingVertical: 13,
-    paddingHorizontal: spacing.lg,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-  },
-  content: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  primary: { backgroundColor: colors.navy, borderColor: colors.navy },
-  secondary: { backgroundColor: colors.paper, borderColor: colors.line },
-  danger: { backgroundColor: colors.paper, borderColor: '#F0CFCF' },
-  quiet: { backgroundColor: 'transparent', borderColor: 'transparent', paddingVertical: spacing.sm },
-  // Opacity rather than a second palette: the button keeps its identity while
-  // clearly not being available.
-  pressed: { opacity: 0.72 },
-  inactive: { opacity: 0.45 },
-  label: { fontSize: 15, fontWeight: '600' },
-  inactiveLabel: {},
-})
-
-const textStyles = StyleSheet.create({
-  primary: { color: colors.paper },
-  secondary: { color: colors.navy },
-  danger: { color: colors.danger },
-  quiet: { color: colors.navy },
-})

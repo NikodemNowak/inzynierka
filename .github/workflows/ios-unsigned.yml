@@ -1,0 +1,78 @@
+name: iOS unsigned device build
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [feat/ui-system]
+
+concurrency:
+  group: ios-unsigned-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[build]')
+    runs-on: macos-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select newest available Xcode
+        run: |
+          set -eu
+          ls -d /Applications/Xcode*.app
+          sudo xcode-select -s "$(ls -d /Applications/Xcode*.app | sort | tail -1)"
+          xcodebuild -version
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.19.0
+
+      - name: Install dependencies
+        run: |
+          cd app
+          npm ci --legacy-peer-deps
+
+      - name: Generate iOS project
+        run: |
+          cd app
+          npx expo prebuild --platform ios --no-install
+
+      - name: Install CocoaPods dependencies
+        run: |
+          cd app/ios
+          pod install
+
+      - name: Build for iPhone without signing
+        run: |
+          cd app
+          xcodebuild \
+            -workspace ios/Notatki.xcworkspace \
+            -scheme Notatki \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath "$GITHUB_WORKSPACE/ios-build" \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
+      - name: Validate ExpoModulesJSI ABI
+        run: |
+          python3 "$GITHUB_WORKSPACE/scripts/check-ios-expo-abi.py" \
+            "$GITHUB_WORKSPACE/ios-build/Build/Products/Release-iphoneos/Notatki.app"
+
+      - name: Package unsigned IPA
+        run: |
+          set -eu
+          mkdir -p "$GITHUB_WORKSPACE/ipa/Payload"
+          cp -R "$GITHUB_WORKSPACE/ios-build/Build/Products/Release-iphoneos/Notatki.app" "$GITHUB_WORKSPACE/ipa/Payload/"
+          cd "$GITHUB_WORKSPACE/ipa"
+          zip -qry -y "$GITHUB_WORKSPACE/Notatki-unsigned.ipa" Payload
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: Notatki-unsigned
+          path: Notatki-unsigned.ipa
+          if-no-files-found: error

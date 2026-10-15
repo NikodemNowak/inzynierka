@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="pl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Notatki — wspólny status i animacja</title>
+    <link rel="stylesheet" href="processing.css" />
+  </head>
+  <body>
+    <main>
+      <header class="top">
+        <div>
+          <a href="flows.html">← Mapa przepływów</a>
+          <h1>Jeden proces. Jeden status.</h1>
+          <p class="lead">
+            Demonstracja koncepcji animacji, nie działający model. Wspólne
+            opracowanie tytułu, podsumowania i kategorii. Poniżej możesz
+            obejrzeć ruch i sprawdzić układ z większą liczbą etykiet.
+          </p>
+        </div>
+        <div class="switch">
+          <button id="light" aria-pressed="true">Jasny</button
+          ><button id="dark" aria-pressed="false">Ciemny</button>
+        </div>
+      </header>
+      <div class="demo-layout">
+        <section
+          class="sample"
+          id="sample"
+          aria-label="Podgląd animacji fragmentu notatki"
+        >
+          <div class="sample-nav">
+            <svg
+              class="nav-icon"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+            >
+              <path d="m15 5-7 7 7 7" />
+            </svg>
+            <div class="nav-status">
+              <span class="nav-idle">Notatka</span
+              ><span class="nav-working"
+                ><svg
+                  class="spark"
+                  viewBox="0 0 24 28"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.6"
+                >
+                  <path
+                    d="m10 2 2.7 7.3L20 12l-7.3 2.7L10 22l-2.7-7.3L0 12l7.3-2.7Z"
+                  />
+                  <path
+                    d="m20 19 1.1 3.1L24 23l-2.9 1L20 27l-1-3-3-1 3-.9Z"
+                  /></svg
+                >Opracowuję notatkę…</span
+              >
+            </div>
+            <svg
+              class="nav-icon"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.6"
+            >
+              <path d="M8 7 12 3l4 4M12 3v12M7 10H4v11h16V10h-3" />
+            </svg>
+          </div>
+          <div class="sample-content">
+            <div class="title-slot waiting" id="title-slot">
+              <h2 class="note-title" id="title-text">
+                Pomysł na projekt badawczy
+              </h2>
+              <div class="skeleton">
+                <span class="sk-line"></span
+                ><span class="sk-line" style="width: 72%"></span>
+              </div>
+            </div>
+            <p class="metadata">Dzisiaj, 09:41 · 00:19</p>
+            <div class="tags" id="tags"></div>
+            <div class="audio" aria-label="Odtwarzacz — podgląd wyglądu">
+              <span class="play"
+                ><svg viewBox="0 0 20 20" fill="currentColor">
+                  <path d="m6 3 11 7-11 7Z" /></svg
+              ></span>
+              <div class="track">
+                <div class="rail"></div>
+                <div class="times"><span>00:00</span><span>00:19</span></div>
+              </div>
+              <span class="speed">1×</span>
+            </div>
+            <section class="summary">
+              <div class="section-label">
+                <h3>Podsumowanie</h3>
+                <button class="again" id="again">
+                  <svg
+                    class="spark"
+                    viewBox="0 0 24 28"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.6"
+                  >
+                    <path
+                      d="m10 2 2.7 7.3L20 12l-7.3 2.7L10 22l-2.7-7.3L0 12l7.3-2.7Z"
+                    />
+                    <path
+                      d="m20 19 1.1 3.1L24 23l-2.9 1L20 27l-1-3-3-1 3-.9Z"
+                    /></svg
+                  >Przetwórz ponownie
+                </button>
+              </div>
+              <div class="summary-slot waiting" id="summary-slot">
+                <p class="summary-text" id="summary-text">
+                  Badanie wpływu aktywności fizycznej na jakość snu studentów.
+                  Następne kroki: przegląd literatury i plan metodologii.
+                </p>
+                <div class="skeleton">
+                  <span class="sk-line"></span
+                  ><span class="sk-line" style="width: 91%"></span
+                  ><span class="sk-line" style="width: 96%"></span
+                  ><span class="sk-line" style="width: 65%"></span>
+                </div>
+              </div>
+            </section>
+          </div>
+        </section>
+        <aside class="explain">
+          <h2>Ruch w miejscach, gdzie powstaje treść</h2>
+          <ol>
+            <li>
+              <strong>Jeden status w pasku.</strong> Mała iskra spokojnie
+              pulsuje przez cały proces.
+            </li>
+            <li>
+              <strong>Wspólny refleks.</strong> Tytuł i podsumowanie korzystają
+              z tej samej delikatnej animacji oczekiwania.
+            </li>
+            <li>
+              <strong>Miękkie pojawianie się liter.</strong> Gotowy tekst
+              nabiera ostrości; odtwarzacz pozostaje nieruchomy.
+            </li>
+            <li>
+              <strong>Kategorie pod datą.</strong> Wszystkie etykiety są
+              widoczne i zawijają się do kolejnej linii.
+            </li>
+          </ol>
+          <div class="controls">
+            <button class="replay" id="replay">Odtwórz animację</button
+            ><span class="option-label">Liczba kategorii w podglądzie</span>
+            <div class="options" id="counts">
+              <button data-count="0" aria-pressed="false">0</button
+              ><button data-count="2" aria-pressed="true">2</button
+              ><button data-count="5" aria-pressed="false">5</button
+              ><button data-count="8" aria-pressed="false">8</button>
+            </div>
+            <label class="reduced"
+              ><input type="checkbox" id="reduce" />Ogranicz ruch</label
+            >
+            <p class="caption">
+              To demonstracja animacji, bez uruchamiania modelu. Aplikacja
+              dobiera najwyżej jedną kategorię główną; większa liczba ilustruje
+              wybór ręczny. Animacja nie przedstawia rzeczywistego czasu
+              generowania.
+            </p>
+          </div>
+        </aside>
+      </div>
+      <section class="boards">
+        <h2>Wizualizacja całego ekranu</h2>
+        <p>
+          Od lewej: opracowanie, pojawianie się wyniku i gotowa notatka z dwiema
+          kategoriami. Te plansze pokazują docelowy wygląd; fragment powyżej
+          służy do oceny ruchu.
+        </p>
+        <img
+          class="board"
+          id="board"
+          width="1536"
+          height="1024"
+          alt="Trzy etapy opracowania notatki — jeden status oraz dwie kategorie"
+        />
+      </section>
+      <footer>
+        <a href="flows.html">Mapa przepływów</a> ·
+        <a href="index.html">Wszystkie plansze</a><br />koncepcja interfejsu i
+        demonstracja ruchu, niezależna od aplikacji.
+      </footer>
+      <noscript
+        >Włącz JavaScript, aby otworzyć galerię. Wszystkie plansze są też
+        dostępne w katalogu assets.</noscript
+      >
+    </main>
+    <script src="processing.js"></script>
+  </body>
+</html>

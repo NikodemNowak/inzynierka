@@ -1,23 +1,30 @@
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
+import { useI18n } from '../i18n/useI18n'
+import { useState } from 'react'
+import type { ReactNode } from 'react'
+import {
+  Keyboard,
+  Pressable,
+  ScrollView,
+  Text,
+  TextInput,
+  View,
+} from 'react-native'
 import type { NoteSortMode } from './noteListView'
-import { colors, radius, spacing, type } from '../ui/theme'
+import { Icon, IconButton } from '../ui/Icon'
+import { BottomSheet } from '../ui/BottomSheet'
+import { type, useTheme } from '../ui/theme'
+import { categoryLabel } from '../domain/categories'
 
 interface NotesToolbarProps {
   query: string
   onQueryChange: (query: string) => void
   sortMode: NoteSortMode
   onSortModeChange: (mode: NoteSortMode) => void
-  // Only categories actually used by existing notes, so the filter stays bounded.
   categories: readonly string[]
   selectedCategory: string | null
   onSelectCategory: (category: string | null) => void
+  afterSearch?: ReactNode
 }
-
-const SORT_OPTIONS: ReadonlyArray<{ mode: NoteSortMode; label: string }> = [
-  { mode: 'updated', label: 'Ostatnia zmiana' },
-  { mode: 'created', label: 'Data nagrania' },
-]
-
 export function NotesToolbar({
   query,
   onQueryChange,
@@ -26,101 +33,146 @@ export function NotesToolbar({
   categories,
   selectedCategory,
   onSelectCategory,
+  afterSearch,
 }: NotesToolbarProps) {
+  const { colors, isDark } = useTheme()
+  const { t, language } = useI18n()
+  const [sorting, setSorting] = useState(false)
   return (
-    <View style={styles.container}>
-      <View style={styles.searchRow}>
+    <View>
+      <View
+        style={{
+          marginHorizontal: 24,
+          borderRadius: 13,
+          backgroundColor: colors.surface,
+          flexDirection: 'row',
+          alignItems: 'center',
+          paddingLeft: 13,
+        }}
+      >
+        <Icon name="search" size={18} color={colors.muted} />
         <TextInput
           value={query}
           onChangeText={onQueryChange}
-          placeholder="Szukaj w notatkach"
-          placeholderTextColor={colors.faint}
-          style={styles.search}
+          placeholder={t('Szukaj w notatkach', 'Search notes')}
+          placeholderTextColor={colors.muted}
+          accessibilityLabel={t('Szukaj w notatkach', 'Search notes')}
           autoCorrect={false}
           returnKeyType="search"
+          keyboardAppearance={isDark ? 'dark' : 'light'}
+          selectionColor={colors.accent}
+          style={{
+            flex: 1,
+            minHeight: 46,
+            color: colors.ink,
+            fontSize: 15,
+            paddingHorizontal: 10,
+            paddingVertical: 11,
+          }}
         />
-        {query.length > 0 && (
-          // Own affordance rather than TextInput's clearButtonMode, which exists
-          // on iOS only and would leave Android without a way to clear.
-          <Pressable
+        {!!query && (
+          <IconButton
+            name="close"
+            label={t('Wyczyść wyszukiwanie', 'Clear search')}
             onPress={() => onQueryChange('')}
-            hitSlop={10}
-            style={styles.clear}
-            accessibilityLabel="Wyczyść wyszukiwanie"
-          >
-            <Text style={styles.clearMark}>✕</Text>
-          </Pressable>
+            size={17}
+          />
         )}
+        <IconButton
+          name="sort"
+          label={t('Zmień sortowanie', 'Change sort order')}
+          onPress={() => {
+            Keyboard.dismiss()
+            setSorting(true)
+          }}
+          size={17}
+        />
       </View>
-
-      {/* Sorting is a reading preference, not a filter, so it stays typographic
-          — underlined text — while filters stay as chips. */}
-      <View style={styles.sortRow}>
-        {SORT_OPTIONS.map(({ mode, label }) => (
-          <Pressable key={mode} onPress={() => onSortModeChange(mode)} hitSlop={6}>
-            <Text style={[styles.sort, sortMode === mode && styles.sortActive]}>{label}</Text>
-          </Pressable>
-        ))}
-      </View>
-
-      {categories.length > 0 && (
+      {afterSearch}
+      {!!categories.length && (
         <ScrollView
           horizontal
+          keyboardShouldPersistTaps="handled"
           showsHorizontalScrollIndicator={false}
-          style={styles.filterScroll}
-          contentContainerStyle={styles.filterBar}
+          contentContainerStyle={{
+            paddingHorizontal: 24,
+            paddingTop: 7,
+            gap: 7,
+          }}
         >
-          <Pressable onPress={() => onSelectCategory(null)}>
-            <Text style={[styles.chip, selectedCategory === null && styles.chipActive]}>
-              Wszystkie
-            </Text>
-          </Pressable>
-          {categories.map((category) => (
-            <Pressable key={category} onPress={() => onSelectCategory(category)}>
-              <Text style={[styles.chip, selectedCategory === category && styles.chipActive]}>
-                {category}
-              </Text>
+          {[null, ...categories].map((category) => (
+            <Pressable
+              key={category ?? 'all'}
+              accessibilityRole="button"
+              accessibilityState={{ selected: selectedCategory === category }}
+              onPress={() => onSelectCategory(category)}
+              style={{ minHeight: 44, justifyContent: 'center' }}
+            >
+              <View
+                style={{
+                  paddingHorizontal: 14,
+                  paddingVertical: 7,
+                  borderRadius: 18,
+                  backgroundColor:
+                    selectedCategory === category
+                      ? colors.action
+                      : colors.surface,
+                }}
+              >
+                <Text
+                  style={{
+                    fontSize: 13,
+                    lineHeight: 18,
+                    color:
+                      selectedCategory === category
+                        ? colors.onAction
+                        : colors.body,
+                    fontWeight: selectedCategory === category ? '600' : '400',
+                  }}
+                >
+                  {category === null
+                    ? t('Wszystkie', 'All')
+                    : categoryLabel(category, language)}
+                </Text>
+              </View>
             </Pressable>
           ))}
         </ScrollView>
       )}
+      <BottomSheet
+        visible={sorting}
+        title={t('Sortowanie notatek', 'Sort notes')}
+        onClose={() => setSorting(false)}
+      >
+        {(
+          [
+            {
+              mode: 'updated',
+              label: t('Ostatnio zmienione', 'Recently changed'),
+            },
+            { mode: 'created', label: t('Ostatnio dodane', 'Recently added') },
+          ] as const
+        ).map(({ mode, label }) => (
+          <Pressable
+            key={mode}
+            accessibilityRole="radio"
+            accessibilityState={{ checked: sortMode === mode }}
+            onPress={() => {
+              onSortModeChange(mode)
+              setSorting(false)
+            }}
+            style={{
+              paddingVertical: 16,
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+            }}
+          >
+            <Text style={{ ...type.body, color: colors.ink }}>{label}</Text>
+            {sortMode === mode && <Icon name="check" color={colors.accent} />}
+          </Pressable>
+        ))}
+      </BottomSheet>
     </View>
   )
 }
-
-const styles = StyleSheet.create({
-  container: { gap: spacing.md, paddingTop: spacing.md, paddingBottom: spacing.sm },
-  searchRow: { justifyContent: 'center', paddingHorizontal: spacing.lg },
-  search: {
-    ...type.body,
-    color: colors.ink,
-    backgroundColor: colors.surface,
-    borderRadius: radius.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: 11,
-    paddingRight: 40,
-  },
-  clear: { position: 'absolute', right: spacing.lg + spacing.md },
-  clearMark: { fontSize: 15, color: colors.muted },
-  sortRow: { flexDirection: 'row', gap: spacing.lg, paddingHorizontal: spacing.lg },
-  sort: { ...type.label, color: colors.faint, paddingBottom: 2 },
-  sortActive: {
-    color: colors.ink,
-    borderBottomWidth: 2,
-    borderBottomColor: colors.navy,
-  },
-  filterScroll: { flexGrow: 0 },
-  filterBar: { gap: spacing.sm, paddingHorizontal: spacing.lg, alignItems: 'center' },
-  chip: {
-    ...type.label,
-    color: colors.body,
-    backgroundColor: colors.paper,
-    borderWidth: 1,
-    borderColor: colors.line,
-    borderRadius: radius.pill,
-    paddingHorizontal: spacing.md,
-    paddingVertical: 6,
-    overflow: 'hidden',
-  },
-  chipActive: { backgroundColor: colors.navy, borderColor: colors.navy, color: colors.paper },
-})

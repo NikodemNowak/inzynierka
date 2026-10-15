@@ -1,5 +1,6 @@
-import { StyleSheet, Text, TextInput, View, type TextStyle } from 'react-native'
-import { colors, spacing, type } from './theme'
+import { useState } from 'react'
+import { Text, TextInput, View, type TextStyle } from 'react-native'
+import { radius, type, useTheme } from './theme'
 
 interface FieldProps {
   label: string
@@ -11,9 +12,6 @@ interface FieldProps {
   editable?: boolean
   textStyle?: TextStyle
 }
-
-// A labelled rule instead of a box. The note screen is mostly text the user
-// dictated; boxing every part of it turns a record into a form.
 export function Field({
   label,
   value,
@@ -24,44 +22,40 @@ export function Field({
   editable = true,
   textStyle,
 }: FieldProps) {
+  const { colors, isDark } = useTheme()
+  const [focused, setFocused] = useState(false)
   return (
-    <View style={styles.container}>
-      <Text style={styles.label}>{label}</Text>
+    <View style={{ gap: 8 }}>
+      <Text style={{ ...type.label, color: colors.ink }}>{label}</Text>
       <TextInput
         value={value}
         onChangeText={onChangeText}
+        accessibilityLabel={label}
         placeholder={placeholder}
-        placeholderTextColor={colors.faint}
+        placeholderTextColor={colors.muted}
+        selectionColor={colors.accent}
         multiline={multiline}
         editable={editable}
+        clearButtonMode="never"
+        keyboardAppearance={isDark ? 'dark' : 'light'}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
         style={[
-          styles.input,
-          multiline && styles.multiline,
-          minHeight !== undefined && { minHeight },
-          !editable && styles.readOnly,
+          {
+            ...type.body,
+            color: editable ? colors.ink : colors.muted,
+            backgroundColor: colors.paper,
+            padding: 13,
+            paddingTop: 13,
+            minHeight: minHeight ?? 50,
+            borderWidth: 1,
+            borderColor: focused ? colors.accent : colors.line,
+            borderRadius: radius.md,
+            textAlignVertical: multiline ? 'top' : 'center',
+          },
           textStyle,
         ]}
       />
     </View>
   )
 }
-
-const styles = StyleSheet.create({
-  container: { gap: spacing.xs },
-  label: {
-    ...type.label,
-    color: colors.muted,
-    textTransform: 'uppercase',
-    letterSpacing: 0.6,
-    fontSize: 11,
-  },
-  input: {
-    ...type.body,
-    color: colors.ink,
-    paddingVertical: spacing.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.line,
-  },
-  multiline: { textAlignVertical: 'top' },
-  readOnly: { color: colors.muted },
-})

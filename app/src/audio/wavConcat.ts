@@ -1,3 +1,4 @@
+import { translate } from '../i18n/translate'
 import { File, FileMode } from 'expo-file-system'
 
 const HEADER_BYTES = 44
@@ -5,19 +6,44 @@ const SAMPLE_RATE = 16000
 const CHANNELS = 1
 const BITS_PER_SAMPLE = 16
 
-export const findWavData = (header: Uint8Array): { offset: number; size: number } | null => {
+export const findWavData = (
+  header: Uint8Array,
+): { offset: number; size: number } | null => {
   if (header.length < 12) return null
   const ascii = (offset: number, length: number) =>
     String.fromCharCode(...header.subarray(offset, offset + length))
   if (ascii(0, 4) !== 'RIFF' || ascii(8, 4) !== 'WAVE') {
-    throw new Error('Nieprawidłowy plik WAV')
+    throw new Error(translate('Nieprawidłowy plik WAV', 'Invalid WAV file'))
   }
 
   const view = new DataView(header.buffer, header.byteOffset, header.byteLength)
   let offset = 12
+  let validFormat = false
   while (offset + 8 <= header.length) {
     const size = view.getUint32(offset + 4, true)
-    if (ascii(offset, 4) === 'data') return { offset: offset + 8, size }
+    if (ascii(offset, 4) === 'fmt ') {
+      if (
+        size < 16 ||
+        offset + 24 > header.length ||
+        view.getUint16(offset + 8, true) !== 1 ||
+        view.getUint16(offset + 10, true) !== CHANNELS ||
+        view.getUint32(offset + 12, true) !== SAMPLE_RATE ||
+        view.getUint32(offset + 16, true) !== SAMPLE_RATE * 2 ||
+        view.getUint16(offset + 20, true) !== 2 ||
+        view.getUint16(offset + 22, true) !== BITS_PER_SAMPLE
+      )
+        throw new Error(
+          translate('Niezgodny format WAV', 'Mismatched WAV format'),
+        )
+      validFormat = true
+    }
+    if (ascii(offset, 4) === 'data') {
+      if (!validFormat || size % 2 !== 0)
+        throw new Error(
+          translate('Nieprawidłowy format WAV', 'Invalid WAV format'),
+        )
+      return { offset: offset + 8, size }
+    }
     offset += 8 + size + (size % 2)
   }
   return null
@@ -34,7 +60,8 @@ export const buildWavHeader = (dataBytes: number): Uint8Array => {
   const blockAlign = (CHANNELS * BITS_PER_SAMPLE) / 8
 
   const ascii = (offset: number, text: string): void => {
-    for (let i = 0; i < text.length; i += 1) header[offset + i] = text.charCodeAt(i)
+    for (let i = 0; i < text.length; i += 1)
+      header[offset + i] = text.charCodeAt(i)
   }
 
   ascii(0, 'RIFF')
@@ -55,7 +82,9 @@ export const buildWavHeader = (dataBytes: number): Uint8Array => {
 }
 
 export const wavDurationMs = (dataBytes: number): number =>
-  Math.round((dataBytes / ((SAMPLE_RATE * CHANNELS * BITS_PER_SAMPLE) / 8)) * 1000)
+  Math.round(
+    (dataBytes / ((SAMPLE_RATE * CHANNELS * BITS_PER_SAMPLE) / 8)) * 1000,
+  )
 
 export interface ConcatResult {
   uri: string
@@ -68,7 +97,7 @@ const readWavDataInfo = (file: File): { offset: number; size: number } => {
     const header = handle.readBytes(Math.min(file.size ?? 0, 64 * 1024))
     const info = findWavData(header)
     if (!info || info.offset + info.size > (file.size ?? 0)) {
-      throw new Error('Niekompletny plik WAV')
+      throw new Error(translate('Niekompletny plik WAV', 'Incomplete WAV file'))
     }
     return info
   } finally {
@@ -89,7 +118,10 @@ const pipeSamples = async (
     let remaining = info.size
     while (remaining > 0) {
       const bytes = handle.readBytes(Math.min(remaining, 64 * 1024))
-      if (bytes.length === 0) throw new Error('Niekompletny plik WAV')
+      if (bytes.length === 0)
+        throw new Error(
+          translate('Niekompletny plik WAV', 'Incomplete WAV file'),
+        )
       await writer.write(bytes)
       remaining -= bytes.length
     }
@@ -105,11 +137,22 @@ export const concatWavFiles = async (
   targetUri: string,
 ): Promise<ConcatResult> => {
   const parts = partUris
-    .map((uri) => ({ uri, file: new File(uri) }))
-    .filter(({ file }) => file.exists)
+    .map((uri) => {
+      const file = new File(uri)
+      if (!file.exists)
+        throw new Error(
+          translate(
+            'Brak części nagrania. Pliki źródłowe zachowano.',
+            'A recording segment is missing. Source files have been kept.',
+          ),
+        )
+      return { uri, file }
+    })
     .map(({ uri, file }) => ({ uri, file, info: readWavDataInfo(file) }))
-    .filter(({ info }) => info.size > 0)
-  if (parts.length === 0) throw new Error('Brak plików do połączenia')
+  if (parts.length === 0)
+    throw new Error(
+      translate('Brak plików do połączenia', 'No audio files to join'),
+    )
   if (parts.length === 1) {
     const part = parts[0]!
     return { uri: part.uri, durationMs: wavDurationMs(part.info.size) }
@@ -117,7 +160,7 @@ export const concatWavFiles = async (
 
   const dataBytes = parts.reduce((total, part) => total + part.info.size, 0)
 
-  const target = new File(targetUri)
+  const target = new File(`${targetUri}.partial`)
   if (target.exists) target.delete()
   target.create()
 
@@ -134,5 +177,15 @@ export const concatWavFiles = async (
     throw error
   }
 
+  const info = readWavDataInfo(target)
+  if (info.size !== dataBytes)
+    throw new Error('Audio finalization size mismatch')
+  const destination = new File(targetUri)
+  if (destination.exists) {
+    const existing = readWavDataInfo(destination)
+    if (existing.size !== dataBytes)
+      throw new Error('Existing audio does not match this session')
+    target.delete()
+  } else target.move(destination)
   return { uri: targetUri, durationMs: wavDurationMs(dataBytes) }
 }

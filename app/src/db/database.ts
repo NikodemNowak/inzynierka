@@ -18,6 +18,7 @@ const initDatabase = async (): Promise<SQLite.SQLiteDatabase> => {
       summary TEXT,
       audioUri TEXT,
       durationMs INTEGER,
+      language TEXT NOT NULL DEFAULT 'pl',
       createdAt INTEGER NOT NULL,
       updatedAt INTEGER NOT NULL
     );
@@ -41,11 +42,57 @@ const initDatabase = async (): Promise<SQLite.SQLiteDatabase> => {
       tokensPerSecond REAL NOT NULL,
       createdAt INTEGER NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS llm_operations (
+      id TEXT PRIMARY KEY NOT NULL,
+      operation TEXT NOT NULL,
+      model TEXT NOT NULL,
+      inputChars INTEGER NOT NULL,
+      queueMs INTEGER NOT NULL,
+      modelLoadMs INTEGER,
+      totalMs INTEGER NOT NULL,
+      succeeded INTEGER NOT NULL,
+      createdAt INTEGER NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS processing_jobs (
+      id TEXT PRIMARY KEY NOT NULL,
+      noteId TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      source TEXT NOT NULL,
+      model TEXT NOT NULL,
+      pipeline TEXT NOT NULL,
+      status TEXT NOT NULL,
+      attemptId TEXT NOT NULL,
+      checkpoints TEXT NOT NULL DEFAULT '{}',
+      result TEXT,
+      reason TEXT,
+      updatedAt INTEGER NOT NULL
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS processing_jobs_note_kind ON processing_jobs (noteId, kind);
   `)
   await addColumnIfMissing(db, 'notes', 'summary', 'TEXT')
+  await addColumnIfMissing(db, 'notes', 'summaryDocument', 'TEXT')
   await addColumnIfMissing(db, 'notes', 'audioUri', 'TEXT')
   await addColumnIfMissing(db, 'notes', 'durationMs', 'INTEGER')
   await addColumnIfMissing(db, 'notes', 'tags', 'TEXT')
+  await addColumnIfMissing(
+    db,
+    'notes',
+    'transcriptionIncomplete',
+    'INTEGER NOT NULL DEFAULT 0',
+  )
+  await addColumnIfMissing(
+    db,
+    'notes',
+    'language',
+    "TEXT NOT NULL DEFAULT 'pl'",
+  )
+  await addColumnIfMissing(db, 'metrics', 'wallMs', 'INTEGER')
+  await addColumnIfMissing(db, 'metrics', 'promptMs', 'INTEGER')
+  await addColumnIfMissing(db, 'metrics', 'predictedMs', 'INTEGER')
+  await addColumnIfMissing(db, 'metrics', 'promptTokens', 'INTEGER')
+  await addColumnIfMissing(db, 'metrics', 'predictedTokens', 'INTEGER')
+  await addColumnIfMissing(db, 'metrics', 'metadata', 'TEXT')
+  await addColumnIfMissing(db, 'llm_operations', 'metadata', 'TEXT')
   return db
 }
 
@@ -55,7 +102,9 @@ const addColumnIfMissing = async (
   column: string,
   definition: string,
 ): Promise<void> => {
-  const columns = await db.getAllAsync<{ name: string }>(`PRAGMA table_info(${table})`)
+  const columns = await db.getAllAsync<{ name: string }>(
+    `PRAGMA table_info(${table})`,
+  )
   if (columns.some((c) => c.name === column)) return
   await db.execAsync(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition};`)
 }

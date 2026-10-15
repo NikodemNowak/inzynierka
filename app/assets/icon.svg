@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <title>Notatki</title>
+  <desc>A white note with a blue voice waveform on the app's blue background.</desc>
+  <path d="M0 0H1024V1024H0Z" fill="#286BC2"/>
+  <path d="M328 208H584L744 368V752Q744 800 696 800H328Q280 800 280 752V256Q280 208 328 208Z" fill="#FFFFFF"/>
+  <path d="M584 208V320Q584 368 632 368H744Z" fill="#C5DBF7"/>
+  <path d="M368 528V576M440 484V620M512 440V664M584 492V612M656 528V576" fill="none" stroke="#286BC2" stroke-width="32" stroke-linecap="round"/>
+</svg>
