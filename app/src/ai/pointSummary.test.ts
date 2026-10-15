@@ -3,6 +3,7 @@ import {
   swappedPreposition,
   trimLossyReason,
   fixSpeakerDuty,
+  fixFirstPersonTail,
   outputTokensFor,
   splitIntoChunks,
   parseSourceIds,
@@ -710,5 +711,17 @@ describe('speaker duty', () => {
   it('keeps a duty that really is the other person\'s', () => {
     const other = 'Ola musi oddać raport do piątku, a ja sprawdzę wyniki.';
     expect(fixSpeakerDuty('Ola przygotuje raport, musi go oddać do piątku', other)).toBe('Ola przygotuje raport, musi go oddać do piątku');
+  });
+});
+
+describe('first person leftovers', () => {
+  it('drops "zostało mi" before an infinitive', () => {
+    expect(impersonalize('Zostało mi dokończyć ekran nagrywania i przygotować prezentację', new Set())).toBe('Dokończyć ekran nagrywania i przygotować prezentację');
+  });
+  it('turns a joined first-person verb into an infinitive', () => {
+    const src = 'Jutro rano zrobię kopię repozytorium i wypchnę zmiany na GitHuba.';
+    expect(fixFirstPersonTail('Zrobić kopię repozytorium i wypchnę zmiany na GitHuba jutro rano', src)).toBe('Zrobić kopię repozytorium i wypchnąć zmiany na GitHuba jutro rano');
+    expect(fixFirstPersonTail('Kupić mleko i kupię chleb', 'Kupię mleko i kupię chleb.')).toBe('Kupić mleko i kupić chleb');
+    expect(fixFirstPersonTail('Zrobić kopię i prezentację', 'Zrobię kopię i prezentację.')).toBe('Zrobić kopię i prezentację');
   });
 });

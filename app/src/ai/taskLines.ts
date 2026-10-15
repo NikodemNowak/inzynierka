@@ -786,6 +786,40 @@ export const withWeekday = (task: TaskDraft, units: readonly Unit[]): TaskDraft 
   return days.size === 1 ? { ...task, due: `${[...days][0]} ${task.due.trim()}` } : task
 }
 
+// 'Napisać rozdział' from 'W środę zajęcia…, wieczorem piszę rozdział': the sentence opens with its one weekday.
+const SENTENCE_DAY = /^\s*(?:w|we)\s+(\p{L}+)/iu
+const DAY_PARTS = ['rano', 'wieczorem', 'po południu', 'w południe']
+export const dueFromSentenceLead = (task: TaskDraft, units: readonly Unit[]): TaskDraft => {
+  if (task.due) return task
+  const ids = task.modelIds.length ? task.modelIds : task.sourceIds
+  if (ids.length !== 1) return task
+  const text = units.find((u) => u.id === ids[0])?.text ?? ''
+  const lead = SENTENCE_DAY.exec(text)
+  const day = lead ? weekdayOf(lead[1]!.toLowerCase()) : null
+  if (!day || new Set(lettersOnly(text).map(weekdayOf).filter(Boolean)).size !== 1) return task
+  const parts = DAY_PARTS.filter((p) => rx(String.raw`\b${p}\b`, 'i').test(text))
+  return { ...task, due: parts.length === 1 ? `${day} ${parts[0]}` : day }
+}
+
+// 'Dopisać w rozdziale czwartym' for '…dopisać w rozdziale czwartym, jak działa X, bo…': the object is the clause.
+const OBJECT_CLAUSE = String.raw`(?:jak|co|czy|że|skąd|gdzie|ile|kiedy|dlaczego)`
+const PLACE_PREP = new Set(['w', 'we', 'na', 'do', 'o', 'u', 'przy', 'po'])
+export const completeObjectClause = (task: TaskDraft, units: readonly Unit[]): TaskDraft => {
+  const words = task.title.split(/\s+/u)
+  if (words.length < 3 || words.length > 5 || !PLACE_PREP.has(words[1]!.toLowerCase())) return task
+  const tail = words.slice(1).join(' ')
+  for (const id of task.sourceIds) {
+    const text = units.find((u) => u.id === id)?.text ?? ''
+    const at = text.toLowerCase().indexOf(tail.toLowerCase())
+    if (at < 0) continue
+    const m = rx(String.raw`^\s*,\s*(${OBJECT_CLAUSE}\s+[^,;.]+)`, 'i').exec(text.slice(at + tail.length))
+    if (!m) continue
+    const clause = m[1]!.split(/\s+(?:i|oraz|bo|ponieważ)\s+/u)[0]!.split(/\s+/u).slice(0, 8).join(' ')
+    return { ...task, title: `${task.title}, ${wordsToDigits(clause)}` }
+  }
+  return task
+}
+
 const OTHER_SUBJ = rx(
   String.raw`(?:^|[,.:;]\s*|\b(?:a|i|ale|więc|że)\s+)(?:(?!Ja\b)[A-ZŁŚŻŹĆ][a-ząćęłńóśźż]+|mama|tata|szef\w*|ona|on|oni|one)` +
     String.raw`(?:\s+\w+){0,4}?\s+(?:(?:ma|mają)\s+(?:\w+\s+){0,2}?\w+(?:ć|c)\b|zrobi|przygotuje|odbierze|przejmuje|przywiezie|kupi|roześle|wpuści|zamówi|zadzwoni|zarezerwuje|podeśle|zajmuje się|zajmie się|zajmują się|bierze|biorą|załatwi|załatwia|ogarnia|ogarnie|pilnuje|przyniesie|zawiezie|pójdzie|przyjdzie|sprawdzi|sprawdzą|przejrzy|poprawi|przyśle|wyśle|napisze|przeczyta|oceni|dokończy|skończy|odpowie|obejrzy|zatwierdzi|zorganizuje)\b` +
@@ -1364,7 +1398,9 @@ export const postprocessTaskLines = (raw: readonly TaskDraft[], units: readonly 
   tasks = take(ownerFilter(tasks, units))
   tasks = take(supersededFilter(tasks, units)).map((t) => applyNextSentenceFix(dueFromOwnSentence(t, units), units))
   tasks = take(cancelledFilter(tasks, units))
-  tasks = tasks.map((t) => dativeName(perfective(withWeekday(recoverAmount(repairVerb(dropClosingDue(t, units), units), units), units))))
+  tasks = tasks.map((t) =>
+    completeObjectClause(dativeName(perfective(dueFromSentenceLead(withWeekday(recoverAmount(repairVerb(dropClosingDue(t, units), units), units), units), units))), units),
+  )
   return { kept: dedupeTasks(mergeVague(tasks)), rejected }
 }
 

@@ -305,6 +305,28 @@ export const fixSpeakerDuty = (text: string, src: string): string => {
   return `${text.slice(0, m.index)} – ${action}${text.slice(m.index + m[0].length)}`;
 };
 
+// "Zrobić kopię i wypchnę zmiany" for "zrobię kopię i wypchnę zmiany": the second verb stays first person.
+const FUTURE_IRREGULAR: Readonly<Record<string, string>> = {
+  wyślę: 'wysłać', pójdę: 'pójść', wezmę: 'wziąć', zacznę: 'zacząć', odpocznę: 'odpocząć', przyjdę: 'przyjść',
+  przyjadę: 'przyjechać', pojadę: 'pojechać', wyjadę: 'wyjechać', zjem: 'zjeść', oddam: 'oddać', dam: 'dać', będę: 'być',
+};
+const FUTURE_SUFFIXES: readonly (readonly [RegExp, string])[] = [
+  [/nę$/u, 'nąć'], [/szę$/u, 'sać'], [/czę$/u, 'czyć'], [/żę$/u, 'żyć'], [/cę$/u, 'cić'], [/(?<![aeiouyąęó])ię$/u, 'ić'],
+];
+const futureToInfinitive = (word: string): string | null => {
+  const lower = word.toLowerCase();
+  if (FUTURE_IRREGULAR[lower]) return FUTURE_IRREGULAR[lower];
+  const hit = FUTURE_SUFFIXES.find(([pattern]) => pattern.test(lower));
+  return hit ? lower.replace(hit[0], hit[1]) : null;
+};
+export const fixFirstPersonTail = (text: string, src: string): string => {
+  if (!INFINITIVE_START.test(text)) return text;
+  return text.replace(/(?<=(?:^|[\s,])(?:i|oraz)\s)(\p{L}{4,}(?:ę|m))(?!\p{L})/gu, (word: string) => {
+    if (!rx(`(?<![^\\W\\d_])(?:i|oraz)\\s+${word}(?![^\\W\\d_])`, 'i').test(src)) return word;
+    return futureToInfinitive(word) ?? word;
+  });
+};
+
 const checkPointPl = (
   text: string, src: string, ids: readonly number[], allUnits: readonly Unit[] | null, minOverlap: number,
 ): string[] => {
@@ -966,12 +988,15 @@ const fixWordOrderAndCase = (text: string): string =>
     .replace(BARE_CLITIC_INFINITIVE, ', trzeba $1')
     .replace(ORDINAL_AFTER_NOUN, (_, noun: string, stem: string, end: string) => `${noun} ${stem}${end === 'im' ? 'i' : 'y'}`);
 
+// "Zostało mi dokończyć ekran" -> "Dokończyć ekran"
+const REMAINING_OPENER = rx(String.raw`^(?:zostało|została|zostały|zostaje)\s+(?:mi|nam)\s+(?:jeszcze\s+)?(?=[^\W\d_]{3,}ć(?![^\W\d_]))`, 'i');
+
 export const impersonalize = (input: string, noteWords: ReadonlySet<string>): string => {
   let text = input.replace(/ть(?![\p{L}])/gu, 'ć').replace(/[аеорсху]/gu, c => CYRILLIC_TWINS[c] ?? c);
   // "nie składaj" where the speaker said "nie składam"
   text = text.replace(/(?<![\p{L}])([\p{L}]{4,})aj(?![\p{L}])/gu, (match, stem: string) =>
     (!noteWords.has(match.toLowerCase()) && noteWords.has(`${stem.toLowerCase()}am`) ? `${stem}am` : match));
-  text = capitalize(requestToTask(text).replace(THOUGHT_OPENER, '').replace(SUBJECT_BEFORE_MODAL, ''));
+  text = capitalize(requestToTask(text).replace(THOUGHT_OPENER, '').replace(SUBJECT_BEFORE_MODAL, '').replace(REMAINING_OPENER, ''));
   text = fixWordOrderAndCase(motionToNoun(imperativeToInfinitive(text)));
   text = text.replace(REMIND_THAT_NOT, '$1 żeby $2');
   text = completeTruncated(text, noteWords);
@@ -1142,7 +1167,7 @@ export const finalizePoints = (
     if (language === 'pl' && isMetaPoint(prepared.text)) continue;
     if (language === 'pl') {
       const cited = citedText(prepared.sourceIds, byId);
-      prepared.text = fixSpeakerDuty(trimLossyReason(prepared.text, cited), cited);
+      prepared.text = fixFirstPersonTail(fixSpeakerDuty(trimLossyReason(prepared.text, cited), cited), cited);
     }
     const { point, issues } = repairPoint(prepared, byId, units, language);
     if (issues.length) rejected.push({ text: point.text, sourceIds: point.sourceIds, issues });
@@ -1493,6 +1518,11 @@ export const generatePointSummaryDetailed = async (
     const finalized = finalizePoints(language === 'pl' ? dropNarration(rawPoints, units) : rawPoints, units, language);
     const recovered = language === 'pl' ? recoverMissed(finalized.points, units, cut) : finalized.points;
     finalPoints = capPoints(recovered, units, options.pointsForNote(Math.round(noteWeight)) + CAP_SLACK);
+    if (language === 'pl') {
+      // Recovered and literal points skip the per-point fixes; "…i wypchnę" can come back here.
+      const byId = new Map(units.map(unit => [unit.id, unit]));
+      finalPoints = finalPoints.map(point => ({ ...point, text: fixFirstPersonTail(point.text, citedText(point.sourceIds, byId)) }));
+    }
     rejected = finalized.rejected;
   }
   const points = finalPoints.map(point => ({ text: point.text, sourceIds: point.sourceIds }));

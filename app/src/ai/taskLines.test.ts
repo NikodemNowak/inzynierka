@@ -2,6 +2,8 @@ import { generate, getContextWindowSize, measureFormattedPromptTokens, type Gene
 import { noteSourceSystem } from './sharedSourcePrompt';
 import {
   answeredCount,
+  completeObjectClause,
+  dueFromSentenceLead,
   continuationHint,
   cutLine,
   withWeekday,
@@ -753,5 +755,26 @@ describe('cut lines and weekdays', () => {
     expect(withWeekday(t(null), u).due).toBeNull()
     const two = [{ id: 1, text: 'We wtorek albo w czwartek o szesnastej.' }]
     expect(withWeekday(t('16:00', [1]), two).due).toBe('16:00')
+  })
+})
+
+describe('sentence lead day and object clause', () => {
+  const t = (title: string, due: string | null, id: number) => ({ title, due, sourceIds: [id], modelIds: [id] })
+  const u = [
+    { id: 72, text: 'W środę zajęcia i fizjoterapia, wieczorem piszę rozdział o ograniczeniach.' },
+    { id: 73, text: 'W środę albo w czwartek oddam raport.' },
+    { id: 74, text: 'Kiedyś napiszę bloga.' },
+    { id: 10, text: 'Muszę też dopisać w rozdziale czwartym, jak dokładnie działa lokalne przetwarzanie mowy i skąd bierze się model, bo recenzent zapyta.' },
+  ]
+  test('takes the weekday that opens the sentence', () => {
+    expect(dueFromSentenceLead(t('Napisać rozdział o ograniczeniach', null, 72), u).due).toBe('środa wieczorem')
+    expect(dueFromSentenceLead(t('Oddać raport', null, 73), u).due).toBeNull()
+    expect(dueFromSentenceLead(t('Napisać bloga', null, 74), u).due).toBeNull()
+    expect(dueFromSentenceLead(t('Napisać rozdział', 'piątek', 72), u).due).toBe('piątek')
+  })
+  test('adds the clause that is the missing object', () => {
+    expect(completeObjectClause(t('Dopisać w rozdziale czwartym', null, 10), u).title)
+      .toBe('Dopisać w rozdziale czwartym, jak dokładnie działa lokalne przetwarzanie mowy')
+    expect(completeObjectClause(t('Napisać rozdział o ograniczeniach', null, 72), u).title).toBe('Napisać rozdział o ograniczeniach')
   })
 })
