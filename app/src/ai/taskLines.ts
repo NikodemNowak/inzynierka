@@ -769,6 +769,23 @@ export const dueFromOwnSentence = (task: TaskDraft, units: readonly Unit[]): Tas
   return { ...task, due: null }
 }
 
+// 'Wizyta u dentysty — 16:30' when the sentence with that hour names one weekday: 'czwartek 16:30'.
+const WEEKDAYS: readonly (readonly [RegExp, string])[] = [
+  [/^poniedział/u, 'poniedziałek'], [/^wtor/u, 'wtorek'], [/^środ/u, 'środa'], [/^czwart/u, 'czwartek'],
+  [/^piąt(?:ek|ku|kiem)$/u, 'piątek'], [/^sobot/u, 'sobota'], [/^niedziel/u, 'niedziela'],
+]
+const weekdayOf = (word: string): string | null => WEEKDAYS.find(([pattern]) => pattern.test(word))?.[1] ?? null
+const CLOCK_DUE = /^\s*(?:o\s+|od\s+|do\s+)?\d{1,2}:\d{2}/u
+export const withWeekday = (task: TaskDraft, units: readonly Unit[]): TaskDraft => {
+  if (!task.due || !CLOCK_DUE.test(task.due)) return task
+  if (lettersOnly(task.due).some((w) => weekdayOf(w) || MONTH_WORD.test(w) || ['jutro', 'dziś', 'dzisiaj', 'pojutrze'].includes(w))) return task
+  const hours = hourValues(task.due)
+  const byId = new Map(units.map((u) => [u.id, u.text]))
+  const carriers = task.sourceIds.map((i) => byId.get(i) ?? '').filter((text) => [...hourValues(text)].some((h) => hours.has(h)))
+  const days = new Set(carriers.flatMap((text) => lettersOnly(text).map(weekdayOf).filter((d): d is string => d !== null)))
+  return days.size === 1 ? { ...task, due: `${[...days][0]} ${task.due.trim()}` } : task
+}
+
 const OTHER_SUBJ = rx(
   String.raw`(?:^|[,.:;]\s*|\b(?:a|i|ale|więc|że)\s+)(?:(?!Ja\b)[A-ZŁŚŻŹĆ][a-ząćęłńóśźż]+|mama|tata|szef\w*|ona|on|oni|one)` +
     String.raw`(?:\s+\w+){0,4}?\s+(?:(?:ma|mają)\s+(?:\w+\s+){0,2}?\w+(?:ć|c)\b|zrobi|przygotuje|odbierze|przejmuje|przywiezie|kupi|roześle|wpuści|zamówi|zadzwoni|zarezerwuje|podeśle|zajmuje się|zajmie się|zajmują się|bierze|biorą|załatwi|załatwia|ogarnia|ogarnie|pilnuje|przyniesie|zawiezie|pójdzie|przyjdzie|sprawdzi|sprawdzą|przejrzy|poprawi|przyśle|wyśle|napisze|przeczyta|oceni|dokończy|skończy|odpowie|obejrzy|zatwierdzi|zorganizuje)\b` +
@@ -1347,7 +1364,7 @@ export const postprocessTaskLines = (raw: readonly TaskDraft[], units: readonly 
   tasks = take(ownerFilter(tasks, units))
   tasks = take(supersededFilter(tasks, units)).map((t) => applyNextSentenceFix(dueFromOwnSentence(t, units), units))
   tasks = take(cancelledFilter(tasks, units))
-  tasks = tasks.map((t) => dativeName(perfective(recoverAmount(repairVerb(dropClosingDue(t, units), units), units))))
+  tasks = tasks.map((t) => dativeName(perfective(withWeekday(recoverAmount(repairVerb(dropClosingDue(t, units), units), units), units))))
   return { kept: dedupeTasks(mergeVague(tasks)), rejected }
 }
 
@@ -1561,6 +1578,15 @@ export const answeredCount = (answer: string, batch: readonly { id: number }[]):
   const ids = [...answer.matchAll(/^\s*\[(\d+)\]/gmu)].map((m) => Number(m[1]))
   return ids.length ? batch.findIndex((unit) => unit.id === ids[ids.length - 1]) + 1 : 0
 }
+// The half-written last line of a cut answer ('[75] Jechać'), when it belongs to the next sentence.
+export const cutLine = (text: string, nextId: number | undefined): string | null => {
+  const last = text.slice(text.lastIndexOf('\n') + 1).trim()
+  const m = /^\[(\d+)\]\s*(\p{L}.*)$/u.exec(last)
+  return m && Number(m[1]) === nextId ? `[${m[1]}] ${m[2]!.trim()}` : null
+}
+// Ask the follow-up call to finish the cut line instead of judging the sentence anew.
+export const continuationHint = (partial: string): string =>
+  `Poprzednia odpowiedź urwała się w połowie linii: ${partial}\nZacznij od tej linii i ją dokończ.\n`
 const emptyResult = (): TaskLinesResult => ({ tasks: [], rendered: [], warnings: [] })
 const renderTask = (t: TaskLine): string => (t.due ? `${t.title} — ${t.due}` : t.title)
 
@@ -1577,8 +1603,11 @@ export const extractTaskLines = async (
   const system = noteSourceSystem(language)
   const numbered = units.map((unit) => `[${unit.id}] ${unit.text}`).join('\n')
   const head = `${TASK_LINES_PROMPT}\n\nTeraz zdania tej notatki.\nZDANIA:\n`
-  const promptFor = (batch: readonly Unit[]): string =>
-    sourceFirstPrompt(numbered, `${head}${batch.map((unit) => `[${unit.id}] ${unit.text}`).join('\n')}\nODPOWIEDŹ:\n`)
+  const promptFor = (batch: readonly Unit[], partial: string | null): string =>
+    sourceFirstPrompt(
+      numbered,
+      `${head}${batch.map((unit) => `[${unit.id}] ${unit.text}`).join('\n')}\n${partial ? continuationHint(partial) : ''}ODPOWIEDŹ:\n`,
+    )
   const maxOutput = isLongNote(units) ? MAX_OUTPUT_TOKENS_LONG : MAX_OUTPUT_TOKENS
   const warnings: string[] = []
   const raw: TaskDraft[] = []
@@ -1587,6 +1616,7 @@ export const extractTaskLines = async (
   let maxBatch = Infinity
   let continuation = CONTINUATION_TOKENS
   let continuing = false
+  let partial: string | null = null
   while (rest.length) {
     throwIfProcessingAborted(execution)
     // Largest batch whose prompt plus answer fits the context window.
@@ -1598,7 +1628,7 @@ export const extractTaskLines = async (
       const candidate = rest.slice(0, size)
       if (tried.has(candidate.length)) continue
       tried.add(candidate.length)
-      const text = promptFor(candidate)
+      const text = promptFor(candidate, partial)
       const tokens = await measureFormattedPromptTokens({ systemPrompt: system, userPrompt: text })
       const free = getContextWindowSize() - tokens - CONTEXT_MARGIN
       const wanted = Math.min(maxOutput, OUTPUT_BASE_TOKENS + OUTPUT_TOKENS_PER_SENTENCE * candidate.length)
@@ -1637,6 +1667,7 @@ export const extractTaskLines = async (
     // A cut answer ends in a half-written line; drop it.
     const answer = cutAnswer(result.text, stopped)
     raw.push(...parseTaskLines(answer, new Set(batch.map((unit) => unit.id))))
+    partial = null
     if (!stopped) {
       rest = rest.slice(batch.length)
       continue
@@ -1651,6 +1682,7 @@ export const extractTaskLines = async (
     }
     continuing = true
     rest = rest.slice(done)
+    partial = cutLine(result.text, rest[0]?.id)
   }
   if (cut) warnings.push('Odpowiedź modelu została ucięta; część zadań mogła zostać pominięta.')
   const kept = dedupeTasks(mergeSimilar(mergeVague([...postprocessTaskLines(raw, units).kept, ...nominal]))).sort((a, b) => a.sourceIds[0]! - b.sourceIds[0]!)

@@ -2,6 +2,9 @@ import { generate, getContextWindowSize, measureFormattedPromptTokens, type Gene
 import { noteSourceSystem } from './sharedSourcePrompt';
 import {
   answeredCount,
+  continuationHint,
+  cutLine,
+  withWeekday,
   dativeName,
   dativeOf,
   perfective,
@@ -728,5 +731,27 @@ describe('aspect and recipient case', () => {
     expect(dativeName(t('Oddać książkę do Biblioteka')).title).toBe('Oddać książkę do Biblioteka')
     expect(['Kasia', 'Ania', 'Marta', 'Monika', 'Ewa', 'Anna', 'Maja', 'Natasza', 'Olga'].map(dativeOf))
       .toEqual(['Kasi', 'Ani', 'Marcie', 'Monice', 'Ewie', 'Annie', 'Mai', 'Nataszy', 'Oldze'])
+  })
+})
+
+describe('cut lines and weekdays', () => {
+  test('cutLine keeps the half-written line of the next sentence', () => {
+    expect(cutLine('[72] Pisać rozdział — środa\n[75] Jechać', 75)).toBe('[75] Jechać')
+    expect(cutLine('[72] Pisać rozdział — środa\n[75] Jechać', 78)).toBeNull()
+    expect(cutLine('[72] Pisać rozdział — środa\n[75', 75)).toBeNull()
+    expect(continuationHint('[75] Jechać')).toContain('[75] Jechać')
+  })
+  test('adds the weekday that the hour sentence names', () => {
+    const u = [
+      { id: 48, text: 'Była zaplanowana na wtorek, ale mam wtedy zajęcia.' },
+      { id: 49, text: 'Nowy termin to czwartek piętnastego o szesnastej trzydzieści.' },
+    ]
+    const t = (due: string | null, ids = [48, 49]) => ({ title: 'Wizyta u dentysty', due, sourceIds: ids, modelIds: [] })
+    expect(withWeekday(t('16:30'), u).due).toBe('czwartek 16:30')
+    expect(withWeekday(t('czwartek 16:30'), u).due).toBe('czwartek 16:30')
+    expect(withWeekday(t('jutro 16:30'), u).due).toBe('jutro 16:30')
+    expect(withWeekday(t(null), u).due).toBeNull()
+    const two = [{ id: 1, text: 'We wtorek albo w czwartek o szesnastej.' }]
+    expect(withWeekday(t('16:00', [1]), two).due).toBe('16:00')
   })
 })

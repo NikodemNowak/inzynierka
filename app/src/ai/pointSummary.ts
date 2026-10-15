@@ -291,6 +291,20 @@ export const trimLossyReason = (text: string, src: string): string => {
   return words(trimmed).length >= 3 ? trimmed : text;
 };
 
+// "Kuba pożyczył książkę, musi ją oddać" for "muszę mu ją oddać": the duty is the speaker's.
+const THIRD_MODAL = /,\s*(?:musi|ma)\s+((?:\p{L}+\s+){0,2}?(\p{L}{3,}ć))(?!\p{L})/u;
+export const fixSpeakerDuty = (text: string, src: string): string => {
+  const m = THIRD_MODAL.exec(text);
+  if (!m) return text;
+  const verb = m[2].toLowerCase().slice(0, 4);
+  const firstPerson = rx(`(?<![^\\W\\d_])(?:muszę|mam)(?:\\s+[^\\W\\d_]+){0,3}?\\s+${verb}`, 'i');
+  if (!firstPerson.test(src) || rx(`(?<![^\\W\\d_])musi(?![^\\W\\d_])`, 'i').test(src)) return text;
+  // "ją oddać" -> "oddać ją"
+  const clitics = m[1].slice(0, m[1].length - m[2].length).trim();
+  const action = clitics ? `${m[2]} ${clitics}` : m[2];
+  return `${text.slice(0, m.index)} – ${action}${text.slice(m.index + m[0].length)}`;
+};
+
 const checkPointPl = (
   text: string, src: string, ids: readonly number[], allUnits: readonly Unit[] | null, minOverlap: number,
 ): string[] => {
@@ -1126,7 +1140,10 @@ export const finalizePoints = (
       }
     }
     if (language === 'pl' && isMetaPoint(prepared.text)) continue;
-    if (language === 'pl') prepared.text = trimLossyReason(prepared.text, citedText(prepared.sourceIds, byId));
+    if (language === 'pl') {
+      const cited = citedText(prepared.sourceIds, byId);
+      prepared.text = fixSpeakerDuty(trimLossyReason(prepared.text, cited), cited);
+    }
     const { point, issues } = repairPoint(prepared, byId, units, language);
     if (issues.length) rejected.push({ text: point.text, sourceIds: point.sourceIds, issues });
     else kept.push(point);

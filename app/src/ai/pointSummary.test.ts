@@ -2,6 +2,7 @@ import {
   maxPointsFor,
   swappedPreposition,
   trimLossyReason,
+  fixSpeakerDuty,
   outputTokensFor,
   splitIntoChunks,
   parseSourceIds,
@@ -697,5 +698,17 @@ describe('rewrite slips', () => {
     expect(trimLossyReason('Porządek w zakładkach w przeglądarce, bo ich otwarte ze 40', s)).toBe('Porządek w zakładkach w przeglądarce');
     expect(trimLossyReason('Porządek w zakładkach, bo mam ich otwarte ze 40', s)).toBe('Porządek w zakładkach, bo mam ich otwarte ze 40');
     expect(trimLossyReason('Wizyta przesunięta, bo zajęcia', 'Przesunąłem wizytę.')).toBe('Wizyta przesunięta, bo zajęcia');
+  });
+});
+
+describe('speaker duty', () => {
+  const src = 'Kuba pożyczył mi książkę o uczeniu maszynowym, muszę mu ją oddać do końca miesiąca.';
+  it('gives the duty back to the speaker', () => {
+    expect(fixSpeakerDuty('Kuba pożyczył książkę o uczeniu maszynowym, musi ją oddać do końca miesiąca', src))
+      .toBe('Kuba pożyczył książkę o uczeniu maszynowym – oddać ją do końca miesiąca');
+  });
+  it('keeps a duty that really is the other person\'s', () => {
+    const other = 'Ola musi oddać raport do piątku, a ja sprawdzę wyniki.';
+    expect(fixSpeakerDuty('Ola przygotuje raport, musi go oddać do piątku', other)).toBe('Ola przygotuje raport, musi go oddać do piątku');
   });
 });
