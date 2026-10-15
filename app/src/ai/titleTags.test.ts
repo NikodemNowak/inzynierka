@@ -484,3 +484,9 @@ describe('command-like titles', () => {
     expect(model.mock.calls[1][2]).toMatchObject({ nPredict: 40 })
   })
 })
+
+test('flags an invented inflection of an indeclinable word', () => {
+  const sources = ['Jutro zajęcia z panem mgr trzeba pokazać plany testów']
+  expect(titleProblems('Spotkanie z mgr trzebą i konsultacja', sources)).toContain('invented-form:trzebą')
+  expect(titleProblems('Plany testów na zajęcia', sources).some((problem) => problem.startsWith('invented-form'))).toBe(false)
+})

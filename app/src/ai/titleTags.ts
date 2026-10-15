@@ -416,6 +416,8 @@ const VOCABULARY: Record<Language, Vocabulary> = {
 
 // Returns the list of rule violations; an empty list means the title is acceptable.
 // `sources` are the texts a name or phrase may legitimately come from.
+const INDECLINABLE = ['trzeba', 'można', 'warto', 'jutro', 'dzisiaj', 'wczoraj', 'chyba', 'bardzo', 'jeszcze', 'także', 'również', 'mgr', 'inż']
+
 export const titleProblems = (title: string, sources: readonly string[], language: Language = 'pl'): string[] => {
   if (!title) return ['empty']
   const vocabulary = VOCABULARY[language]
@@ -456,6 +458,12 @@ export const titleProblems = (title: string, sources: readonly string[], languag
         problems.push(`unknown-name:${word}`)
     })
   }
+  // "mgr trzebą": an inflection of a word Polish never inflects.
+  if (language === 'pl') {
+    const sourceWords = new Set(sources.flatMap((source) => wordsOf(source.toLowerCase())))
+    const invented = low.find((word) => !sourceWords.has(word) && INDECLINABLE.some((base) => base !== word && word.startsWith(base.slice(0, -1)) && sourceWords.has(base)))
+    if (invented) problems.push(`invented-form:${invented}`)
+  }
   if (vocabulary.examples.has(title.toLowerCase())) problems.push('prompt-example')
   if (words.length >= 5) {
     const needle = ` ${low.join(' ')} `
@@ -482,6 +490,7 @@ const REASONS: readonly ReasonText[] = [
   { keys: ['words='], pl: 'ma złą liczbę słów (wymagane 2-6)', en: 'has the wrong number of words (2-6 required)' },
   { keys: ['digits', 'date-word', 'bad-chars'], pl: 'zawiera liczbę, datę lub niedozwolone znaki', en: 'contains a number, date or disallowed characters' },
   { keys: ['unknown-name'], pl: 'zawiera nazwę spoza notatki', en: 'contains a name that is not in the note' },
+  { keys: ['invented-form'], pl: 'zawiera słowo w zmyślonej formie – użyj słów z notatki', en: 'contains an invented word form' },
   { keys: ['prompt-example'], pl: 'kopiuje przykład z instrukcji', en: 'copies an example from the instructions' },
   { keys: ['verbatim'], pl: 'kopiuje zdanie z notatki', en: 'copies a sentence from the note' },
   { keys: ['empty'], pl: 'jest pusty', en: 'is empty' },
