@@ -382,7 +382,7 @@ const IMPERATIVES: Readonly<Record<string, string>> = {
   zabierz: 'zabrać', weź: 'wziąć', dokończ: 'dokończyć', skończ: 'skończyć', ćwicz: 'ćwiczyć',
   odłóż: 'odłożyć', usuń: 'usunąć', dopisz: 'dopisać', zapisz: 'zapisać', ustaw: 'ustawić',
   odnów: 'odnowić', przelej: 'przelać', przepisz: 'przepisać', przejrzyj: 'przejrzeć', wydrukuj: 'wydrukować',
-  piszę: 'pisać', pisze: 'pisać', przygotuj: 'przygotować', zarezerwuj: 'zarezerwować', skopiuj: 'skopiować', wyślę: 'wysłać',
+  piszę: 'napisać', pisze: 'napisać', przygotuj: 'przygotować', zarezerwuj: 'zarezerwować', skopiuj: 'skopiować', wyślę: 'wysłać',
 }
 export const toInfinitive = (title: string): string => {
   const space = title.indexOf(' ')
@@ -1271,6 +1271,63 @@ export const groundTasks = (tasks: readonly TaskDraft[], units: readonly Unit[])
   return { kept, rejected }
 }
 
+// 'wzywam serwisanta' -> 'Wzywać serwisanta': a one-off task reads as a perfective infinitive.
+const PERFECTIVE: Readonly<Record<string, string>> = {
+  wzywać: 'wezwać', przelewać: 'przelać', pisać: 'napisać', jechać: 'pojechać', wysyłać: 'wysłać',
+  dzwonić: 'zadzwonić', płacić: 'zapłacić', kupować: 'kupić', oddawać: 'oddać', robić: 'zrobić',
+  sprawdzać: 'sprawdzić', poprawiać: 'poprawić', odbierać: 'odebrać', wymieniać: 'wymienić',
+  przygotowywać: 'przygotować', zamawiać: 'zamówić', wpadać: 'wpaść', kończyć: 'skończyć',
+  dokańczać: 'dokończyć', zabierać: 'zabrać', wpłacać: 'wpłacić', zapisywać: 'zapisać', dopisywać: 'dopisać',
+  umawiać: 'umówić', rezerwować: 'zarezerwować', kopiować: 'skopiować', drukować: 'wydrukować',
+  przeglądać: 'przejrzeć', odkładać: 'odłożyć', usuwać: 'usunąć', pokazywać: 'pokazać', wypychać: 'wypchnąć',
+  zgłaszać: 'zgłosić', rejestrować: 'zarejestrować', wracać: 'wrócić', czytać: 'przeczytać', nagrywać: 'nagrać',
+  wypełniać: 'wypełnić', składać: 'złożyć', przesyłać: 'przesłać', pożyczać: 'pożyczyć', przypominać: 'przypomnieć',
+  sprzątać: 'posprzątać', przywozić: 'przywieźć', zawozić: 'zawieźć', odnawiać: 'odnowić', przedłużać: 'przedłużyć',
+}
+const HABITUAL = rx(String.raw`\b(codziennie|co\s+(?:dzień|tydzień|rano|wieczór|miesiąc|tydzien)|regularnie|każd\w+|zawsze|stale|na\s+bieżąco|częściej|codzienn\w+|systematycznie)\b`, 'i')
+
+export const perfective = (t: TaskDraft): TaskDraft => {
+  const [first = '', ...rest] = t.title.split(' ')
+  const verb = PERFECTIVE[first.toLowerCase()]
+  if (!verb || HABITUAL.test(t.title) || (t.due && HABITUAL.test(t.due))) return t
+  return { ...t, title: [verb.charAt(0).toUpperCase() + verb.slice(1), ...rest].join(' ') }
+}
+
+// 'Oddać Kuba książkę' -> 'Oddać Kubie książkę': these verbs take the recipient in the dative.
+const DATIVE_VERBS = new Set([
+  'oddać', 'wysłać', 'pokazać', 'przypomnieć', 'powiedzieć', 'pomóc', 'przekazać', 'przesłać', 'odpisać',
+  'podziękować', 'pożyczyć', 'dać', 'przynieść', 'zwrócić', 'odesłać', 'podesłać', 'wysyłać', 'oddawać',
+])
+const DATIVE_SUFFIX: readonly (readonly [RegExp, string])[] = [
+  [/([szcn])ia$/u, '$1i'], [/ia$/u, 'ii'], [/ja$/u, 'i'], [/la$/u, 'li'], [/(?:cz|sz|rz|dż|c)a$/u, '$&'],
+  [/ka$/u, 'ce'], [/ga$/u, 'dze'], [/cha$/u, 'sze'], [/sta$/u, 'ście'], [/ta$/u, 'cie'], [/da$/u, 'dzie'],
+  [/ra$/u, 'rze'], [/([bpmwfnsz])a$/u, '$1ie'],
+]
+export const dativeOf = (name: string): string | null => {
+  for (const [pattern, replacement] of DATIVE_SUFFIX) {
+    if (!pattern.test(name)) continue
+    // 'Natasza' -> 'Nataszy', 'Monika' -> 'Monice'
+    return replacement === '$&' ? `${name.slice(0, -1)}y` : name.replace(pattern, replacement)
+  }
+  return null
+}
+
+const NAME_PREPOSITIONS = new Set(['do', 'od', 'z', 'ze', 'u', 'dla', 'przez', 'na', 'w', 'we', 'o', 'po', 'przy', 'za', 'i'])
+export const dativeName = (t: TaskDraft): TaskDraft => {
+  const parts = t.title.split(' ')
+  if (parts.length < 2 || !DATIVE_VERBS.has(parts[0]!.toLowerCase())) return t
+  // 'Oddać Kuba książkę' or 'Oddać książkę Kuba'
+  for (let index = 1; index <= Math.min(3, parts.length - 1); index += 1) {
+    const name = parts[index]!.replace(/[,;]$/u, '')
+    if (!/^\p{Lu}\p{Ll}+a$/u.test(name) || NAME_PREPOSITIONS.has(parts[index - 1]!.toLowerCase())) continue
+    const dative = dativeOf(name)
+    if (!dative) return t
+    parts[index] = parts[index]!.replace(name, dative)
+    return { ...t, title: parts.join(' ') }
+  }
+  return t
+}
+
 export const postprocessTaskLines = (raw: readonly TaskDraft[], units: readonly Unit[]): GuardResult => {
   const rejected: RejectedTask[] = []
   const take = (step: GuardResult): TaskDraft[] => {
@@ -1290,7 +1347,7 @@ export const postprocessTaskLines = (raw: readonly TaskDraft[], units: readonly 
   tasks = take(ownerFilter(tasks, units))
   tasks = take(supersededFilter(tasks, units)).map((t) => applyNextSentenceFix(dueFromOwnSentence(t, units), units))
   tasks = take(cancelledFilter(tasks, units))
-  tasks = tasks.map((t) => recoverAmount(repairVerb(dropClosingDue(t, units), units), units))
+  tasks = tasks.map((t) => dativeName(perfective(recoverAmount(repairVerb(dropClosingDue(t, units), units), units))))
   return { kept: dedupeTasks(mergeVague(tasks)), rejected }
 }
 

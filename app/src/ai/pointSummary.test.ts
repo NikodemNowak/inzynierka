@@ -1,5 +1,7 @@
 import {
   maxPointsFor,
+  swappedPreposition,
+  trimLossyReason,
   outputTokensFor,
   splitIntoChunks,
   parseSourceIds,
@@ -680,5 +682,20 @@ describe('chunk budgets', () => {
       expect(prompt).toMatch(new RegExp(`najwyżej ${asked} lini[ei]\\.`, 'u'));
     }
     expect(total).toBeLessThanOrEqual(24);
+  });
+});
+
+describe('rewrite slips', () => {
+  const src = 'W sobotę jadę pociągiem o dziewiątej czterdzieści, jestem na miejscu około trzynastej.';
+  it('flags a phrase rebuilt around another preposition', () => {
+    expect(swappedPreposition('Pociąg do miejsca o 9:40', src, src)).toBe('do miejsca');
+    expect(swappedPreposition('Na miejscu około 13:00', src, src)).toBeNull();
+    expect(swappedPreposition('Wizyta u dentysty w czwartek', 'Mam wizytę u dentysty w czwartek.', 'Mam wizytę u dentysty w czwartek.')).toBeNull();
+  });
+  it('drops a reason clause the speaker did not say that way', () => {
+    const s = 'Chcę też zrobić porządek w zakładkach w przeglądarce, bo mam ich otwarte ze czterdzieści.';
+    expect(trimLossyReason('Porządek w zakładkach w przeglądarce, bo ich otwarte ze 40', s)).toBe('Porządek w zakładkach w przeglądarce');
+    expect(trimLossyReason('Porządek w zakładkach, bo mam ich otwarte ze 40', s)).toBe('Porządek w zakładkach, bo mam ich otwarte ze 40');
+    expect(trimLossyReason('Wizyta przesunięta, bo zajęcia', 'Przesunąłem wizytę.')).toBe('Wizyta przesunięta, bo zajęcia');
   });
 });

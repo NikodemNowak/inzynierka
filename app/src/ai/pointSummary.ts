@@ -260,6 +260,37 @@ const CURRENCIES: readonly (readonly [string, RegExp])[] = [
 ];
 const ANY_CURRENCY = /zł|złot|euro|€|dolar|\$/iu;
 
+const PREPOSITIONS = new Set(['do', 'na', 'w', 'we', 'z', 'ze', 'od', 'u', 'przy', 'po']);
+const PREP_PAIR = /(?<!\p{L})(do|na|w|we|z|ze|od|u|przy|po)\s+(\p{Ll}{5,})(?!\p{L})/giu;
+export const swappedPreposition = (text: string, src: string, noteText: string): string | null => {
+  const note = noteText.toLowerCase();
+  for (const m of text.matchAll(PREP_PAIR)) {
+    const prep = m[1].toLowerCase();
+    const word = m[2];
+    if (DATE_PREFIX.some(p => p.test(word))) continue;
+    const stem = word.slice(0, 5);
+    if (rx(`(?<![^\\W\\d_])${prep}\\s+${stem}`, 'i').test(note)) continue;
+    const before = [...src.toLowerCase().matchAll(rx(`(?<![^\\W\\d_])(${stem}[^\\W\\d_]*)`, 'g'))]
+      .map(hit => words(src.slice(0, hit.index ?? 0)).slice(-1)[0] ?? '');
+    if (before.length && before.every(w => PREPOSITIONS.has(w) && w !== prep)) return `${prep} ${word}`;
+  }
+  return null;
+};
+
+// ", bo ich otwarte ze 40" for "bo mam ich otwarte ze czterdzieści": a reason clause
+// that does not start like the speaker's own is a lossy rewrite; drop it.
+const BO_CLAUSE = /,?\s+bo\s+([^,.;]+)/u;
+export const trimLossyReason = (text: string, src: string): string => {
+  const m = BO_CLAUSE.exec(text);
+  if (!m) return text;
+  const sources = [...src.matchAll(/(?<!\p{L})bo\s+([^,.;]+)/gu)].map(s => words(s[1]).slice(0, 2).join(' '));
+  if (!sources.length) return text;
+  const head = words(m[1]).slice(0, 2).join(' ');
+  if (sources.includes(head)) return text;
+  const trimmed = (text.slice(0, m.index) + text.slice(m.index + m[0].length)).trim();
+  return words(trimmed).length >= 3 ? trimmed : text;
+};
+
 const checkPointPl = (
   text: string, src: string, ids: readonly number[], allUnits: readonly Unit[] | null, minOverlap: number,
 ): string[] => {
@@ -354,6 +385,9 @@ const checkPointPl = (
     const inflected = [...noteWords].some(w => w.startsWith(pref)) && NAME_ENDING.test(lw);
     if (!(noteWords.has(lw) || inflected) && !SUMMARY_VOCAB.has(lw)) { issues.push(`name:${name}`); break; }
   }
+  // 6b. a phrase rebuilt around another preposition ("na miejscu" -> "do miejsca")
+  const prepHit = swappedPreposition(text, src, noteText);
+  if (prepHit) issues.push(`prep:${prepHit}`);
   // 7. missing diacritics inside a word ("frustrujace")
   const srcWords = new Set(words(src));
   const srcPlain = new Map<string, string>();
@@ -1092,6 +1126,7 @@ export const finalizePoints = (
       }
     }
     if (language === 'pl' && isMetaPoint(prepared.text)) continue;
+    if (language === 'pl') prepared.text = trimLossyReason(prepared.text, citedText(prepared.sourceIds, byId));
     const { point, issues } = repairPoint(prepared, byId, units, language);
     if (issues.length) rejected.push({ text: point.text, sourceIds: point.sourceIds, issues });
     else kept.push(point);

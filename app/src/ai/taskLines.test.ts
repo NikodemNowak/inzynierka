@@ -2,6 +2,9 @@ import { generate, getContextWindowSize, measureFormattedPromptTokens, type Gene
 import { noteSourceSystem } from './sharedSourcePrompt';
 import {
   answeredCount,
+  dativeName,
+  dativeOf,
+  perfective,
   TASK_LINES_PROMPT,
   applyCorrections,
   cleanDue,
@@ -698,5 +701,32 @@ describe('grounding guards', () => {
     const u = units('Jeśli zdam analizę w pierwszym terminie, to jadę na narty, ale jeszcze nic nie rezerwujemy.', 'Jeśli kolokwium wyjdzie słabo, to idę na dodatkowe zajęcia.')
     expect(keepCondition(draft('Jechać na narty', null, 1), u)).toBeNull()
     expect(keepCondition(draft('Iść na dodatkowe zajęcia', null, 2), u)?.title).toBe('Iść na dodatkowe zajęcia, jeśli kolokwium wyjdzie słabo')
+  })
+})
+
+describe('aspect and recipient case', () => {
+  const t = (title: string, due: string | null = null) => ({ title, due, sourceIds: [1], modelIds: [] })
+  it('turns a one-off imperfective task into a perfective infinitive', () => {
+    expect(perfective(t('Wzywać serwisanta', 'czwartek')).title).toBe('Wezwać serwisanta')
+    expect(perfective(t('Przelewać na oszczędności 500 zł')).title).toBe('Przelać na oszczędności 500 zł')
+    expect(perfective(t('Pisać rozdział o ograniczeniach', 'środa')).title).toBe('Napisać rozdział o ograniczeniach')
+    expect(perfective(t('Jechać do rodziców')).title).toBe('Pojechać do rodziców')
+  })
+  it('keeps habits imperfective', () => {
+    expect(perfective(t('Pisać pracę codziennie')).title).toBe('Pisać pracę codziennie')
+    expect(perfective(t('Czytać artykuły', 'co tydzień')).title).toBe('Czytać artykuły')
+    expect(perfective(t('Ćwiczyć rano')).title).toBe('Ćwiczyć rano')
+  })
+  it('puts the recipient name in the dative', () => {
+    expect(dativeName(t('Oddać Kuba książkę')).title).toBe('Oddać Kubie książkę')
+    expect(dativeName(t('Wysłać Ola listę')).title).toBe('Wysłać Oli listę')
+    expect(dativeName(t('Pokazać Oliwia schemat')).title).toBe('Pokazać Oliwii schemat')
+    expect(dativeName(t('Oddać Kubie książkę')).title).toBe('Oddać Kubie książkę')
+    expect(dativeName(t('Odebrać Kuba ze szkoły')).title).toBe('Odebrać Kuba ze szkoły')
+    expect(dativeName(t('Oddać książkę Kuba')).title).toBe('Oddać książkę Kubie')
+    expect(dativeName(t('Wysłać zdjęcia do Ola')).title).toBe('Wysłać zdjęcia do Ola')
+    expect(dativeName(t('Oddać książkę do Biblioteka')).title).toBe('Oddać książkę do Biblioteka')
+    expect(['Kasia', 'Ania', 'Marta', 'Monika', 'Ewa', 'Anna', 'Maja', 'Natasza', 'Olga'].map(dativeOf))
+      .toEqual(['Kasi', 'Ani', 'Marcie', 'Monice', 'Ewie', 'Annie', 'Mai', 'Nataszy', 'Oldze'])
   })
 })
