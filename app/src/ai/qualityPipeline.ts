@@ -1,6 +1,6 @@
 import type { Language } from "../i18n/language";
 import { throwIfProcessingAborted, type ProcessingExecutionContext } from "./processingContext";
-import { prepareSpokenSource } from "./spokenSource";
+import { deterministicSourceUnitPlan } from "./sourceUnits";
 import { createSummarySources, type SummarySourceUnit } from "./summarySources";
 import { generatePointSummary } from "./pointSummary";
 import { generateTitleAndTags } from "./titleTags";
@@ -10,15 +10,15 @@ import { renderSummaryDocument } from "../domain/summary";
 import type { NoteProcessingResult, ProcessingProgress } from "./noteProcessing";
 
 // Sentence units shared by the summary, title and task calls. An unpunctuated
-// transcript is first split by the same model-assisted pass the legacy pipeline used.
+// transcript is split deterministically on the recognizer's capitals and spoken
+// cues: the model punctuation pass cost two calls per field and was mostly rejected.
 export const qualitySourceUnits = async (
   content: string,
-  language: Language,
+  _language: Language,
   execution: ProcessingExecutionContext | undefined,
-  onStructure?: () => void,
 ): Promise<readonly SummarySourceUnit[]> => {
-  const plan = await prepareSpokenSource(content, language, execution, onStructure, true);
-  return createSummarySources(content, plan ?? execution?.sourceUnitPlan);
+  throwIfProcessingAborted(execution);
+  return createSummarySources(content, execution?.sourceUnitPlan ?? deterministicSourceUnitPlan(content) ?? undefined);
 };
 
 const warn = (language: Language, pl: string, en: string): string => (language === "en" ? en : pl);
@@ -31,12 +31,7 @@ export const processNoteQuality = async (
   language: Language,
   execution: ProcessingExecutionContext | undefined,
 ): Promise<NoteProcessingResult> => {
-  let structuring = false;
-  const units = await qualitySourceUnits(content, language, execution, () => {
-    structuring = true;
-    onProgress({ phase: "processing", detail: "structure" });
-  });
-  if (structuring) onProgress({ phase: "processing" });
+  const units = await qualitySourceUnits(content, language, execution);
   throwIfProcessingAborted(execution);
 
   const warnings: string[] = [];

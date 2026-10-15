@@ -355,9 +355,33 @@ export const fixDroppedMinutes = (text: string, src: string): string => {
 export const lowerStrayCapitals = (text: string): string =>
   text.replace(/(?<=[\p{L}\d,]\s)([AIOUWZ])(?=\s)/gu, letter => letter.toLowerCase());
 
+const distance = (a: string, b: string): number => {
+  let row = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i += 1) {
+    const next = [i];
+    for (let j = 1; j <= b.length; j += 1) next[j] = Math.min(row[j] + 1, next[j - 1] + 1, row[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    row = next;
+  }
+  return row[b.length];
+};
+
+// "siedmastej" for the note's "siedemnastej": a word the note never says that
+// differs from one it does only inside the word. Same start and ending keep
+// the model's own inflection ("podsumowanie" is never turned into "podsumowania").
+export const snapToNoteSpelling = (text: string, noteWords: ReadonlySet<string>): string =>
+  text.replace(/\p{L}{5,}/gu, (word) => {
+    const lower = word.toLowerCase();
+    if (noteWords.has(lower)) return word;
+    const matches = [...noteWords].filter(candidate => candidate.length >= 5 && candidate.slice(0, 2) === lower.slice(0, 2) &&
+      candidate.slice(-3) === lower.slice(-3) && distance(candidate, lower) <= (lower.length >= 8 ? 2 : 1));
+    if (matches.length !== 1) return word;
+    const [fixed] = matches;
+    return word[0] === word[0].toUpperCase() ? fixed.charAt(0).toUpperCase() + fixed.slice(1) : fixed;
+  });
+
 // Last deterministic pass over every final point, literal or generated.
-export const polishPoint = (text: string, src: string): string =>
-  fixFirstPersonTail(lowerStrayCapitals(fixDroppedMinutes(text, src)), src);
+export const polishPoint = (text: string, src: string, noteWords: ReadonlySet<string> = new Set()): string =>
+  fixFirstPersonTail(lowerStrayCapitals(fixDroppedMinutes(snapToNoteSpelling(text, noteWords), src)), src);
 
 const checkPointPl = (
   text: string, src: string, ids: readonly number[], allUnits: readonly Unit[] | null, minOverlap: number,
@@ -1553,7 +1577,8 @@ export const generatePointSummaryDetailed = async (
     if (language === 'pl') {
       // Recovered and literal points skip the per-point fixes; "…i wypchnę" can come back here.
       const byId = new Map(units.map(unit => [unit.id, unit]));
-      finalPoints = finalPoints.map(point => ({ ...point, text: polishPoint(point.text, citedText(point.sourceIds, byId)) }));
+      const noteWords = new Set(units.flatMap(unit => words(unit.text)));
+      finalPoints = finalPoints.map(point => ({ ...point, text: polishPoint(point.text, citedText(point.sourceIds, byId), noteWords) }));
     }
     rejected = finalized.rejected;
   }

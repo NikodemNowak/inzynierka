@@ -6,6 +6,7 @@ import {
   fixFirstPersonTail,
   fixDroppedMinutes,
   lowerStrayCapitals,
+  snapToNoteSpelling,
   cleanLiteral,
   outputTokensFor,
   splitIntoChunks,
@@ -749,4 +750,11 @@ describe('final point polish', () => {
 
 test('drops minutes the model left after a rounded hour', () => {
   expect(fixDroppedMinutes('Jutro o 8:00 30 zajęć', 'Jutro mam na godzinę ósmą chyba 30 zajęcia')).toBe('Jutro o ok. 8:30 zajęć');
+});
+
+test('snaps a model typo to the note spelling without changing inflection', () => {
+  const note = new Set(['siedemnastej', 'podsumowania', 'bibliotece', 'spotkamy']);
+  expect(snapToNoteSpelling('W czwartek o siedmastej w bibliotece', note)).toBe('W czwartek o siedemnastej w bibliotece');
+  expect(snapToNoteSpelling('Wysłać podsumowanie postępów', note)).toBe('Wysłać podsumowanie postępów');
+  expect(snapToNoteSpelling('Spotkamy się', note)).toBe('Spotkamy się');
 });
