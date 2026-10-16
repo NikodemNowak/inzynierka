@@ -55,7 +55,7 @@ const MONTH_PATTERNS = [
   'stycz', 'lut(?:y|ego|ym|ow)', 'mar(?:zec|ca|cu)', 'kwie(?:cie|tni)', 'maj(?:a|u|em)?(?![^\\W\\d_])', 'czerw(?:iec|ca|cu)',
   'lip(?:iec|ca|cu)', 'sierp', 'wrze[sś]', 'październik|października|październiku', 'listopad', 'grud(?:zie|ni)',
 ];
-const WEEKDAY_PATTERNS = ['poniedział', 'wtor', 'środ|srod', 'czwart', 'piąt(?:e?k|ku|kiem)', 'sobot', 'niedziel', 'weeken'];
+const WEEKDAY_PATTERNS = ['poniedział', 'wtor', 'środ(?:a|ę|y|zie|ą)?(?![^\\W\\d_])|srod(?:a|e|y|zie)?(?![^\\W\\d_])', 'czwart', 'piąt(?:e?k|ku|kiem)', 'sobot', 'niedziel', 'weeken'];
 const DATE_PATTERNS = [...WEEKDAY_PATTERNS, ...MONTH_PATTERNS];
 const DATE_SEARCH = DATE_PATTERNS.map(p => rx(`(?<![^\\W\\d_])(?:${p})`, 'i'));
 const DATE_PREFIX = DATE_PATTERNS.map(p => rx(`^(?:${p})`, 'i'));
@@ -64,7 +64,7 @@ const NEG = rx(String.raw`(?<![^\W\d_])(?:nie|nigdy|ani|bez|brak\w*|żadn\w*|nic
 const NEG_WORD_PREFIX = rx(String.raw`(?<![^\W\d_])nie(\w{4,})`, 'gi');
 const NEG_LIKE = rx(String.raw`(?<![^\W\d_])(?:nie\w*|nigdy|ani|bez|brak\w*|żadn\w*|nic|odwoł\w*|anul\w*|rezygn\w*|zrezygn\w*|zamiast|tylko|dopiero|odpada\w*|odrzuc\w*)(?![^\W\d_])`, 'i');
 const HEDGE = rx(String.raw`(?<![^\W\d_])(?:jeśli|jeżeli|jak\s+będzie|o\s+ile|gdyby|może|chyba|prawdopodobnie|podobno|ewentualnie|raczej|zobaczymy|nie\s+wiem|albo)(?![^\W\d_])`, 'gi');
-const HEDGE_POINT = rx(String.raw`(?<![^\W\d_])(?:jeśli|jeżeli|gdy|przy|o\s+ile|gdyby|może|możliwe|chyba|prawdopodobnie|podobno|ewentualnie|raczej|około|ok\.|ewent\.|albo|lub|lub/|zależ\w*|niepewn\w*|do\s+ustalenia|nie\s+wiadomo|nierozstrzygn\w*|zobaczy\w*|nie\s+wiem|rozważ\w*|pomysł\w*|plan\s+b|w\s+razie)(?![^\W\d_])|\?|/`, 'i');
+const HEDGE_POINT = rx(String.raw`(?<![^\W\d_])(?:jeśli|jeżeli|gdy|przy|o\s+ile|gdyby|może|możliwe|chyba|prawdopodobnie|podobno|ewentualnie|raczej|około|ok\.|ewent\.|albo|lub|lub/|zależ\w*|niepewn\w*|do\s+ustalenia|nie\s+wiadomo|nierozstrzygn\w*|zobaczy\w*|jak\s+będ\w+|nie\s+wiem|rozważ\w*|pomysł\w*|plan\s+b|w\s+razie)(?![^\W\d_])|\?|/`, 'i');
 const CHANGE_SRC = rx(String.raw`(?<![^\W\d_])(?:jednak|poprawi\w*|zmieni\w*|przesun\w*|przełoż\w*|przebukow\w*|dopóki|zanim)(?![^\W\d_])`, 'i');
 const PAST_MODAL = rx(String.raw`(?<![^\W\d_])(?:musiał(?:em|am|o|y|iśmy|yśmy)?|miał(?:em|am|o|y|iśmy|yśmy)?|powinien|powinna)(?![^\W\d_])`, 'i');
 const PRESENT_MODAL = rx(String.raw`(?<![^\W\d_])(?:muszę|musimy|musisz|musi|mam|mamy|masz|trzeba)(?![^\W\d_])`, 'i');
@@ -519,8 +519,13 @@ const EN_VOCAB = new Set('task tasks plan plans meeting decision deadline total 
 // reads as a note, not as the speaker talking.
 const EN_DUTY = /(^|[,;]\s+|\band\s+)(?:so\s+)?I\s+(?:really\s+)?(?:have to|need to|must|should|will have to|have got to|'ll|will)\s+/g;
 const EN_LEAD = /^(?:(?:okay|ok|so|well|also|and|anyway|right)\b[,\s]*)+/i;
+// "I haven't booked anything there yet" -> "nothing booked yet"; "I'm going to go by tram" -> "go by tram".
+const EN_NOT_YET = /(^|[,;]\s+|\band\s+)I\s+(?:haven't|have not)\s+(\p{L}+)\s+(?:anything|it|them)(?:\s+there)?(?:\s+yet)?/gu;
+const EN_GOING_TO = /(^|[,;]\s+|\band\s+)I(?:'m|\s+am)\s+going\s+to\s+/gu;
 export const impersonalizeEn = (text: string): string =>
-  capitalize(text.replace(EN_LEAD, '').replace(EN_DUTY, (_match, lead: string) => lead).replace(/\s{2,}/g, ' ').trim());
+  capitalize(text.replace(EN_LEAD, '').replace(EN_DUTY, (_match, lead: string) => lead)
+    .replace(EN_NOT_YET, (_match, lead: string, verb: string) => `${lead}nothing ${verb} yet`)
+    .replace(EN_GOING_TO, (_match, lead: string) => lead).replace(/\s{2,}/g, ' ').trim());
 
 const checkPointEn = (text: string, src: string, allUnits: readonly Unit[] | null, minOverlap: number): string[] => {
   const issues: string[] = [];
@@ -612,9 +617,20 @@ const surgicalRepair = (
 ): { point: WorkPoint; issues: string[] } => {
   let current = point;
   let issues = checkPoint(current, byId, allUnits, language);
-  if (!issues.length || language !== 'pl') return { point: current, issues };
+  if (!issues.length) return { point: current, issues };
+  if (language !== 'pl') return englishRepair(current, byId, allUnits);
   let kinds = new Set(issues.map(issueKind));
   const src = citedText(current.sourceIds, byId);
+  // "piątek 5 listopada" where the sentences say "w czwartek": the one weekday they state wins.
+  if (kinds.has('date')) {
+    const swapped = swapWrongWeekday(current.text, src);
+    if (swapped !== current.text) {
+      current = { ...current, text: swapped };
+      issues = checkPoint(current, byId, allUnits, language);
+      if (!issues.length) return { point: current, issues };
+      kinds = new Set(issues.map(issueKind));
+    }
+  }
   if ([...kinds].every(k => ['number', 'date', 'hedge'].includes(k)) && (kinds.has('number') || kinds.has('date'))) {
     const bad = new Set<number>();
     for (const issue of issues) {
@@ -641,7 +657,7 @@ const surgicalRepair = (
     });
     text = stripChars(text.replace(/\s+([,;.])/gu, '$1').replace(/\s{2,}/gu, ' '), ' ,;–-');
     text = text.replace(/\(\s*\)/gu, '').trim();
-    if (removedDate && !rx(WEEKDAY_PHRASE_SRC, 'i').test(text)) {
+    if (removedDate && !rx(WEEKDAY_PHRASE_SRC, 'i').test(text) && !DATE_SEARCH.slice(0, WEEKDAY_PATTERNS.length).some(pattern => pattern.test(text))) {
       const weekdays = new Set([...src.matchAll(rx(WEEKDAY_PHRASE_SRC, 'gi'))].map(m => m[0].toLowerCase()));
       if (weekdays.size === 1) text = `${text} ${[...weekdays][0]}`;
     }
@@ -658,7 +674,87 @@ const surgicalRepair = (
       if (!checkPoint(trial, byId, allUnits, language).length) return { point: trial, issues: [] };
     }
   }
+  if (issues.length && kinds.size === 1 && kinds.has('words')) {
+    const trimmed = trimUnsupportedTail(current, byId, allUnits, language);
+    if (trimmed) return { point: trimmed, issues: [] };
+  }
   return { point: current, issues };
+};
+
+// A point that kept its facts but ends in a few words the sentences never say
+// ("plany testów w stanie gotowości"): the unsupported tail goes, the rest stays.
+const TAIL_BINDERS = new Set('w we z ze na do od o po u za przy dla in on at for with to of from by'.split(' ').concat(' no not nie bez the an any some też już bardzo'.split(' ')));
+const DANGLING_END = /(?:^|s)(?:czy|że|żeby|aby|bo|i|oraz|lub|albo|a|ale|jak|if|that|whether|and|or|but|to|the|a|an)$/iu;
+const MAX_TRIMMED_TAIL_WORDS = 4;
+const MIN_TRIMMED_HEAD_WORDS = 3;
+const missingContentWords = (text: string, src: string, language: Language): string[] => {
+  const haveStems = new Set(stems(src));
+  return words(text).filter(w => w.length >= 4 && !(language === 'pl' ? SUMMARY_VOCAB.has(w) || DATE_PREFIX.some(p => p.test(w)) : EN_VOCAB.has(w)) &&
+    !haveStems.has(w.slice(0, STEM)));
+};
+export const trimUnsupportedTail = (
+  point: WorkPoint, byId: ReadonlyMap<number, Unit>, allUnits: readonly Unit[], language: Language,
+): WorkPoint | null => {
+  const src = citedText(point.sourceIds, byId);
+  const missing = missingContentWords(point.text, src, language);
+  if (!missing.length) return null;
+  const tokens = [...point.text.matchAll(/\S+/gu)];
+  const isMissing = (token: string): boolean => missing.includes(words(token)[0] ?? '');
+  let from = tokens.findIndex(token => isMissing(token[0]));
+  if (from < 0) return null;
+  // Parenthetical remark: drop it whole.
+  const open = tokens.findIndex((token, index) => index <= from && token[0].startsWith('('));
+  if (open >= 0 && tokens[tokens.length - 1][0].endsWith(')') && !tokens.slice(open, from).some(token => token[0].includes(')'))) from = open;
+  else {
+    while (from > 0 && TAIL_BINDERS.has(words(tokens[from - 1][0])[0] ?? '')) from -= 1;
+  }
+  const tail = tokens.slice(from).map(token => token[0]).join(' ');
+  if (tokens.length - from > MAX_TRIMMED_TAIL_WORDS || from < MIN_TRIMMED_HEAD_WORDS) return null;
+  if (hasNumber(tail) || (language === 'pl' ? NEG.test(tail) || HEDGE_PLAIN.test(tail) : EN_NEG.test(tail))) return null;
+  const head = stripChars(point.text.slice(0, tokens[from].index ?? 0), ' ,;:–-(');
+  if (DANGLING_END.test(head)) return null;
+  const trial = { ...point, text: head };
+  return checkPoint(trial, byId, allUnits, language).length ? null : trial;
+};
+
+// "Wylot piątek" for the speaker's "w czwartek": the sentences state one weekday, so it replaces the invented one.
+const swapWrongWeekday = (text: string, src: string): string => {
+  const forms = new Set<readonly string[]>();
+  for (const w of words(src)) {
+    const f = dayForms(w);
+    if (f?.includes(w)) forms.add(f);
+  }
+  if (forms.size !== 1) return text;
+  const [right] = [...forms];
+  return text.replace(rx(String.raw`(?<![^\W\d_])((?:w|we|na|do|od)\s+)?(${DAY_ALT})(?![^\W\d_])`, 'gi'), (match, prep: string | undefined, day: string) => {
+    const f = dayForms(day);
+    if (!f || f === right) return match;
+    const p = prep?.trim().toLowerCase();
+    const form = !p ? right[0] : p === 'do' || p === 'od' ? right[1] : right[3];
+    return `${prep ?? ''}${day === capitalize(day.toLowerCase()) && !prep ? capitalize(form) : form}`;
+  });
+};
+
+// English: a conditional or uncertain source whose hedge the point lost gets it back.
+const EN_HEDGE_FIX = new Set(['if']);
+const englishRepair = (
+  point: WorkPoint, byId: ReadonlyMap<number, Unit>, allUnits: readonly Unit[],
+): { point: WorkPoint; issues: string[] } => {
+  const issues = checkPoint(point, byId, allUnits, 'en');
+  const kinds = new Set(issues.map(issueKind));
+  if (kinds.size === 1 && kinds.has('hedge')) {
+    const hedge = issues[0].split(':').slice(1).join(':').toLowerCase();
+    if (EN_HEDGE_FIX.has(hedge)) {
+      const text = point.text.replace(/\.+$/u, '');
+      const trial = { ...point, text: hedge === 'if' ? `If ${text.charAt(0).toLowerCase()}${text.slice(1)}` : `${text} (${hedge})` };
+      if (!checkPoint(trial, byId, allUnits, 'en').length) return { point: trial, issues: [] };
+    }
+  }
+  if (kinds.size === 1 && kinds.has('words')) {
+    const trimmed = trimUnsupportedTail(point, byId, allUnits, 'en');
+    if (trimmed) return { point: trimmed, issues: [] };
+  }
+  return { point, issues };
 };
 
 // Neighbour sentences (within +-radius) that contribute at least two of the
@@ -679,6 +775,20 @@ const neighbourIds = (point: WorkPoint, byId: ReadonlyMap<number, Unit>, radius:
   });
 };
 
+// A number the cited sentences lack is often stated one sentence away ("Powrót dwunastego listopada").
+const numberNeighbourIds = (
+  point: WorkPoint, issues: readonly string[], byId: ReadonlyMap<number, Unit>, radius: number,
+): number[] => {
+  const bad = new Set(issues.filter(issue => issue.startsWith('number:')).flatMap(issue => issue.split(':')[1].split(',').map(Number)));
+  if (!bad.size || point.sourceIds.some(id => !byId.has(id))) return [];
+  const near = new Set<number>();
+  for (const id of point.sourceIds) for (let j = id - radius; j <= id + radius; j += 1) if (!point.sourceIds.includes(j)) near.add(j);
+  return [...near].sort((a, b) => a - b).filter(c => {
+    const unit = byId.get(c);
+    return unit !== undefined && [...statedNumbers(unit.text)].some(n => bad.has(n));
+  });
+};
+
 const withIds = (point: WorkPoint, extra: readonly number[]): WorkPoint =>
   ({ ...point, sourceIds: [...new Set([...point.sourceIds, ...extra])].sort((a, b) => a - b) });
 
@@ -695,7 +805,7 @@ const repairByCitation = (
     }
   }
   if (!issues.length || !issues.every(issue => REPAIRABLE.includes(issueKind(issue)))) return { point, issues };
-  const near = neighbourIds(point, byId, radius);
+  const near = [...new Set([...neighbourIds(point, byId, radius), ...numberNeighbourIds(point, issues, byId, radius)])].sort((a, b) => a - b);
   for (const c of near) {
     const trial = withIds(point, [c]);
     if (!checkPoint(trial, byId, allUnits, language).length) return { point: trial, issues: [] };
@@ -744,7 +854,9 @@ export const repairPoint = (
   }
   const first = repairByCitation(point, byId, allUnits, language, radius);
   if (!first.issues.length) return first;
-  const candidates = [point, ...neighbourIds(point, byId, radius).map(c => withIds(point, [c]))];
+  const numeric = numberNeighbourIds(point, first.issues, byId, radius);
+  const others = neighbourIds(point, byId, radius).filter(c => !numeric.includes(c));
+  const candidates = [...numeric.map(c => withIds(point, [c])), point, ...others.map(c => withIds(point, [c]))];
   for (const candidate of candidates) {
     const fixed = surgicalRepair(candidate, byId, allUnits, language);
     if (!fixed.issues.length) return fixed;
@@ -754,9 +866,9 @@ export const repairPoint = (
 
 // ---------------------------------------------------------------- literal cleaner
 const LEAD_FILLERS_PL = [
-  String.raw`(?:a\s+)?poza\s+tym`, String.raw`no\s+(?:więc|dobra|i|to|ale|tak|nic)`, 'dobra', 'okej', 'ok', String.raw`aha(?:\s+i)?(?:\s+jeszcze)?`, String.raw`i\s+jeszcze`, 'jeszcze',
+  String.raw`(?:a\s+)?poza\s+tym`, String.raw`no\s+(?:więc|dobra|i|to|ale|tak|nic)`, 'dobra', 'okej', 'ok', String.raw`aha(?:\s+i)?(?:\s+jeszcze)?`, String.raw`i\s+jeszcze`, String.raw`jeszcze\s+jedno`, 'jeszcze',
   String.raw`a\s+propos(?:\s+\w+)?`, String.raw`swoją\s+drogą`, String.raw`w\s+ogóle`, 'generalnie', 'znaczy', 'tak', 'no', 'a', 'i', 'oraz',
-  'czyli', String.raw`w\s+sumie`, 'ogólnie', 'ale', 'więc', String.raw`tak\s+serio`, 'serio', 'słuchaj', 'wiesz', 'kurczę', 'matko', String.raw`ostatnia\s+rzecz`, 'dalej', String.raw`chyba\s+wszystko`, String.raw`to\s+chyba\s+tyle`,
+  'czyli', String.raw`w\s+sumie`, 'ogólnie', 'ale', 'więc', String.raw`tak\s+serio`, 'serio', 'słuchaj', 'wiesz', 'kurczę', 'matko', String.raw`ostatnia\s+rzecz`, 'dalej', 'ważne', 'uwaga', String.raw`nie(?=\s*,)`, String.raw`chyba\s+wszystko`, String.raw`to\s+chyba\s+tyle`,
   String.raw`ważne(?:\s+jest)?(?:\s+tylko)?(?:\s+to)?,?\s+że`, String.raw`jeszcze\s+jedno`, String.raw`co\s+jeszcze`,
   String.raw`i\s+ostatnia\s+rzecz`, String.raw`no\s+i\s+ostatnia\s+rzecz`, 'najważniejsze', String.raw`po\s+pierwsze`, String.raw`po\s+drugie`, String.raw`potem\s+jeszcze`,
 ];
@@ -855,6 +967,29 @@ const clauseLiteral = (
   return capitalize(joined);
 };
 
+// A rejected point often cites an introduction next to the sentences with its facts;
+// the literal quotes the (at most two) cited sentences that share most with the point.
+const MAX_LITERAL_IDS = 2;
+const mostRelevantIds = (
+  reject: { readonly text: string }, ids: readonly number[], byId: ReadonlyMap<number, Unit>,
+): number[] => {
+  if (ids.length <= MAX_LITERAL_IDS) return [...ids];
+  const pst = new Set(stems(reject.text));
+  const pnums = pointNumbers(reject.text);
+  const score = (id: number): number => {
+    const text = byId.get(id)?.text ?? '';
+    return stems(text).filter(stem => pst.has(stem)).length + 2 * [...statedNumbers(text)].filter(n => pnums.has(n)).length;
+  };
+  return ids.map((id, index) => ({ id, index, value: score(id) }))
+    .sort((a, b) => b.value - a.value || a.index - b.index)
+    .slice(0, MAX_LITERAL_IDS).map(entry => entry.id).sort((a, b) => a - b);
+};
+
+// "mam na godzinę ok. 8:30 zajęcia" -> "ok. 8:30 zajęcia": a recognizer's way of saying "o ósmej trzydzieści".
+const ON_THE_HOUR = rx(String.raw`(?<![^\W\d_])(?:mam\s+)?na\s+godzinę\s+(ok\.\s*)?(?=\d{1,2}:\d{2})`, 'gi');
+const tidyQuoted = (text: string, language: Language): string =>
+  (language === 'pl' ? text.replace(ON_THE_HOUR, (_match, approx: string | undefined) => approx ?? 'o ') : text);
+
 const similarity = (a: string, b: string): number => {
   const sa = new Set(stems(a));
   const sb = new Set(stems(b));
@@ -902,6 +1037,9 @@ const parseLines = (text: string, allowed: ReadonlySet<number>, paren: boolean):
     }
     body = body.replace(/\s*\[[^\]]*\]\s*/gu, ' ').replace(/\s+/gu, ' ').trim().replace(/[;,]+$/u, '');
     const ids = parseSourceIds(idText).filter(id => allowed.has(id));
+    // "... o 16:30 (13) [13]": the model repeats the ids inside the text.
+    const echo = /\s*\(\s*(\d+(?:\s*[,;\-–]\s*\d+)*)\s*\)\s*$/u.exec(body);
+    if (echo && parseSourceIds(echo[1]).every(id => ids.includes(id))) body = body.slice(0, echo.index).trim();
     if (body.length < 6 || !ids.length) continue;
     const key = body.toLowerCase();
     if (seen.has(key)) continue;
@@ -1065,6 +1203,12 @@ const fixWordOrderAndCase = (text: string): string =>
 // "Zostało mi dokończyć ekran" -> "Dokończyć ekran"
 const REMAINING_OPENER = rx(String.raw`^(?:zostało|została|zostały|zostaje)\s+(?:mi|nam)\s+(?:jeszcze\s+)?(?=[^\W\d_]{3,}ć(?![^\W\d_]))`, 'i');
 
+// "..., muszę to zrobić w tym tygodniu" -> "..., zrobić to w tym tygodniu": the speaker's duty needs no pronoun.
+const INNER_MODAL = rx(String.raw`(^|[,;]\s+|(?<![^\W\d_])(?:to|więc|tam)\s+)(?:muszę|musimy|mam|mamy)\s+((?:(?:to|go|ją|je|mu|jej|im|się)\s+){0,2})([^\W\d_]{3,}(?<!ę)ć)(?![^\W\d_])`, 'gi');
+const dropInnerModal = (text: string): string =>
+  text.replace(INNER_MODAL, (match, lead: string, clitics: string, infinitive: string) =>
+    (/^(?:być|mieć)$/iu.test(infinitive) ? match : `${lead}${infinitive}${clitics.trim() ? ` ${clitics.trim()}` : ''}`));
+
 export const impersonalize = (input: string, noteWords: ReadonlySet<string>): string => {
   let text = input.replace(/ть(?![\p{L}])/gu, 'ć').replace(/[аеорсху]/gu, c => CYRILLIC_TWINS[c] ?? c);
   // "nie składaj" where the speaker said "nie składam"
@@ -1096,6 +1240,7 @@ export const impersonalize = (input: string, noteWords: ReadonlySet<string>): st
     text = text.replace(FIRST_PERSON_NEGATED, (match, stem: string) => (noteWords.has(`${stem.toLowerCase()}am`) ? `nie ${stem}ać` : match));
   }
   text = text.replace(/(?<![\p{L}])w(\s+wtor)/giu, 'we$1');
+  text = dropInnerModal(text);
   // A weekday in the wrong case: "w niedzieli" -> "w niedzielę".
   text = text.replace(AFTER_W, (match, prep: string, day: string) => {
     if (noteWords.has(day.toLowerCase())) return match;
@@ -1160,13 +1305,44 @@ const CONTINUATION = rx(String.raw`^(?:że|żeby|ale|lub|albo|oraz|czyli|więc|b
 const MAX_SHORT_LITERAL = 120;
 const MIN_CLAUSE_START = 18;
 const LEADING_CONNECTIVE = rx(String.raw`^(?:więc|bo|że|żeby|ale|i|a|czyli)\s+`, 'i');
+// A clause that opens with an infinitive ("to zadzwonić do przychodni") is a task.
+const ACTION_CLAUSE = rx(String.raw`^(?:(?:to|więc|a|i)\s+)?(?:(?:nie|go|ją|je|mu|jej|im|się|to)\s+){0,2}[^\W\d_]{3,}(?<!ę)ć(?![^\W\d_])`, 'i');
 const clauseWeight = (clause: string): number =>
-  (COMMITMENT.test(clause) || PLAN_SIGNAL.test(clause) ? 2 : 0) + (hasDate(clause) ? 1 : 0) + (hasNumber(clause) ? 1 : 0) +
+  (COMMITMENT.test(clause) || PLAN_SIGNAL.test(clause) || ACTION_CLAUSE.test(clause) ? 2 : 0) + (hasDate(clause) ? 1 : 0) + (hasNumber(clause) ? 1 : 0) +
   (NEG.test(clause) || HEDGE_PLAIN.test(clause) ? 0.5 : 0) + (new RegExp(`[${UPPER}]`, 'u').test(clause.slice(1)) ? 0.5 : 0);
 const TRAILING_WAIT = rx(String.raw`^(?:zobaczymy|zobaczę|pomyślę|zobaczy\s+się)(?![^\W\d_])`, 'i');
 // Attendance and duration of a meeting are not what was decided in it.
 const MEETING_META = rx(String.raw`^(?:więc\s+)?(?:spisuję|notuję|nagrywam|zapisuję)(?![^\W\d_])|^zanim\s+(?:mi\s+umknie|zapomnę)|^(?:było|byliśmy|byli)\s+nas\b|^trwał[oa]\s+(?:dobrą\s+|ponad\s+)?(?:godzinę|\d)`, 'i');
-export const shortenLiteral = (input: string): string => {
+// Unpunctuated speech has no commas to cut at: spoken cues start a new clause.
+const MIN_SPLIT_CHARS = 90;
+const COMMA_SPACING_CHARS = 40;
+const CLAUSE_CUE = rx(String.raw`(?<=[^\s,;:–-])\s+(?=(?:(?:trzeba|muszę|musimy|ale|więc|jest\s+to|mimo\s+że|chociaż|natomiast|dlatego)(?![^\W\d_]))|mam(?=\s+(?:[^\W\d_]+\s+)?[^\W\d_]{3,}ć(?![^\W\d_])))`, 'gi');
+// A cue splits only after a clause of some length ("tam mam" is not a clause boundary).
+const MIN_CLAUSE_CHARS = 20;
+const clauseStart = (input: string, offset: number): boolean => offset - (input.lastIndexOf(',', offset) + 1) >= MIN_CLAUSE_CHARS;
+const splitSpokenClauses = (input: string): string =>
+  (input.length > MIN_SPLIT_CHARS && (input.match(/,/gu)?.length ?? 0) * COMMA_SPACING_CHARS < input.length ? input.replace(CLAUSE_CUE, (space: string, offset: number) => (clauseStart(input, offset) ? ', ' : space)) : input);
+
+// A closing explanation ("..., bo ceny rosną") adds nothing to a point that already carries its facts.
+const EXPLANATION_CLAUSE = rx(String.raw`^(?:bo|ale|więc|co|który\w*|która|które|czyli|dlatego|ponieważ|jest\s+to|to\s+jest|tak\s+ustal\w+)(?![^\W\d_])`, 'i');
+const MIN_KEPT_CHARS = 30;
+const MIN_TAIL_TRIM_CHARS = 70;
+const dropExplanationTail = (text: string): string => {
+  if (text.length < MIN_TAIL_TRIM_CHARS) return text;
+  const clauses = text.split(/(?<=,)\s+/u);
+  while (clauses.length > 1) {
+    const last = clauses[clauses.length - 1];
+    const rest = clauses.slice(0, -1).join(' ').replace(/,$/u, '');
+    if (!EXPLANATION_CLAUSE.test(last) || rest.length < MIN_KEPT_CHARS || hasNumber(last) || hasDate(last) || NEG.test(last) ||
+      HEDGE_PLAIN.test(last) || new RegExp(`[${UPPER}]`, 'u').test(last.slice(1))) break;
+    clauses.pop();
+  }
+  return clauses.join(' ').replace(/,$/u, '');
+};
+
+export const shortenLiteral = (input: string): string => dropExplanationTail(shortenClauses(splitSpokenClauses(input)));
+
+const shortenClauses = (input: string): string => {
   const all = input.replace(/[.]+$/u, '').split(/(?<=,)\s+/u);
   const clauses = all.length > 1 ? all.filter(clause => !MEETING_META.test(clause.replace(/,$/u, ''))) : all;
   if (clauses.length && clauses[clauses.length - 1] !== all[all.length - 1]) clauses[clauses.length - 1] = clauses[clauses.length - 1].replace(/,$/u, '');
@@ -1213,15 +1389,31 @@ const shortNoteLiterals = (units: readonly Unit[], language: Language): WorkPoin
   }).filter(point => point.text.length > 0);
 };
 
+const quotesStaleValue = (literal: string, ids: readonly number[], byId: ReadonlyMap<number, Unit>): boolean => {
+  const stale = staleNumbers(ids, byId);
+  return [...pointNumbers(literal)].some(n => stale.has(n));
+};
+
 // A finished first-person action ("Kupiłam probiotyk") leaves nothing to do.
 const FIRST_PERSON_DONE = rx(String.raw`^[^\W\d_]{3,}(?:łem|łam)(?![^\W\d_])`, 'i');
 
 // Validate every point; repair what can be repaired; a point that still fails
 // is dropped when its sentences are already covered, otherwise replaced by the
 // cleaned literal clauses of at most two of them. Output is in note order.
+// "Go to gym now and 6 PM psychologist appointment": two events in one point.
+const EN_CLOCK = /\d{1,2}(?::\d{2})?\s?(?:am|pm|a\.m\.|p\.m\.)(?![\p{L}])/iu;
+const EN_SPLIT_AT_TIME = /^(.{10,}?)\s+(?:and|then)\s+((?:at\s+)?\d{1,2}(?::\d{2})?\s?(?:am|pm)(?![\p{L}])\s+\S.*)$/iu;
+export const splitMergedEvents = (text: string, language: Language): string[] => {
+  if (language !== 'en') return [text];
+  const m = EN_SPLIT_AT_TIME.exec(text);
+  if (!m || EN_CLOCK.test(m[1]) || /\b(?:between|from|until|till|to)(?:\s+\d{1,2}(?::\d{2})?)?\s*$/iu.test(m[1]) || splitWs(m[1]).length < 2 || splitWs(m[2]).length < 3) return [text];
+  return [m[1], capitalize(m[2].replace(/^at\s+/iu, ''))];
+};
+
 export const finalizePoints = (
-  points: readonly SummaryPoint[], units: readonly Unit[], language: Language = 'pl',
+  rawPoints: readonly SummaryPoint[], units: readonly Unit[], language: Language = 'pl',
 ): { points: WorkPoint[]; rejected: RejectedPoint[] } => {
+  const points = rawPoints.flatMap(raw => splitMergedEvents(raw.text, language).map(text => ({ text, sourceIds: raw.sourceIds })));
   const byId = new Map(units.map(unit => [unit.id, unit]));
   const kept: WorkPoint[] = [];
   const rejected: RejectedPoint[] = [];
@@ -1249,17 +1441,22 @@ export const finalizePoints = (
   }
   const covered = new Set(kept.flatMap(point => point.sourceIds));
   for (const reject of rejected) {
-    const rest = reject.sourceIds.filter(id => !covered.has(id));
-    if (!rest.length) continue;
-    const quoted = convert(clauseLiteral({ text: reject.text, sourceIds: rest }, byId, language), language);
+    const uncovered = reject.sourceIds.filter(id => !covered.has(id));
+    if (!uncovered.length) continue;
+    const rest = mostRelevantIds(reject, uncovered, byId);
+    const quoted = tidyQuoted(convert(clauseLiteral({ text: reject.text, sourceIds: rest }, byId, language), language), language);
     const literal = language === 'pl' ? capitalize(shortenLiteral(impersonalize(quoted, noteWords))) : impersonalizeEn(quoted);
     // Narration with nothing to act on is not worth quoting.
     if (language === 'pl' && (rambling || REFLECTION.test(literal)) && substanceScore(literal) < MIN_LITERAL_SUBSTANCE) continue;
     if (language === 'pl' && isTrivia(literal, rest.flatMap(id => byId.get(id) ?? []))) continue;
     if (language === 'pl' && FIRST_PERSON_DONE.test(literal) && substanceScore(literal) < SUBSTANTIVE) continue;
     if (language === 'pl' && (isMetaPoint(literal) || isPromptEcho(reject.text))) continue;
-    kept.push({ text: literal, sourceIds: rest.slice(0, 2), literal: true, replaced: reject.text, issues: reject.issues });
-    for (const id of rest.slice(0, 2)) covered.add(id);
+    // English speech cut into fixed-size chunks: a quote of a fragment reads as garbage.
+    if (language === 'en' && rest.every(id => !/[.!?]["')]*$/u.test(byId.get(id)?.text.trim() ?? ''))) continue;
+    // Better no point than one that states the value the speaker took back.
+    if (language === 'pl' && quotesStaleValue(literal, rest, byId)) continue;
+    kept.push({ text: literal, sourceIds: rest, literal: true, replaced: reject.text, issues: reject.issues });
+    for (const id of rest) covered.add(id);
   }
   return { points: orderPoints(kept), rejected };
 };
@@ -1337,9 +1534,9 @@ export const recoverMissed = (points: readonly WorkPoint[], units: readonly Unit
   for (const unit of units) {
     if (added.length >= budget) break;
     if (covered.has(unit.id) || !isEventUnit(unit.text)) continue;
-    const quoted = convert(clauseLiteral({ text: unit.text, sourceIds: [unit.id] }, byId, 'pl'), 'pl');
+    const quoted = tidyQuoted(convert(clauseLiteral({ text: unit.text, sourceIds: [unit.id] }, byId, 'pl'), 'pl'), 'pl');
     const literal = fixStaleWeekday(capitalize(shortenLiteral(impersonalize(quoted, noteWords))), correctionContext([unit.id], byId));
-    if (isMetaPoint(literal)) continue;
+    if (isMetaPoint(literal) || quotesStaleValue(literal, [unit.id], byId)) continue;
     added.push({ text: literal, sourceIds: [unit.id], literal: true, issues: ['missed'] });
   }
   return added.length ? orderPoints([...points, ...added]) : [...points];
@@ -1456,6 +1653,22 @@ Wynik:
 
 const RULE1_V2 = '1. Styl telegraficzny jak w dobrej aplikacji do notatek: punkt ma 4–14 słów. Bez „mam”, „muszę”, „trzeba” – zadania zawsze z czasownikiem w bezokoliczniku („Umyć okna na balkonie”, nie „Okna na balkonie”), fakty równoważnikiem zdania („Pociąg do Lublina w sobotę rano”). Nie pisz w pierwszej osobie ani w trybie rozkazującym („Jadę…”, „Kupiłem…”, „Pokaż…”): zamiast „Jadę autobusem o ósmej” napisz „Autobus o ósmej”.';
 const RULE7_V2 = '7. Pomiń wstępy, wypełniacze („no więc”, „znaczy”, „aha i jeszcze”), dygresje, wspomnienia, anegdoty, pogodę, jedzenie, filmy i opisy zdarzeń dnia, z których nic nie wynika (żadnego zadania, decyzji, terminu ani ustalenia).';
+const EXAMPLE_DIARY_EN = `
+
+Example 3 (another note):
+[1] Okay, a log from Thursday, so I don't forget what happened.
+[2] I overslept this morning, the bus was so crowded I could barely get off, and the printer jammed again at the office.
+[3] For lunch I had pasta with tomato sauce, a bit too salty, but edible.
+[4] Barbara from HR wrote that the safety training has been moved to next Tuesday at nine, so I have to put it in my calendar.
+[5] In the evening I watched a film about volcanoes, interesting, but long.
+[6] I decided that from Monday I will get up at six and go for a walk before work, as a two-week trial.
+[7] I still have to pay the internet bill, the deadline is Friday, one hundred ten dollars.
+[8] I remembered my grandfather and how he taught me to fish at the lake, those were the days.
+Output:
+- Safety training moved to next Tuesday at 9 - put it in the calendar (Barbara from HR) [4]
+- Decision: from Monday get up at 6 and walk before work, two-week trial [6]
+- Pay the internet bill by Friday, 110 dollars [7]`;
+const RULE7_EN_V2 = '7. Skip introductions, fillers ("so", "um", "oh and one more thing"), digressions, memories, anecdotes, weather, food, films and descriptions of the day that lead to nothing (no task, decision, deadline or arrangement).';
 const EXAMPLE_SHORT_PL = `
 
 Przykład 4 (inna notatka):
@@ -1476,7 +1689,7 @@ const RULE_TOPIC_V2 = '10. Gdy pierwsze zdanie podaje temat notatki, pierwszy pu
 // and every note, so llama.rn keeps its KV cache.
 export const pointSummarySystem = (language: Language, variant: PromptVariant = 'base'): string => language === 'pl'
   ? `${noteSourceSystem('pl')}\n\nWzorzec streszczenia (gdy zadanie prosi o streszczenie):\n${EXAMPLES_PL}${variant === 'base' ? '' : EXAMPLE_DIARY_PL}${variant === 'v3' ? EXAMPLE_SHORT_PL : ''}`
-  : `${noteSourceSystem('en')}\n\nSummary pattern (when the task asks for a summary):\n${EXAMPLES_EN}`;
+  : `${noteSourceSystem('en')}\n\nSummary pattern (when the task asks for a summary):\n${EXAMPLES_EN}${variant === 'base' ? '' : EXAMPLE_DIARY_EN}`;
 
 // "1 punkt", "3 punkty", "5 punktów".
 const countPl = (n: number, one: string, few: string, many: string): string =>
@@ -1489,7 +1702,7 @@ export const pointSummaryInstructions = (language: Language, maxPoints: number, 
     `Postępuj jak we wzorcu z instrukcji systemowej. Teraz streść notatkę z SOURCE_START…SOURCE_END. Zwróć wyłącznie listę, najwyżej ${countPl(maxPoints, 'linia', 'linie', 'linii')}.`,
   ].join('\n\n')
   : [
-    HEAD_EN, RULES_EN,
+    HEAD_EN, variant !== 'base' ? RULES_EN.replace(/^7\. .*$/mu, RULE7_EN_V2) : RULES_EN,
     `9. At most ${maxPoints} points (${maxPoints} lines, no more): pick the most important matters of this part, merge or skip minor ones, in the order of the note. Important matters (tasks, deadlines, decisions, amounts, plan changes) take precedence over details.`,
     `Follow the pattern from the system instructions. Now summarize the note between SOURCE_START and SOURCE_END. Return only the list, at most ${maxPoints} lines.`,
   ].join('\n\n');
