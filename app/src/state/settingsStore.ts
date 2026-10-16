@@ -20,6 +20,7 @@ const APPEARANCE_KEY = 'appearance.preference'
 const LANGUAGE_KEY = 'language.interface'
 const NOTE_LANGUAGE_KEY = 'language.note'
 const BACKGROUND_PROCESSING_KEY = 'processing.background'
+const AUTO_TASKS_KEY = 'tasks.autoSuggest'
 
 let appearanceWriteVersion = 0
 let languageWriteVersion = 0
@@ -39,6 +40,9 @@ interface SettingsState {
   noteLanguage: Language
   backgroundProcessing: boolean
   setBackgroundProcessing: (enabled: boolean) => Promise<void>
+  // Suggest tasks right after a note is processed (on by default).
+  autoTaskSuggestions: boolean
+  setAutoTaskSuggestions: (enabled: boolean) => Promise<void>
   // Until settings are read, the app cannot tell a first run from a later one,
   // so screens wait rather than flashing the welcome screen at every launch.
   loaded: boolean
@@ -64,6 +68,11 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     await repository.setSetting(BACKGROUND_PROCESSING_KEY, enabled ? '1' : '0')
     set({ backgroundProcessing: enabled })
   },
+  autoTaskSuggestions: true,
+  setAutoTaskSuggestions: async (enabled) => {
+    await repository.setSetting(AUTO_TASKS_KEY, enabled ? '1' : '0')
+    set({ autoTaskSuggestions: enabled })
+  },
   loaded: false,
   load: async () => {
     const [
@@ -73,6 +82,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       storedLanguage,
       storedNoteLanguage,
       storedBackgroundProcessing,
+      storedAutoTasks,
     ] = await Promise.all([
       repository.getSetting(SORT_MODE_KEY),
       repository.getSetting(ONBOARDING_KEY),
@@ -80,6 +90,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       repository.getSetting(LANGUAGE_KEY),
       repository.getSetting(NOTE_LANGUAGE_KEY),
       repository.getSetting(BACKGROUND_PROCESSING_KEY),
+      repository.getSetting(AUTO_TASKS_KEY),
     ])
     const appearancePreference = parseAppearancePreference(storedAppearance)
     synchronizeNativeAppearance(appearancePreference)
@@ -93,6 +104,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         : getSystemLanguage(),
       loaded: true,
       backgroundProcessing: storedBackgroundProcessing === '1',
+      autoTaskSuggestions: storedAutoTasks !== '0',
     })
   },
   setSortMode: async (mode) => {

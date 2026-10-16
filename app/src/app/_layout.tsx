@@ -10,6 +10,7 @@ import { useSettingsStore } from '../state/settingsStore'
 import { useModelStore } from '../state/modelStore'
 import { useDraftStore } from '../state/draftStore'
 import { startModelMemoryGuard } from '../ai/modelMemory'
+import { startTaskPrefetch } from '../tasks/taskPrefetch'
 import { useTheme } from '../ui/theme'
 import { recoverCapturedSessions } from '../audio/captureRecovery'
 import { translate } from '../i18n/translate'
@@ -92,6 +93,7 @@ export default function RootLayout() {
   }, [load, loadTasks, loadSettings, refreshModel, loadDraft])
 
   useEffect(startModelMemoryGuard, [])
+  useEffect(startTaskPrefetch, [])
 
   return (
     <SafeAreaProvider>
