@@ -62,6 +62,8 @@ export const questionDays = (question: string, now: Date): DayRange | null => {
 
 const TASK_QUESTION = /\b(?:zadan\w*|zrobic|zalatwic|do\s+zrobienia|co\s+mam|musze|mam\s+do|plan\w*|to\s*do|tasks?|have\s+to|need\s+to|what\s+do\s+i|errands?|remind\w*)\b/u
 
+const WHEN_QUESTION = /\b(?:kiedy|kiedys|o\s+ktorej|na\s+kiedy|do\s+kiedy|ktorego|when|what\s+time|which\s+day|by\s+when)\b/u
+
 const DUTY = /\b(?:musze|trzeba|mam\s+\w+c|mam\s+do|nalezy|przypomnij|oddac|zaplacic|kupic|zadzwonic|odebrac|have\s+to|need\s+to|must|remind|should|pick\s+up|pay|buy|call)\b/u
 
 const KIND_WEIGHT: Readonly<Record<AskChunk['kind'], number>> = { sentence: 1, point: 0.8, task: 0.9, title: 0.7 }
@@ -91,6 +93,23 @@ export interface RetrieveOptions {
   expansion?: readonly string[]
   maxNotes?: number
   maxPassages?: number
+  // Cosine similarity of the question to each chunk (by chunk id), from the embedding model.
+  semantic?: ReadonlyMap<number, number>
+  semanticWeight?: number
+  // How much fresher notes win over old ones on the same topic (0 = no preference).
+  recency?: number
+}
+
+// Similarities are rescaled per question: the best chunk gets 1, the median 0,
+// so the weight means the same for any model and any question.
+const semanticScores = (similarity: ReadonlyMap<number, number>): Map<number, number> => {
+  const values = [...similarity.values()].sort((a, b) => a - b)
+  const top = values.at(-1) ?? 0
+  const median = values[Math.floor(values.length / 2)] ?? 0
+  const span = Math.max(1e-6, top - median)
+  const out = new Map<number, number>()
+  for (const [id, value] of similarity) if (value > median) out.set(id, ((value - median) / span) ** 2)
+  return out
 }
 
 export const retrieve = (question: string, index: AskIndex, options: RetrieveOptions): RetrievedNote[] => {
@@ -109,14 +128,25 @@ export const retrieve = (question: string, index: AskIndex, options: RetrieveOpt
   const maxNotes = options.maxNotes ?? (days ? 8 : 4)
   const maxPassages = options.maxPassages ?? (days ? 18 : 10)
 
+  const semantic = options.semantic ? semanticScores(options.semantic) : null
+  const semanticWeight = options.semanticWeight ?? 4
+  const recency = options.recency ?? 1.5
+  const today = startOfDay(options.now)
+  const asksWhen = WHEN_QUESTION.test(plain(question))
   const scored = index.chunks.map((chunk) => {
     let score = bm25(chunk, query, index) * KIND_WEIGHT[chunk.kind]
+    if (semantic) score += semanticWeight * (semantic.get(chunk.id) ?? 0) * KIND_WEIGHT[chunk.kind]
     if (days && chunk.day !== null && chunk.day >= days.from && chunk.day <= days.to) {
       score += chunk.kind === 'task' ? 4 : 2.5
       if (wantsTasks && chunk.kind !== 'task' && DUTY.test(plain(chunk.text))) score += 1
     }
     if (wantsTasks && chunk.kind === 'task' && !chunk.done) score += days ? 0.5 : 1
     if (chunk.done) score *= 0.6
+    // "Kiedy mam dentystę?" after years of notes means the next visit, not one from 2024.
+    const created = index.notes.get(chunk.noteId)?.createdAt ?? 0
+    const age = Math.max(0, (options.now.getTime() - created) / DAY)
+    score *= 1 + recency * Math.exp(-age / 30)
+    if (asksWhen && !days && chunk.day !== null && chunk.day >= today) score *= 1.3
     return { chunk, score }
   }).filter((item) => item.score > 0)
     .sort((a, b) => b.score - a.score)

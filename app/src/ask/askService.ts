@@ -8,6 +8,8 @@ import { expandQuestion } from './askExpand'
 import { buildAskIndex, type AskIndex } from './askIndex'
 import { retrieve } from './askRetrieval'
 import { questionLanguage } from './askText'
+import { isEmbeddingModelDownloaded } from './embeddingModel'
+import { semanticSimilarity } from './vectorStore'
 
 export type AskStage = 'loading' | 'searching' | 'answering'
 
@@ -18,7 +20,7 @@ export interface AskTurn {
 
 // The index is rebuilt only when the notes or tasks arrays change.
 let cached: { notes: readonly Note[]; tasks: readonly Task[]; index: AskIndex } | null = null
-const indexFor = (notes: readonly Note[], tasks: readonly Task[]): AskIndex => {
+export const indexFor = (notes: readonly Note[], tasks: readonly Task[]): AskIndex => {
   if (cached && cached.notes === notes && cached.tasks === tasks) return cached.index
   const index = buildAskIndex(
     notes.map((note) => ({ id: note.id, title: note.title, content: note.content, summary: note.summary, createdAt: note.createdAt, ...(note.language ? { language: note.language } : {}) })),
@@ -47,7 +49,11 @@ export const askNotes = (
       if (callbacks.signal.aborted) throw error
       return []
     })
-    const retrieved = retrieve(question, index, { now, history: previous ? [previous] : [], expansion })
+    // Vectors are optional: without the search model, word matching alone still works.
+    const semantic = (await isEmbeddingModelDownloaded())
+      ? await semanticSimilarity(previous && question.split(/\s+/u).length <= 4 ? `${previous} ${question}` : question, index).catch(() => undefined)
+      : undefined
+    const retrieved = retrieve(question, index, { now, history: previous ? [previous] : [], expansion, ...(semantic?.size ? { semantic } : {}) })
     if (!retrieved.length) return { text: notFound(language), sources: [], cited: [] }
     callbacks.onStage('answering')
     return answerQuestion(question, retrieved, index, language, { now, history: input.history, onToken: callbacks.onToken, signal: callbacks.signal })

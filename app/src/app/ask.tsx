@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import {
   ActivityIndicator,
+  Alert,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -14,6 +15,10 @@ import { Stack, useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import type { AskSource } from '../ask/askAnswer'
 import { useAskStore, type AskMessage } from '../ask/askStore'
+import { EMBEDDING_MODEL } from '../ask/embeddingModel'
+import { useSearchModelStore } from '../ask/searchModel'
+import { useVectorIndexStore } from '../ask/vectorStore'
+import { Button } from '../ui/Button'
 import { useI18n } from '../i18n/useI18n'
 import { useNotesStore } from '../state/notesStore'
 import { useTasksStore } from '../state/tasksStore'
@@ -101,6 +106,55 @@ function Message({ message, onOpen }: { message: AskMessage; onOpen: (source: As
   )
 }
 
+
+// The optional search model: offered, downloading, indexing, or installed.
+function SearchModelCard({ compact }: { compact: boolean }) {
+  const { t } = useI18n()
+  const { colors } = useTheme()
+  const model = useSearchModelStore()
+  const indexing = useVectorIndexStore()
+  if (indexing.indexing)
+    return (
+      <View style={styles.stage}>
+        <ActivityIndicator size="small" color={colors.muted} />
+        <Text style={[type.meta, { color: colors.muted }]}>
+          {t(`Indeksuję notatki do wyszukiwania… ${indexing.done}/${indexing.total}`, `Indexing notes for search… ${indexing.done}/${indexing.total}`)}
+        </Text>
+      </View>
+    )
+  if (compact) return null
+  if (model.downloaded)
+    return (
+      <Text style={[type.meta, { color: colors.muted, textAlign: 'center' }]}>
+        {t('Wyszukiwanie po znaczeniu włączone. ', 'Search by meaning is on. ')}
+        <Text accessibilityRole="button" onPress={() =>
+            Alert.alert(t('Usunąć model wyszukiwania?', 'Remove the search model?'), t('Zwolni to miejsce; czat będzie szukał tylko po słowach.', 'This frees the space; the chat will search by words only.'), [
+              { text: t('Anuluj', 'Cancel'), style: 'cancel' },
+              { text: t('Usuń', 'Remove'), style: 'destructive', onPress: () => void model.remove() },
+            ])
+          } style={{ color: colors.accent }}>
+          {t('Usuń model', 'Remove model')}
+        </Text>
+      </Text>
+    )
+  return (
+    <View style={[styles.card, { backgroundColor: colors.paper, borderColor: colors.line }]}>
+      <Text style={[type.label, { color: colors.ink }]}>{t('Lepsze wyszukiwanie', 'Better search')}</Text>
+      <Text style={[type.meta, { color: colors.body }]}>
+        {t(
+          `Model wyszukiwania (${EMBEDDING_MODEL.approxSizeMb} MB) znajduje notatki opisane innymi słowami albo w drugim języku. Działa na telefonie, bez wysyłania notatek.`, `A search model (${EMBEDDING_MODEL.approxSizeMb} MB) finds notes that say it in other words or in the other language. It runs on this phone; notes are never sent.`,
+        )}
+      </Text>
+      {model.error ? <Text style={[type.meta, { color: colors.danger }]}>{model.error}</Text> : null}
+      {model.downloading ? (
+        <Button label={t(`Anuluj · ${Math.round(model.percent)}%`, `Cancel · ${Math.round(model.percent)}%`)} variant="quiet" onPress={model.cancel} />
+      ) : (
+        <Button label={t('Pobierz model wyszukiwania', 'Download the search model')} icon="download" onPress={() => void model.download()} />
+      )}
+    </View>
+  )
+}
+
 export default function AskScreen() {
   const { t, language } = useI18n()
   const { colors } = useTheme()
@@ -178,9 +232,13 @@ export default function AskScreen() {
                 ))}
               </View>
             ) : null}
+            {notes.length ? <SearchModelCard compact={false} /> : null}
           </View>
         ) : (
-          messages.map((message) => <Message key={message.id} message={message} onOpen={open} />)
+          <>
+            <SearchModelCard compact />
+            {messages.map((message) => <Message key={message.id} message={message} onOpen={open} />)}
+          </>
         )}
       </ScrollView>
       <View
@@ -229,6 +287,7 @@ const styles = StyleSheet.create({
   stage: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   sources: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   source: { flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: radius.pill, paddingHorizontal: spacing.md, paddingVertical: 6, maxWidth: '100%' },
+  card: { alignSelf: 'stretch', gap: spacing.sm, borderWidth: 1, borderRadius: radius.md, padding: spacing.lg, marginTop: spacing.lg },
   composer: { flexDirection: 'row', alignItems: 'flex-end', gap: spacing.sm, paddingHorizontal: spacing.lg, paddingTop: spacing.md, borderTopWidth: 0.5 },
   input: { flex: 1, maxHeight: 120, minHeight: 44, borderWidth: 1, borderRadius: radius.lg, paddingHorizontal: spacing.lg, paddingTop: 10, paddingBottom: 10 },
   send: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
