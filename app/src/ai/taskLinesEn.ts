@@ -1,3 +1,5 @@
+import { resolveDue } from '../tasks/taskDue'
+
 // English counterpart of the task-lines prompt, candidate filter and guards.
 // Same line protocol as Polish: "[id] Task — due" or "[id] -".
 
@@ -86,6 +88,8 @@ const stems = (text: string): Set<string> => new Set((text.toLowerCase().match(/
 const TRAILING_DUE = /\s+((?:by|before|until|on|at|next|this)\s+(?:the\s+)?[\w:]+(?:\s+(?:morning|afternoon|evening|night|noon|of\s+\w+|\d{1,2}(?::\d{2})?))?|today|tonight|tomorrow(?:\s+(?:morning|afternoon|evening))?)$/i
 const DUE_WORD = /\b(?:today|tonight|tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday|weekend|week|month|morning|evening|noon|january|february|march|april|may|june|july|august|september|october|november|december|\d{1,2}(?:st|nd|rd|th)?)\b|\d{1,2}:\d{2}/i
 
+const dueResolves = (due: string): boolean => resolveDue(due, new Date(2026, 0, 7, 12, 0)) !== null
+
 export const tidyTaskEn = (t: EnTaskDraft): EnTaskDraft => {
   let title = capitalize(t.title.replace(DUTY_LEAD, '').replace(/[\s.,;:—–-]+$/u, '').trim())
   let due = t.due?.replace(/[\s.,;]+$/u, '').trim() || null
@@ -129,6 +133,63 @@ export const dueSaidIn = (due: string, source: string): boolean => {
   return tokens.length === 0 || tokens.some((token) => said.has(token) || (Number(token) > 12 && said.has(String(Number(token) - 12))) || (spokenNumber && /^\d+$/.test(token)))
 }
 
+// An unpunctuated transcript is cut mid-phrase ("... to Mr" / "Collins ... by tomorrow"): a unit that does not
+// end a sentence shares its words with the neighbour.
+const ENDS_SENTENCE = /[.!?…]["')\]]*\s*$/
+export const withFragmentNeighbours = (ids: readonly number[], byId: ReadonlyMap<number, string>): string => {
+  const parts = new Set<number>(ids)
+  for (const id of ids) {
+    if (byId.has(id + 1) && !ENDS_SENTENCE.test(byId.get(id) ?? '')) parts.add(id + 1)
+    if (byId.has(id - 1) && !ENDS_SENTENCE.test(byId.get(id - 1) ?? '')) parts.add(id - 1)
+  }
+  return [...parts].sort((a, b) => a - b).map((id) => byId.get(id) ?? '').join(' ')
+}
+
+const CLOCK_TAIL = /\s+(?:by|at|before)\s+(\d{1,2}:\d{2})$/i
+const CLOCK_IN_TEXT = /\d{1,2}:\d{2}/
+const DAY_ANCHOR_ANY = /\b(?:today|tonight|tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/i
+const HOUR_WORDS = /\b(at|by)\s+(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\b/i
+// Wording the app's date resolver cannot read becomes a form it can ("at four" -> "at 4").
+export const repairDueEn = (title: string, due: string | null): { title: string; due: string | null } => {
+  if (!due) return { title, due }
+  // "Be home by 08:00" + "Thursday": the hour belongs to the deadline.
+  const clockTail = CLOCK_TAIL.exec(title)
+  if (clockTail && !CLOCK_IN_TEXT.test(due) && DAY_ANCHOR_ANY.test(due)) return repairDueEn(title.slice(0, clockTail.index).trim(), `${due} ${clockTail[1]!}`)
+  let text = due.trim().replace(HOUR_WORDS, (_all, prep: string, word: string) => `${prep} ${NUMBER_WORDS[word.toLowerCase()]!}`)
+  if (/^(?:in\s+)?this\s+week$/i.test(text)) text = 'by the end of the week'
+  if (!dueResolves(text) && `${title} ${text}`.split(/\s+/).length <= 12 && !/\d{1,2}:\d{2}/.test(text)) return { title: `${title} ${text}`, due: null }
+  return { title, due: text }
+}
+
+const DAY_ANCHOR = /^(?:today|tonight|tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday)$/i
+// A day said right next to the task words ("buy the food ... on Saturday") that the model left out.
+export const inferDueEn = (title: string, source: string): string | null => {
+  const tokens = source.toLowerCase().match(/[a-z0-9:']+/g) ?? []
+  const days = new Set(tokens.filter((word) => DAY_ANCHOR.test(word)))
+  if (days.size !== 1) return null
+  const stems = new Set((title.toLowerCase().split(/\s+/).slice(1).join(' ').match(/[a-z]{4,}/g) ?? []).map((word) => word.slice(0, 4)))
+  const at = tokens.findIndex((word) => DAY_ANCHOR.test(word))
+  // A short sentence with one day names it for the whole sentence; a long one only next to the task words.
+  const near = tokens.some((word, index) => word.length >= 4 && stems.has(word.slice(0, 4)) && (tokens.length <= 22 || Math.abs(index - at) <= 4))
+  if (!near || title.toLowerCase().includes(tokens[at]!)) return null
+  const prev = tokens[at - 1]
+  const day = tokens[at]!.charAt(0).toUpperCase() + tokens[at]!.slice(1)
+  return `${prev === 'by' || prev === 'before' ? `${prev} ` : ''}${prev === 'by' || prev === 'before' ? tokens[at]! : day}`
+}
+
+// "Actually no, wait, he said Thursday evening": the next sentence takes back the day of the task before it.
+const CORRECTION_LEAD = /^(?:actually|no,? wait|wait,? no|wait|sorry|I mean|correction|scratch that)\b/i
+const DAY_PHRASE = /\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday|tomorrow|today)(?:\s+(morning|afternoon|evening|night))?/gi
+export const correctedDueEn = (due: string | null, id: number, byId: ReadonlyMap<number, string>): string | null => {
+  const next = byId.get(id + 1) ?? ''
+  if (!due || !DAY_ANCHOR_ANY.test(due) || !CORRECTION_LEAD.test(next.trim())) return due
+  const found = [...next.matchAll(DAY_PHRASE)]
+  // The corrected value is the first day the sentence names, close to its opening words.
+  if (!found.length || found[0]!.index > 40) return due
+  const [, day, part] = found[0]!
+  return capitalize(`${day!.toLowerCase()}${part ? ` ${part.toLowerCase()}` : ''}`)
+}
+
 export const postprocessTaskLinesEn = (raw: readonly EnTaskDraft[], units: readonly { id: number; text: string }[]): EnTaskDraft[] => {
   const byId = new Map(units.map((unit) => [unit.id, unit.text]))
   const seen = new Set<string>()
@@ -137,7 +198,11 @@ export const postprocessTaskLinesEn = (raw: readonly EnTaskDraft[], units: reado
     const source = task.sourceIds.map((id) => byId.get(id) ?? '').join(' ')
     if (rejectReasonEn(task, englishPromptView(source))) continue
     // A deadline the sentence never said ("Buy milk — today") is the model's guess.
-    if (task.due && !dueSaidIn(task.due, englishPromptView(source))) task.due = null
+    const wide = englishPromptView(withFragmentNeighbours(task.sourceIds, byId))
+    if (task.due && !dueSaidIn(task.due, wide)) task.due = null
+    if (!task.due) task.due = inferDueEn(task.title, wide)
+    task.due = correctedDueEn(task.due, Math.max(...task.sourceIds), byId)
+    Object.assign(task, repairDueEn(task.title, task.due))
     const key = task.title.toLowerCase()
     if (seen.has(key)) continue
     seen.add(key)
@@ -159,8 +224,15 @@ const contentWords = (text: string): Set<string> =>
 // Model-facing view of a self-corrected sentence: "at 8 PM sorry 6 PM" -> "at 6 PM",
 // "go by car sorry I'm going to go by tram" -> "I'm going to go by tram". The note keeps the original words.
 const CORRECTION = /\b(?:sorry|no wait|wait no|I mean|actually no)\b,?\s*/i
+// "on Wednesday, no sorry, on Thursday": the first day or time is dropped.
+const CORRECTABLE = String.raw`(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday|today|tomorrow|tonight|(?:the )?\d{1,2}(?:st|nd|rd|th))`
+const DAY_CORRECTION = new RegExp(
+  String.raw`(?:\b(?:on|by|for|until)\s+)?\b${CORRECTABLE}\b,?\s+(?:no,?\s+)?(?:sorry|wait|I mean|actually)\b,?\s*(?:no,?\s*)?(?=(?:(?:on|by|for|until)\s+)?${CORRECTABLE}\b)`,
+  'gi',
+)
+
 export const englishPromptView = (text: string): string => {
-  let out = text.replace(/\b(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)\s+(?:sorry|no|I mean)\s+(?=\d)/gi, '')
+  let out = text.replace(DAY_CORRECTION, '').replace(/\b(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)\s+(?:sorry|no|I mean)\s+(?=\d)/gi, '')
   for (let round = 0; round < 3; round += 1) {
     const m = CORRECTION.exec(out)
     if (!m) break

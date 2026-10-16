@@ -5,6 +5,7 @@ import { throwIfProcessingAborted, type ProcessingExecutionContext } from './pro
 import { numberSpans, promptView } from './polishNumbers'
 import { TASK_LINES_PROMPT_EN, englishPromptView, isTaskCandidateEn, postprocessTaskLinesEn } from './taskLinesEn'
 import { noteSourceSystem, sourceFirstPrompt } from './sharedSourcePrompt'
+import { digitView, inferDue, repairDue, whenOf } from './taskDueRepair'
 
 // Single-call task extractor: one batched pass over the candidate sentences of
 // a note, then deterministic guards. Polish only (the pre-filter, the numeral
@@ -289,6 +290,11 @@ export const clockUnanchored = (taskText: string, citedText: string): string[] =
 const cstems = (text: string): Set<string> =>
   new Set(lettersOnly(text).filter((w) => w.length >= 4 && !STOP.has(w) && !GENERIC.has(w)).map((w) => w.slice(0, 4)))
 
+// Stems for merging near-duplicates: 'przypadek' and 'przygotować' must not share one ('przy').
+const COMMON_PREFIX = /^(?:przy|prze|przed|roz|wyk|zaw|pod|poz|pom|nad|obe)/u
+const mergeStems = (text: string): Set<string> =>
+  new Set(lettersOnly(text).filter((w) => w.length >= 4 && !STOP.has(w) && !GENERIC.has(w)).map((w) => w.slice(0, COMMON_PREFIX.test(w) ? 6 : 4)))
+
 // A glued infinitive ('Dokupićubezpieczenie') is a rare tokenizer glitch.
 const fixGlued = (title: string): string => {
   const space = title.indexOf(' ')
@@ -505,11 +511,11 @@ const isActionish = (title: string): boolean => {
 const mergeSimilar = (tasks: readonly TaskDraft[]): TaskDraft[] => {
   const out: TaskDraft[] = []
   for (const t of tasks) {
-    const ts = cstems(t.title)
+    const ts = mergeStems(t.title)
     let merged = false
     for (let index = 0; index < out.length; index += 1) {
       const o = out[index]!
-      const os = cstems(o.title)
+      const os = mergeStems(o.title)
       if (!ts.size || !os.size) continue
       const inter = [...ts].filter((x) => os.has(x)).length
       const sameVerb = lettersOnly(t.title)[0] === lettersOnly(o.title)[0]
@@ -1400,7 +1406,15 @@ export const trimLongTitle = (t: TaskDraft): TaskDraft => {
   if (words.length <= MAX_TASK_WORDS) return t
   const cut = words.findIndex((word, index) => index >= 5 && /^(?:i|a|ale|bo|oraz)$/iu.test(word))
   const kept = (cut > 0 ? words.slice(0, cut) : words.slice(0, MAX_TASK_WORDS)).join(' ').replace(/\s+na\s+pewno(?=\s|$)/iu, '')
-  return { ...t, title: kept.replace(/[\s,;:]+$/u, '') }
+  return { ...t, title: kept.replace(/[\s,;:]+$/u, '').replace(/\s+(?:z|ze|u|do|na|w|we|o|od|dla|i|oraz|że|bo|po)$/iu, '') }
+}
+
+// Clear, resolvable deadlines: odd wording is rewritten from the cited sentence; a missing day that the sentence states is added.
+export const cleanTaskDue = (t: TaskDraft, units: readonly Unit[], late = true): TaskDraft => {
+  const cited = t.sourceIds.map((id) => units.find((u) => u.id === id)?.text ?? '').join(' ')
+  if (t.due) return { ...t, ...repairDue(t.title, t.due, cited, hourValues, late) }
+  const inferred = late && t.sourceIds.length === 1 ? inferDue(t.title, cited, hourValues) : null
+  return inferred ? { ...t, due: inferred } : t
 }
 
 export const postprocessTaskLines = (raw: readonly TaskDraft[], units: readonly Unit[]): GuardResult => {
@@ -1410,6 +1424,8 @@ export const postprocessTaskLines = (raw: readonly TaskDraft[], units: readonly 
     return step.kept
   }
   let tasks = raw.map((t) => ({ ...tidyTask(t), modelIds: [...t.sourceIds] }))
+  // Odd model wording ('10 piątku') is rewritten first so the date guards judge a clear due.
+  tasks = tasks.map((t) => (t.due ? cleanTaskDue(t, units, false) : t))
   tasks = tasks.flatMap((t) => {
     const fixed = repairReminder(t, units)
     if (fixed) return [fixed]
@@ -1425,6 +1441,7 @@ export const postprocessTaskLines = (raw: readonly TaskDraft[], units: readonly 
   tasks = tasks.map((t) =>
     trimLongTitle(completeObjectClause(dativeName(perfective(dueFromSentenceLead(withWeekday(recoverAmount(repairVerb(dropClosingDue(t, units), units), units), units), units))), units)),
   )
+  tasks = tasks.map((t) => cleanTaskDue(t, units))
   return { kept: dedupeTasks(mergeVague(tasks)), rejected }
 }
 
@@ -1527,8 +1544,29 @@ const NOMINAL_STOP = rx(String.raw`\b(nie|jest|są|było|były|będzie|mam|ma|ma
 const NOMINAL_PAST = rx(String.raw`\w{2,}(?:ał|ił|ył|ął|eł)[aoy]?\b|\bprzyszło\b|\bżebym\b`, 'i')
 const REASON_TAIL = rx(String.raw`,?\s+(?:bo|ponieważ|więc)\s+.*$`, 'i')
 const LEAD_FILLER = rx(String.raw`^(?:(?:aha|no|dobra|i|też|do tego|jeszcze|plus|oraz)\b[,\s]*)+`, 'i')
+// A spoken list item may carry its reason and a self-correction: 'pomidory, kilo, nie, czekaj, pół kilo, bo nikt ich nie je'.
+const REASON_ANY = rx(String.raw`,?\s+(?:bo|ponieważ)\s+.*$`, 'i')
+const NOT_THIS = rx(String.raw`,?\s+ale\s+nie\s+(?:ten|ta|to|te|tę|taki|taką|takie)?\s*(\p{L}+)`, 'i')
+const LIST_UNITS = new Set(['kilo', 'kilogram', 'kilogramy', 'kg', 'litr', 'litry', 'litrów', 'paczka', 'paczki', 'paczek', 'opakowanie', 'opakowania', 'opakowań', 'sztuk', 'sztuki', 'sztuka', 'butelka', 'butelki', 'butelek', 'puszka', 'puszki', 'puszek', 'pół', 'ćwierć', 'gram', 'gramów', 'dag', 'dekagramów'])
+const isQuantity = (segment: string): boolean => {
+  const words = lettersOnly(segment)
+  return words.length > 0 && words.length <= 3 && words.every((w) => LIST_UNITS.has(w) || wordValue(w) !== null)
+}
+export const cleanListText = (text: string): string => {
+  let out = text.replace(REASON_ANY, '').replace(NOT_THIS, ' (nie $1)').replace(/(?<![\p{L}])jaki[śs]\s+/giu, '').trim()
+  const segments = out.split(/,\s*/u)
+  for (let i = 1; i + 2 < segments.length; i += 1) {
+    if (segments[i]!.trim().toLowerCase() === 'nie' && /^(?:czekaj|jednak|moment)$/iu.test(segments[i + 1]!.trim()) && isQuantity(segments[i - 1]!)) {
+      segments.splice(i - 1, 3)
+      i -= 1
+    }
+  }
+  out = segments.join(', ')
+  return out.replace(/[\s,]+$/u, '').trim()
+}
+const LIST_PREPOSITION = /^(?:z|ze|bez|na|dla|do|w|we|o|u|od|po|za|przy|nad|pod)(?=\s)/iu
 const isNominalList = (text: string): boolean => {
-  const body = text.replace(LEAD_FILLER, '')
+  const body = cleanListText(text).replace(LEAD_FILLER, '').replace(/\([^)]*\)/gu, '')
   const parts = body.split(/,|\s(?:i|oraz)\s/u).filter((part) => part.trim())
   const additive = LEAD_FILLER.test(text) && parts.length >= 1
   return (
@@ -1536,27 +1574,36 @@ const isNominalList = (text: string): boolean => {
     !NOMINAL_STOP.test(body) &&
     !NOMINAL_PAST.test(body.replace(REASON_TAIL, '')) &&
     parts.every((part) => part.trim().split(/\s+/u).length <= 6) &&
-    (parts.length >= 3 || additive)
+    // 'tort na 30 osób, z napisem …, bez orzechów' describes one thing: a part opening with a preposition is no new item.
+    !parts.slice(1).some((part) => LIST_PREPOSITION.test(part.trim())) &&
+    (parts.length >= 3 || additive || (parts.length === 2 && parts.some((part) => lettersOnly(part).some((w) => LIST_UNITS.has(w)))))
   )
+}
+
+// One more short item right after a list ('Papier toaletowy, bo został jeden.').
+const isListContinuation = (text: string): boolean => {
+  const body = cleanListText(text).replace(LEAD_FILLER, '').replace(/\([^)]*\)/gu, '')
+  return body.trim().split(/\s+/u).length <= 5 && !NOMINAL_STOP.test(body) && !NOMINAL_PAST.test(body.replace(REASON_TAIL, '')) && !isTaskCandidate(body)
 }
 
 export const nominalListTasks = (units: readonly Unit[]): TaskDraft[] => {
   const out: TaskDraft[] = []
   let last: TaskDraft | null = null
   units.forEach((unit, index) => {
-    const cued = units.slice(Math.max(0, index - LIST_LOOKBACK), index).some((prev) => LIST_CUE.test(prev.text))
+    const cueUnit = units.slice(Math.max(0, index - LIST_LOOKBACK), index).find((prev) => LIST_CUE.test(prev.text))
     const chained = last !== null && last.sourceIds[last.sourceIds.length - 1] === unit.id - 1
-    if (isTaskCandidate(unit.text.replace(LEAD_FILLER, '')) || !(cued || chained) || !isNominalList(unit.text)) {
+    const listLike = isNominalList(unit.text) || (chained && isListContinuation(unit.text))
+    if (isTaskCandidate(cleanListText(unit.text).replace(LEAD_FILLER, '')) || !(cueUnit || chained) || !listLike) {
       last = null
       return
     }
-    const raw = wordsToDigits(stripChars(unit.text.replace(LEAD_FILLER, '').trim(), '.!?, '))
+    const raw = wordsToDigits(stripChars(cleanListText(unit.text).replace(LEAD_FILLER, '').trim(), '.!?, '))
     const items = raw.charAt(0).toLowerCase() + raw.slice(1)
     if (last) {
       last.title = `${last.title}, ${items}`
       last.sourceIds.push(unit.id)
     } else {
-      last = { title: `Kupić: ${items}`, due: null, sourceIds: [unit.id], modelIds: [unit.id] }
+      last = { title: `Kupić: ${items}`, due: cueUnit ? dayOfSentence(cueUnit.text) : null, sourceIds: [unit.id], modelIds: [unit.id] }
       out.push(last)
     }
   })
@@ -1643,9 +1690,19 @@ export const answeredCount = (answer: string, batch: readonly { id: number }[]):
 const MODAL_DUTY = /(?:^|\s)(?:muszę|trzeba|mam)\s+(?:(?:jeszcze|też|także|koniecznie|dziś|dzisiaj|jutro)\s+){0,2}(\p{L}{3,}ć)((?:\s+\p{L}+){1,5})/iu
 const DUTY_STOP = /^(?:i|a|ale|bo|że|żeby|więc|jest|są|był|była|było|to|je|go|jej|jak|który|która|które|jeśli|chyba|może)$/iu
 const DUTY_HEDGE = /(?:^|\s)(?:nie|jeśli|jeżeli|gdyby|może|kiedyś|ewentualnie)(?=\s)/iu
+// 'Filtr w okapie trzeba wymienić': the object comes before the modal.
+const OBJECT_FIRST = /^(?:(?:no|aha|i|a|dobra|okej|jeszcze)[,\s]+)*(\p{L}[^,.;]{2,45}?)\s+(?:trzeba|muszę|musimy)\s+(\p{L}{4,}ć)(?=[\s,.;]|$)/iu
+const OBJECT_FIRST_BAD = /(?:^|\s)(?:jest|są|było|będzie|nie|już|bo|że|jak|co|kto|ja|my|on|ona|to|tu|tam)(?=\s|$)/iu
+const objectFirstTask = (unit: Unit): TaskDraft | null => {
+  const m = OBJECT_FIRST.exec(unit.text)
+  if (!m || OBJECT_FIRST_BAD.test(m[1]!) || DUTY_HEDGE.test(unit.text) || !isInfinitive(m[2]!.toLowerCase())) return null
+  const verb = m[2]!.toLowerCase()
+  return { title: `${verb.charAt(0).toUpperCase()}${verb.slice(1)} ${m[1]!.trim().toLowerCase()}`, due: dayOfSentence(unit.text), sourceIds: [unit.id], modelIds: [] }
+}
 export const modalTask = (unit: Unit): TaskDraft | null => {
   const m = MODAL_DUTY.exec(unit.text)
-  if (!m || DUTY_HEDGE.test(unit.text.slice(Math.max(0, m.index - 20), m.index + m[0].length))) return null
+  if (!m) return objectFirstTask(unit)
+  if (DUTY_HEDGE.test(unit.text.slice(Math.max(0, m.index - 20), m.index + m[0].length))) return null
   const object: string[] = []
   for (const word of m[2]!.trim().split(/\s+/u)) {
     if (DUTY_STOP.test(word)) break
@@ -1655,6 +1712,132 @@ export const modalTask = (unit: Unit): TaskDraft | null => {
   const days = new Set(lettersOnly(unit.text).filter((w) => ['jutro', 'dzisiaj', 'dziś', 'pojutrze'].includes(w)).map((w) => (w === 'dziś' ? 'dzisiaj' : w)))
   const verb = m[1]!.toLowerCase()
   return { title: `${verb.charAt(0).toUpperCase()}${verb.slice(1)} ${object.join(' ')}`, due: days.size === 1 ? [...days][0]! : null, sourceIds: [unit.id], modelIds: [] }
+}
+
+// 'muszę jeszcze to dzisiaj przejrzeć i dopracować i skonsultować z kolegą' after 'trzeba pokazać plany testów':
+// every infinitive of the chain is a task; a pronoun ('to') or a missing object takes the previous task's object.
+const DUTY_CUE = rx(String.raw`(?:^|[\s,;])(?:muszę|musze|musimy|trzeba|powinienem|powinnam|powinniśmy|warto|należy|mam|mamy)(?=\s)`, 'gi')
+const DUTY_FILLER = new Set(['jeszcze', 'też', 'także', 'koniecznie', 'dziś', 'dzisiaj', 'jutro', 'pojutrze', 'końcu', 'pewno', 'wreszcie', 'zaraz', 'szybko', 'rano', 'wieczorem', 'potem', 'tylko', 'ostatecznie'])
+const DUTY_PRONOUN = new Set(['to', 'go', 'ją', 'je', 'ich', 'tego'])
+const CHAIN_JOIN = new Set(['i', 'oraz', 'a', 'potem', 'później', 'też', 'następnie'])
+const CHAIN_STOP = new Set(['bo', 'ale', 'że', 'czy', 'ile', 'żeby', 'więc', 'jeśli', 'jeżeli', 'jak', 'kiedy', 'gdy', 'ponieważ', 'który', 'aby', 'chyba', 'albo', 'lub'])
+const NOT_DUTY_INF = new Set(['być', 'mieć', 'móc', 'musieć', 'chcieć', 'zacząć', 'zacznę'])
+const isInfinitive = (word: string): boolean => /^\p{L}{4,}ć$/u.test(word) && !NOT_DUTY_INF.has(word) && wordValue(word) === null
+const stripPunct = (word: string): string => word.replace(/[.,;:!?]+$/u, '')
+const FILLER_LEAD = new Map([['w', 'końcu'], ['na', 'pewno']])
+const isFiller = (word: string, next: string): boolean => DUTY_FILLER.has(word) || FILLER_LEAD.get(word) === next
+const dayOfSentence = (text: string): string | null => {
+  const days = new Set(lettersOnly(text).filter((w) => ['jutro', 'dzisiaj', 'dziś', 'pojutrze'].includes(w)).map((w) => (w === 'dziś' ? 'dzisiaj' : w)))
+  return days.size === 1 ? [...days][0]! : null
+}
+interface DutyVerb {
+  verb: string
+  complement: string[]
+}
+export const dutyChain = (text: string): { verbs: DutyVerb[]; pronoun: boolean } | null => {
+  for (const cue of text.matchAll(DUTY_CUE)) {
+    const before = text.slice(Math.max(0, cue.index - 20), cue.index + cue[0].length)
+    if (DUTY_HEDGE.test(before)) continue
+    const words = text.slice(cue.index + cue[0].length).trim().split(/\s+/u)
+    let i = 0
+    let pronoun = false
+    while (i < words.length && i < 6 && (isFiller(stripPunct(words[i]!).toLowerCase(), stripPunct(words[i + 1] ?? '').toLowerCase()) || DUTY_PRONOUN.has(stripPunct(words[i]!).toLowerCase()))) {
+      if (DUTY_PRONOUN.has(stripPunct(words[i]!).toLowerCase())) pronoun = true
+      i += 1
+    }
+    if (i >= words.length || !isInfinitive(stripPunct(words[i]!).toLowerCase())) continue
+    const verbs: DutyVerb[] = []
+    let current: DutyVerb | null = null
+    let boundary = false
+    for (; i < words.length; i += 1) {
+      const raw = words[i]!
+      const word = stripPunct(raw)
+      const lower = word.toLowerCase()
+      const next = stripPunct(words[i + 1] ?? '').toLowerCase()
+      if (isInfinitive(lower) && (!current || boundary || current.complement.length === 0 || CHAIN_JOIN.has(stripPunct(words[i - 1] ?? '').toLowerCase()))) {
+        current = { verb: lower, complement: [] }
+        verbs.push(current)
+      } else if (CHAIN_STOP.has(lower)) break
+      else if (CHAIN_JOIN.has(lower) && isInfinitive(next)) {
+        boundary = true
+        continue
+      } else if (isFiller(lower, next) && !current?.complement.length) {
+        // 'przejrzeć jeszcze dzisiaj': adverbs are not the object
+      } else if (current && !isFiller(lower, next) && current.complement.length < 6) current.complement.push(word)
+      boundary = /[.,;!?]$/u.test(raw)
+      if (/[.;!?]$/u.test(raw) || (/,$/u.test(raw) && !isInfinitive(next) && !CHAIN_JOIN.has(next))) break
+    }
+    return verbs.length ? { verbs, pronoun } : null
+  }
+  return null
+}
+
+const DANGLING = /(?:^|\s)(?:nią|nim|nich|niej|jej|mu|im|niego)(?=\s|$)/iu
+const ADVERB_ONLY = /^\p{L}*(?:cznie|ownie)$/iu
+const PREPOSITIONS = new Set(['do', 'z', 'ze', 'na', 'w', 'we', 'o', 'od', 'u', 'po', 'za', 'przed', 'dla', 'przy', 'nad', 'pod'])
+const PREP_VERBS = /^(?:poprosi|zapyta|zadzwon|skonsultow|porozmawia|pojecha|jecha|iść|pójść|spotka|wrócić|wpaść|wstąpić|umówi|zgłosi|zapisa)/iu
+const hasDay = (due: string): boolean => {
+  const when = whenOf(digitView(due))
+  return when.weekdays.length + when.relative.length + when.dates.length > 0
+}
+const capitalizeFirst = (text: string): string => text.charAt(0).toUpperCase() + text.slice(1)
+// 'wstąpić do apteki po plastry, i do pralni odebrać kurtkę': a further infinitive joined by 'i' the model skipped.
+const WISH_BEFORE = new Set(['nie', 'żeby', 'aby', 'bez', 'można', 'mogę', 'mógłbym', 'mogłem', 'chciałbym', 'chciałabym', 'lubię', 'umiem', 'potrafię', 'zacząć', 'przestać', 'próbować'])
+const COORDINATORS = new Set(['i', 'oraz', 'potem', 'później', 'też', 'następnie'])
+export const coordinatedVerbs = (text: string): DutyVerb[] => {
+  const words = text.split(/\s+/u)
+  const out: DutyVerb[] = []
+  const infinitives = words.map((w) => stripPunct(w).toLowerCase()).filter(isInfinitive)
+  if (infinitives.length < 2) return out
+  words.forEach((raw, i) => {
+    const verb = stripPunct(raw).toLowerCase()
+    if (!isInfinitive(verb) || i === 0) return
+    const before = words.slice(Math.max(0, i - 4), i).map((w) => stripPunct(w).toLowerCase())
+    if (before.some((w) => WISH_BEFORE.has(w) || /(?:łem|łam|liśmy|łyśmy|ł|ła)$/u.test(w) || CHAIN_STOP.has(w))) return
+    if (!before.some((w) => COORDINATORS.has(w))) return
+    const complement: string[] = []
+    for (let j = i + 1; j < words.length && complement.length < 6; j += 1) {
+      const next = stripPunct(words[j]!).toLowerCase()
+      if (CHAIN_STOP.has(next) || isInfinitive(next)) break
+      complement.push(stripPunct(words[j]!))
+      if (/[.,;!?]$/u.test(words[j]!)) break
+    }
+    while (complement.length && (COORDINATORS.has(complement[complement.length - 1]!.toLowerCase()) || CHAIN_JOIN.has(complement[complement.length - 1]!.toLowerCase()))) complement.pop()
+    out.push({ verb, complement })
+  })
+  return out
+}
+
+export const completeDuties = (raw: readonly TaskDraft[], candidates: readonly Unit[]): TaskDraft[] => {
+  const out: TaskDraft[] = []
+  for (const unit of candidates) {
+    const chain = dutyChain(unit.text)
+    const own = raw.filter((t) => t.sourceIds.includes(unit.id))
+    const extra = own.length ? coordinatedVerbs(unit.text) : []
+    if ((!chain || (chain.verbs.length < 2 && !chain.pronoun)) && !extra.length) continue
+    const covered = (verb: string): boolean => [...own, ...out.filter((t) => t.sourceIds.includes(unit.id))].some((t) => lettersOnly(t.title)[0]?.slice(0, 5) === verb.slice(0, 5))
+    // Antecedent of 'to' / a missing object: the nearest earlier task's object.
+    const previous = [...raw, ...out]
+      .filter((t) => t.sourceIds.every((id) => id < unit.id) && unit.id - Math.max(...t.sourceIds) <= 3)
+      .sort((a, b) => Math.max(...b.sourceIds) - Math.max(...a.sourceIds))[0]
+    const antecedent = previous ? previous.title.split(/\s+/u).slice(1).join(' ') : ''
+    const day = dayOfSentence(unit.text)
+    // Coordinated actions share one deadline when the model gave a dated one to a sibling.
+    const sharedDue = own.map((t) => t.due).find((due) => due !== null && hasDay(due)) ?? null
+    const pronoun = chain?.pronoun ?? false
+    const verbs = [...(chain && (chain.verbs.length >= 2 || chain.pronoun) ? chain.verbs : []), ...extra]
+    verbs.forEach((v) => {
+      if (covered(v.verb)) return
+      const first = (v.complement[0] ?? '').toLowerCase()
+      let object = v.complement.join(' ')
+      if (!object || DUTY_PRONOUN.has(first)) object = pronoun && antecedent ? antecedent : ''
+      // Own complement: an object noun phrase, or a preposition only after a verb that governs one.
+      else if (DANGLING.test(object) || ADVERB_ONLY.test(object) || (PREPOSITIONS.has(first) && !PREP_VERBS.test(v.verb))) object = ''
+      if (!object || isVagueTitle(`x ${object}`)) return
+      out.push({ title: capitalizeFirst(`${v.verb} ${object}`), due: sharedDue ?? day, sourceIds: [unit.id], modelIds: [] })
+    })
+  }
+  return out
 }
 
 // The half-written last line of a cut answer ('[75] Jechać'), when it belongs to the next sentence.
@@ -1677,10 +1860,7 @@ export const extractTaskLines = async (
   execution?: ProcessingExecutionContext,
 ): Promise<TaskLinesResult> => {
   const en = language === 'en'
-  const nominal = en ? [] : nominalListTasks(units)
-  const nominalIds = new Set(nominal.flatMap((t) => t.sourceIds))
-  const pool = units.filter((unit) => !nominalIds.has(unit.id))
-  const candidates = limitCandidates(en ? pool.filter((unit) => isTaskCandidateEn(unit.text)) : selectCandidates(pool), candidateLimit(units))
+  const { nominal, candidates } = pickCandidates(units, language)
   if (!candidates.length && !nominal.length) return emptyResult()
   const system = noteSourceSystem(language)
   const view = (text: string): string => (en ? englishPromptView(text) : promptView(text))
@@ -1769,10 +1949,35 @@ export const extractTaskLines = async (
     partial = cutLine(result.text, rest[0]?.id)
   }
   if (cut) warnings.push('Odpowiedź modelu została ucięta; część zadań mogła zostać pominięta.')
+  const tasks = finishTaskLines(raw, units, candidates, nominal, language)
+  return { tasks, rendered: tasks.map(renderTask), warnings }
+}
+
+// Everything after the model: deterministic recovery, guards and cleanup (also replayable offline).
+export const finishTaskLines = (
+  rawTasks: readonly TaskDraft[],
+  units: readonly Unit[],
+  candidates: readonly Unit[],
+  nominal: readonly TaskDraft[],
+  language: Language,
+): TaskLine[] => {
+  const en = language === 'en'
+  const raw = [...rawTasks]
   const answered = new Set(raw.flatMap((t) => t.sourceIds))
-  if (!en) raw.push(...candidates.filter((unit) => !answered.has(unit.id)).flatMap((unit) => modalTask(unit) ?? []))
+  if (!en) {
+    raw.push(...candidates.filter((unit) => !answered.has(unit.id)).flatMap((unit) => modalTask(unit) ?? []))
+    raw.push(...completeDuties(raw, candidates))
+  }
   const kept = (en ? postprocessTaskLinesEn(raw, units) : dedupeTasks(mergeSimilar(mergeVague([...postprocessTaskLines(raw, units).kept, ...nominal]))))
     .sort((a, b) => a.sourceIds[0]! - b.sourceIds[0]!)
-  const tasks = kept.map((t): TaskLine => ({ title: t.title, due: t.due, sourceIds: [...t.sourceIds] }))
-  return { tasks, rendered: tasks.map(renderTask), warnings }
+  return kept.map((t): TaskLine => ({ title: t.title, due: t.due, sourceIds: [...t.sourceIds] }))
+}
+
+export const pickCandidates = (units: readonly Unit[], language: Language): { nominal: TaskDraft[]; candidates: Unit[] } => {
+  const en = language === 'en'
+  const nominal = en ? [] : nominalListTasks(units)
+  const nominalIds = new Set(nominal.flatMap((t) => t.sourceIds))
+  const pool = units.filter((unit) => !nominalIds.has(unit.id))
+  const candidates = limitCandidates(en ? pool.filter((unit) => isTaskCandidateEn(unit.text)) : selectCandidates(pool), candidateLimit(units))
+  return { nominal, candidates }
 }

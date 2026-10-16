@@ -1,4 +1,4 @@
-import { dueSaidIn, englishPromptView, isTaskCandidateEn, postprocessTaskLinesEn, rejectReasonEn, splitJoinedEn, tidyTaskEn } from './taskLinesEn'
+import { correctedDueEn, dueSaidIn, englishPromptView, inferDueEn, isTaskCandidateEn, postprocessTaskLinesEn, rejectReasonEn, repairDueEn, splitJoinedEn, tidyTaskEn, withFragmentNeighbours } from './taskLinesEn'
 
 const draft = (title: string, due: string | null = null, id = 1) => ({ title, due, sourceIds: [id], modelIds: [id] })
 
@@ -50,4 +50,42 @@ test('a deadline must be said in its own sentence', () => {
   expect(dueSaidIn('today 18:00', 'and at 6 PM today I have an appointment')).toBe(true)
   expect(dueSaidIn('Thursday evening', 'he said Thursday evening')).toBe(true)
   expect(dueSaidIn('by the 20th', 'pay it by the twentieth')).toBe(true)
+})
+
+test('rewrites a due the app cannot read', () => {
+  expect(repairDueEn('Meeting with Julia', 'Monday at four')).toEqual({ title: 'Meeting with Julia', due: 'Monday at 4' })
+  expect(repairDueEn('Register for the conference', 'this week').due).toBe('by the end of the week')
+  expect(repairDueEn('Organise a goodbye dinner', 'before he leaves')).toEqual({ title: 'Organise a goodbye dinner before he leaves', due: null })
+  expect(repairDueEn('Pay the bill', 'by the 20th').due).toBe('by the 20th')
+})
+
+test('adds a day said next to the task words', () => {
+  expect(inferDueEn('Buy the sensitive food', 'so buy the sensitive food on Saturday')).toBe('Saturday')
+  expect(inferDueEn('Send the invoice', 'send the invoice by tomorrow')).toBe('by tomorrow')
+  expect(inferDueEn('Buy milk', 'I have to buy milk and on Saturday we go to the lake and on Sunday')).toBeNull()
+})
+
+test('a cut-off unit borrows the neighbouring words for its deadline', () => {
+  const units = [
+    { id: 1, text: 'I have to send the invoice to Mr' },
+    { id: 2, text: 'Collins for the logo project by tomorrow.' },
+  ]
+  expect(withFragmentNeighbours([1], new Map(units.map((u) => [u.id, u.text])))).toContain('by tomorrow')
+  const kept = postprocessTaskLinesEn([draft('Send the invoice to Mr. Collins', 'tomorrow', 1)], units)
+  expect(kept[0]!.due).toBe('tomorrow')
+})
+
+test('a corrected day or hour is read from the later words', () => {
+  expect(englishPromptView('The plumber is coming on Wednesday, no sorry, on Thursday at eight in the morning, so I have to be home.')).toBe(
+    'The plumber is coming on Thursday at eight in the morning, so I have to be home.',
+  )
+  const byId = new Map([[1, 'Send the revised chapter by Friday.'], [2, 'Actually no, wait, he said Thursday evening, because he is travelling on Friday.']])
+  expect(correctedDueEn('by Friday', 1, byId)).toBe('Thursday evening')
+  expect(correctedDueEn('by Friday', 2, byId)).toBe('by Friday')
+})
+
+test('a clock left in the title moves into the due', () => {
+  expect(repairDueEn('Be home by 08:00', 'Thursday')).toEqual({ title: 'Be home', due: 'Thursday 08:00' })
+  const units = [{ id: 1, text: 'The plumber is coming on Wednesday, no sorry, on Thursday at eight in the morning, so I have to be home.' }]
+  expect(postprocessTaskLinesEn([draft('Be home by 08:00', 'Wednesday', 1)], units)[0]).toMatchObject({ title: 'Be home', due: 'Thursday 08:00' })
 })

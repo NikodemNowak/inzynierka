@@ -2,6 +2,11 @@ import { generate, getContextWindowSize, measureFormattedPromptTokens, type Gene
 import { noteSourceSystem } from './sharedSourcePrompt';
 import {
   answeredCount,
+  cleanListText,
+  cleanTaskDue,
+  completeDuties,
+  dutyChain,
+  finishTaskLines,
   completeObjectClause,
   dueFromSentenceLead,
   continuationHint,
@@ -549,7 +554,7 @@ describe('extractTaskLines', () => {
   test('guards drop invented and foreign tasks', async () => {
     model.mockResolvedValue(reply('[2] Oddać raport — do piątku\n[3] Przygotować prezentację\n[5] Zarezerwować hotel'));
     const result = await extractTaskLines(noteUnits, 'pl');
-    expect(result.rendered).toEqual(['Oddać raport']);
+    expect(result.rendered).toEqual(['Oddać raport — do czwartku']);
   });
 
   test('an aborted run does not call the model', async () => {
@@ -808,4 +813,97 @@ test('a task copied with its whole sentence keeps its first action', () => {
   expect(trimLongTitle(t('Dowiedzieć się na pewno ile kosztuje na 1 stanowisko na rok i ile chcą za każde kolejne mówimy o kwotach')).title)
     .toBe('Dowiedzieć się ile kosztuje na 1 stanowisko na rok')
   expect(trimLongTitle(t('Kupić mleko i chleb')).title).toBe('Kupić mleko i chleb')
+})
+
+describe('duty chains and coordinated actions', () => {
+  const draft = (title: string, id: number, due: string | null = null) => ({ title, due, sourceIds: [id], modelIds: [id] })
+
+  test('every infinitive of a chain is read, the pronoun object stays open', () => {
+    const chain = dutyChain('ale muszę jeszcze to dzisiaj przejrzeć i dopracować i skonsultować z kolegą z zespołu')
+    expect(chain?.pronoun).toBe(true)
+    expect(chain?.verbs.map((v) => v.verb)).toEqual(['przejrzeć', 'dopracować', 'skonsultować'])
+    expect(chain?.verbs[2]!.complement).toEqual(['z', 'kolegą', 'z', 'zespołu'])
+    expect(dutyChain('Muszę kupić chleb, bo został jeden')?.verbs).toEqual([{ verb: 'kupić', complement: ['chleb'] }])
+    expect(dutyChain('Nie muszę kupować biletu')).toBeNull()
+  })
+
+  test('a pronoun object takes the object of the previous task', () => {
+    const units = [
+      { id: 1, text: 'trzeba pokazać plany testów' },
+      { id: 2, text: 'ale muszę jeszcze to dzisiaj przejrzeć i dopracować i skonsultować z kolegą z zespołu' },
+    ]
+    const added = completeDuties([draft('Pokazać plany testów', 1), draft('Skonsultować z kolegą z zespołu', 2)], units)
+    expect(added.map((t) => t.title)).toEqual(['Przejrzeć plany testów', 'Dopracować plany testów'])
+    expect(added.every((t) => t.due === 'dzisiaj')).toBe(true)
+  })
+
+  test('no antecedent, no guess', () => {
+    expect(completeDuties([], [{ id: 1, text: 'Muszę to przejrzeć i poprawić' }])).toEqual([])
+  })
+
+  test('a further infinitive joined by "i" is added with its own object', () => {
+    const units = [{ id: 1, text: 'Aha i jeszcze w drodze wstąpić do apteki po plastry, i do pralni odebrać kurtkę, mają czynne do osiemnastej' }]
+    const added = completeDuties([draft('Wstąpić do apteki po plastry', 1)], units)
+    expect(added.map((t) => t.title)).toEqual(['Odebrać kurtkę'])
+  })
+
+  test('wishes, past narration and subordinate clauses are not tasks', () => {
+    const units = [{ id: 1, text: 'Muszę kupić chleb i chciałem jeszcze zadzwonić do Ani' }]
+    expect(completeDuties([draft('Kupić chleb', 1)], units)).toEqual([])
+  })
+
+  test('the object may come before the modal', () => {
+    expect(modalTask({ id: 1, text: 'Filtr w okapie trzeba wymienić, kupiłem już, leży' })?.title).toBe('Wymienić filtr w okapie')
+    expect(modalTask({ id: 2, text: 'Opony są w piwnicy, trzeba je wnieść do bagażnika' })).toBeNull()
+  })
+
+  test('near-duplicates are not merged on a shared "przy" prefix', () => {
+    const units = [{ id: 1, text: 'muszę przygotować prezentację' }, { id: 2, text: 'muszę sprawdzić ten przypadek' }]
+    const tasks = finishTaskLines([draft('Przygotować prezentację', 1), draft('Sprawdzić ten przypadek', 2)], units, units, [], 'pl')
+    expect(tasks.map((t) => t.title)).toEqual(['Przygotować prezentację', 'Sprawdzić ten przypadek'])
+  })
+})
+
+describe('spoken shopping lists', () => {
+  test('the reason and a self-corrected quantity are cleaned', () => {
+    expect(cleanListText('Pomidory, kilo, nie, czekaj, pół kilo, bo i tak nikt ich nie je.')).toBe('Pomidory, pół kilo')
+    expect(cleanListText('Makaron penne, dwie paczki, ser feta, jakiś jogurt grecki, ale nie ten waniliowy, bo mama kupiła ostatnio')).toBe(
+      'Makaron penne, dwie paczki, ser feta, jogurt grecki (nie waniliowy)',
+    )
+    // a correction of a named item stays with the model
+    expect(cleanListText('jajka dziesięć, nie, czekaj, trzydzieści')).toBe('jajka dziesięć, nie, czekaj, trzydzieści')
+  })
+
+  test('items with reasons form one task that takes the day of the cue', () => {
+    const units = [
+      'Dobra, lista na jutro po pracy.',
+      'Pomidory, kilo, nie, czekaj, pół kilo, bo i tak nikt ich nie je.',
+      'Makaron penne, dwie paczki, ser feta, jakiś jogurt grecki, ale nie ten waniliowy, bo mama kupiła ostatnio i nikt nie chciał.',
+      'Papier toaletowy, bo został jeden.',
+      'Kawy nie trzeba, Marek przywiózł dwie paczki.',
+    ].map((text, i) => ({ id: i + 1, text }))
+    const [list, ...rest] = nominalListTasks(units)
+    expect(rest).toEqual([])
+    expect(list).toMatchObject({ title: 'Kupić: pomidory, pół kilo, makaron penne, 2 paczki, ser feta, jogurt grecki (nie waniliowy), papier toaletowy', due: 'jutro', sourceIds: [2, 3, 4] })
+  })
+})
+
+describe('deadline cleanup in the pipeline', () => {
+  test('a garbled model due is rewritten from the sentence', () => {
+    const units = [{ id: 1, text: 'Zrobimy spotkanie online z oddziałem, w piątek o dziesiątej.' }]
+    const raw = [{ title: 'Spotkanie online z oddziałem', due: '10 piątku', sourceIds: [1], modelIds: [1] }]
+    expect(postprocessTaskLines(raw, units).kept[0]!.due).toBe('piątek 10:00')
+  })
+
+  test('a day next to the task words is added, one from another clause is not', () => {
+    const units = [{ id: 1, text: 'Kwiaty kupić w czwartek po drodze z pracy.' }]
+    expect(cleanTaskDue({ title: 'Kupić kwiaty', due: null, sourceIds: [1], modelIds: [1] }, units).due).toBe('czwartek')
+    const noisy = [{ id: 2, text: 'Zostało mi dokończyć ekran, poprawić eksport i przygotować prezentację na poniedziałek.' }]
+    expect(cleanTaskDue({ title: 'Dokończyć ekran', due: null, sourceIds: [2], modelIds: [2] }, noisy).due).toBeNull()
+  })
+})
+
+test('a title cut at the word limit does not end on a preposition', () => {
+  const t = (title: string) => ({ title, due: null, sourceIds: [1], modelIds: [] })
+  expect(trimLongTitle(t('W przypadku gorączki albo bólu głowy brać paracetamol maksymalnie 4 gramy na dobę')).title).toBe('W przypadku gorączki albo bólu głowy brać paracetamol maksymalnie 4 gramy')
 })
