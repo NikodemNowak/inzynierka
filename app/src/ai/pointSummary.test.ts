@@ -877,3 +877,11 @@ describe('round 16 summary repairs', () => {
     expect(checkPoint({ text: 'Tabletki ze środkiem', sourceIds: [1] }, byIdOf(unitsOf('Tabletki ze środkiem.')), null, 'pl')).toEqual([]);
   });
 });
+
+test('capPoints keeps a literal that carries a number and a condition over weaker points', () => {
+  const units = [1, 2, 3].map(id => ({ id, text: `Zdanie ${id}.` }));
+  const dose = { text: 'Na gorączkę, jak będzie powyżej 38,5, paracetamol, 10 mililitrów, ale nie częściej niż co 6 godzin', sourceIds: [1], literal: true };
+  const weak = { text: 'Jutro rano jeszcze do niej zadzwonię przed wyjazdem', sourceIds: [2] };
+  const plain = { text: 'Mama bierze Stasia w sobotę', sourceIds: [3] };
+  expect(capPoints([dose, weak, plain], units, 2).map(p => p.text)).toContain(dose.text);
+});

@@ -1499,7 +1499,8 @@ const orderPoints = (points: readonly WorkPoint[]): WorkPoint[] => {
 const priority = (point: WorkPoint, byId: ReadonlyMap<number, Unit>): number =>
   Math.max(substanceScore(point.text), ...unitsOf(point, byId).map(unit => substanceScore(unit.text))) +
   (INFINITIVE_START.test(point.text) ? 1 : 0) + (hasNumber(point.text) ? 0.5 : 0) + (hasDate(point.text) ? 0.5 : 0) + (point.issues?.includes('missed') ? 1 : 0) +
-  (point.literal && !point.issues?.includes('missed') ? -0.5 : 0);
+  (point.literal && !point.issues?.includes('missed') && !hasNumber(point.text) ? -0.5 : 0) +
+  (hasNumber(point.text) && (NEG.test(point.text) || HEDGE_POINT.test(point.text)) ? 1.5 : 0);
 export const capPoints = (points: readonly WorkPoint[], units: readonly Unit[], limit: number): WorkPoint[] => {
   if (points.length <= limit) return [...points];
   const byId = new Map(units.map(unit => [unit.id, unit]));
