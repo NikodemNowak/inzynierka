@@ -1,6 +1,6 @@
 import { Platform } from 'react-native'
-import { EntityTypes, getCalendars, requestRemindersPermissions } from 'expo-calendar'
-import { createEventInCalendarAsync } from 'expo-calendar/legacy'
+import { requestRemindersPermissions } from 'expo-calendar'
+import { createEventInCalendarAsync, createReminderAsync } from 'expo-calendar/legacy'
 import { resolveDue, splitTaskText } from './taskDue'
 
 // Hand a task to the system Reminders or Calendar app, only when the user asks.
@@ -22,12 +22,10 @@ export const addTaskToReminders = async (text: string, recordedAt: Date, notes?:
   if (!remindersAvailable) return 'unavailable'
   const permission = await requestRemindersPermissions()
   if (!permission.granted) return 'denied'
-  const lists = await getCalendars(EntityTypes.REMINDER)
-  const list = lists.find((calendar) => calendar.allowsModifications)
-  if (!list) return 'unavailable'
   const { title, due } = splitTaskText(text)
   const resolved = due ? resolveDue(due, recordedAt) : null
-  await list.createReminder({
+  // null: the list the user chose as default in Reminders.
+  await createReminderAsync(null, {
     title,
     notes,
     ...(resolved
