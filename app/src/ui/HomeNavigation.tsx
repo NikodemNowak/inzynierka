@@ -38,6 +38,11 @@ export function HomeHeader({ title }: { title: string }) {
         {title}
       </Text>
       <IconButton
+        name="sparkles"
+        label={t('Zapytaj notatki', 'Ask your notes')}
+        onPress={() => router.push('/ask')}
+      />
+      <IconButton
         name="settings"
         label={t('Ustawienia', 'Settings')}
         onPress={() => router.push('/settings')}
