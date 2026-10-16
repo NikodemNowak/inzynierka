@@ -17,7 +17,8 @@ import { TasksEmptyState } from '../../tasks/TasksEmptyState'
 import { Icon } from '../../ui/Icon'
 import { useReducedMotion } from '../../ui/Motion'
 import { TaskArrival, TaskCheck, TaskText, subscribePersistedTaskText, useTaskMotionActive, useTaskTextReveal } from '../../tasks/TaskMotion'
-import { offerTaskExport } from '../../tasks/taskExport'
+import { TaskDueChip } from '../../tasks/TaskDueChip'
+import { splitTaskText } from '../../tasks/taskDue'
 import { radius, spacing, type, useTheme } from '../../ui/theme'
 
 const ENTRANCE_WINDOW_MS = 1400
@@ -177,7 +178,7 @@ export default function TasksScreen() {
               </Pressable>
               <View style={styles.taskCopy}>
                 <TaskText
-                  text={item.text}
+                  text={noteCreated.has(item.noteId) ? splitTaskText(item.text).title : item.text}
                   reveal={textReveal.ids.has(item.id)}
                   active={motionActive}
                   reducedMotion={reducedMotion}
@@ -191,6 +192,9 @@ export default function TasksScreen() {
                     },
                   ]}
                 />
+                {noteCreated.has(item.noteId) && (
+                  <TaskDueChip text={item.text} recordedAt={new Date(noteCreated.get(item.noteId)!)} noteTitle={noteTitles.get(item.noteId) ?? t('Bez tytułu', 'Untitled')} done={item.done} />
+                )}
                 <Pressable
                   onPress={() => router.push(`/note/${item.noteId}`)}
                   accessibilityRole="button"
@@ -212,17 +216,6 @@ export default function TasksScreen() {
                   <Icon name="chevron-right" color={colors.faint} size={17} />
                 </Pressable>
               </View>
-              {!item.done && noteCreated.has(item.noteId) && (
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel={t(`Dodaj do kalendarza: ${item.text}`, `Add to calendar: ${item.text}`)}
-                  onPress={() => offerTaskExport(item.text, new Date(noteCreated.get(item.noteId)!), noteTitles.get(item.noteId) ?? t('Bez tytułu', 'Untitled'))}
-                  hitSlop={8}
-                  style={styles.exportButton}
-                >
-                  <Icon name="calendar" color={colors.faint} size={18} />
-                </Pressable>
-              )}
               {index < section.data.length - 1 && (
                 <View
                   pointerEvents="none"
@@ -254,7 +247,6 @@ const styles = StyleSheet.create({
     marginBottom: spacing.xs,
   },
   completedSectionTitle: { marginTop: spacing.xl },
-  exportButton: { alignSelf: 'center', paddingHorizontal: 4 },
   taskRow: {
     minHeight: 78,
     flexDirection: 'row',

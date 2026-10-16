@@ -28,7 +28,8 @@ import { PIPELINE_VERSION } from '../ai/processingContext'
 import { recordOperationTiming } from '../ai/generationMetrics'
 import { useSettingsStore } from '../state/settingsStore'
 import { useTaskPrefetchStore } from './taskPrefetch'
-import { offerTaskExport } from './taskExport'
+import { TaskDueChip } from './TaskDueChip'
+import { splitTaskText } from './taskDue'
 import {
   discardPendingProcessingResult,
   findPendingProcessingResult,
@@ -494,30 +495,25 @@ export function NoteTasks({
               ]}
             />
           </Pressable>
-          <TaskText
-            key={`${currentIdentity}:${task.id}`}
-            text={task.text}
-            index={index}
-            reveal={!isFastReveal(shown.tasks.length) && savedReveal.ids.has(task.id)}
-            active={motionActive}
-            reducedMotion={reducedMotion}
-            onRevealConsumed={() => savedReveal.consume(task.id)}
-            style={[
-              styles.taskText,
-              { color: task.done ? colors.muted : colors.ink },
-              task.done && styles.taskDone,
-            ]}
-          />
-          {!task.done && note && (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={t(`Dodaj do kalendarza: ${task.text}`, `Add to calendar: ${task.text}`)}
-              onPress={() => offerTaskExport(task.text, new Date(note.createdAt), note.title || t('Bez tytułu', 'Untitled'))}
-              hitSlop={8}
-            >
-              <Icon name="calendar" size={18} color={colors.faint} />
-            </Pressable>
-          )}
+          <View style={styles.taskCopy}>
+            <TaskText
+              key={`${currentIdentity}:${task.id}`}
+              text={note ? splitTaskText(task.text).title : task.text}
+              index={index}
+              reveal={!isFastReveal(shown.tasks.length) && savedReveal.ids.has(task.id)}
+              active={motionActive}
+              reducedMotion={reducedMotion}
+              onRevealConsumed={() => savedReveal.consume(task.id)}
+              style={[
+                styles.taskText,
+                { color: task.done ? colors.muted : colors.ink },
+                task.done && styles.taskDone,
+              ]}
+            />
+            {note && (
+              <TaskDueChip text={task.text} recordedAt={new Date(note.createdAt)} noteTitle={note.title || t('Bez tytułu', 'Untitled')} done={task.done} />
+            )}
+          </View>
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={t(
@@ -703,7 +699,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  taskText: { ...type.body, flex: 1 },
+  taskCopy: { flex: 1 },
+  taskText: { ...type.body },
   taskDone: { textDecorationLine: 'line-through' },
   empty: { ...type.body },
   error: { ...type.body },
