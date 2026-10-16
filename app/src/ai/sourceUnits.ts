@@ -110,9 +110,28 @@ const NAMED_AFTER = /^(?:zajęci\p{L}*|wykład\p{L}*|kurs\p{L}*|przedmiot\p{L}*|
 const REPORT_NEXT =new Set(["też", "także", "że", "żebym", "żeby", "mi", "mnie", "nam", "jeszcze", "wtedy"]);
 const TIME_TAIL = /^(?:o|około|rano|wieczorem|jutro|dzisiaj|dziś|wczoraj)$/iu;
 
+// English speech: capitals mark names, days and months, so only "I…" and spoken
+// connectives start a statement, and never right after an article or preposition.
+const EN_STOPWORDS = new Set(["the", "and", "is", "it", "of", "for", "you", "that", "with", "have", "i'm", "my", "was", "are", "this"]);
+const EN_DANGLING = new Set(["the", "a", "an", "to", "of", "for", "with", "at", "on", "in", "by", "and", "or", "from", "mr", "mrs", "ms", "dr", "my", "your", "his", "her", "our", "their", "is", "are", "was", "be", "than", "about", "into"]);
+const EN_SELF = /^i(?:'m|'ll|'ve|'d)?$/u;
+const EN_STRONG: readonly (readonly string[])[] = [["and", "then"], ["also"], ["so"], ["anyway"], ["okay"], ["ok"], ["oh", "and"], ["one", "more", "thing"]];
+const isEnglish = (norm: readonly string[]): boolean => norm.filter((word) => EN_STOPWORDS.has(word)).length / Math.max(1, norm.length) > 0.08;
+const englishScore = (index: number, raw: readonly string[], norm: readonly string[],
+  startsWith: (index: number, phrase: readonly string[]) => boolean): number => {
+  // "… for coffee and I dropped the course": the "and" opens the new statement.
+  if (norm[index] === "and" && EN_SELF.test(norm[index + 1] ?? "") && (raw[index + 1] ?? "").startsWith("I")) return 4;
+  if (EN_DANGLING.has(norm[index - 1])) return 0;
+  if (EN_SELF.test(norm[index]) && raw[index].startsWith("I")) return 4;
+  if (EN_STRONG.some((phrase) => startsWith(index, phrase))) return 3;
+  if (["but", "because", "then", "now"].includes(norm[index])) return 1;
+  return 0;
+};
+
 // How strongly a new statement seems to begin at this word (0 = no cue).
 const boundaryScore = (index: number, raw: readonly string[], norm: readonly string[],
-  startsWith: (index: number, phrase: readonly string[]) => boolean): number => {
+  startsWith: (index: number, phrase: readonly string[]) => boolean, english = false): number => {
+  if (english) return englishScore(index, raw, norm, startsWith);
   if (STRONG_STARTS.some((phrase) => startsWith(index, phrase))) return 5;
   const previous = norm[index - 1];
   // "dwa Terabajt", "dwudziestej 2": a number keeps its unit or second part.
@@ -160,13 +179,14 @@ const deterministicEnds = (content: string): number[] | null => {
     phrase.every((part, offset) => norm[index + offset] === part);
   const cuts: number[] = [];
   let segment = 0;
+  const english = isEnglish(norm);
   for (let index = 1; index < words.length; index += 1) {
     const length = index - segment;
-    const score = boundaryScore(index, raw, norm, startsWith);
+    const score = boundaryScore(index, raw, norm, startsWith, english);
     // Short units need a strong cue; a long run accepts a weaker one.
     const wanted = (score >= 4 && length >= 3) || (score >= 3 && length >= 5) || (score >= 2 && length >= 9) ||
       (score >= 1 && length >= 15) || (score > 0 && length >= 22) || length >= MAX_UNIT_WORDS;
-    if (!wanted || DANGLING_END.test(norm[index - 1])) continue;
+    if (!wanted || DANGLING_END.test(norm[index - 1]) || (english && EN_DANGLING.has(norm[index - 1]))) continue;
     const left = content.slice(words[segment].index, wordEnd(index - 1));
     const right = content.slice(words[index].index, wordEnd(Math.min(words.length - 1, index + 3)));
     if (unsafeBoundary(left, right) || correctsLeft(left, content.slice(words[index].index, wordEnd(Math.min(words.length - 1, index + 7))))) continue;

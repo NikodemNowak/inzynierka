@@ -306,3 +306,12 @@ test('a spoken correction stays with the words it corrects', () => {
   const units = sourceUnitsFromPlan(speech, deterministicSourceUnitPlan(speech)!).map(unit => unit.text);
   expect(units.some(unit => unit.includes('wypłata za nowych Za polecone firmy nie za nowe'))).toBe(true);
 });
+
+test('English unpunctuated speech cuts at "I" and connectives, not before names', () => {
+  const speech = "okay so the car needs an inspection by the end of the month I have to book the diagnostic station and send the invoice to Mr Collins by tomorrow I'm meeting Julia on Monday at four for coffee and I dropped the Spanish course";
+  const units = sourceUnitsFromPlan(speech, deterministicSourceUnitPlan(speech)!).map(unit => unit.text);
+  expect(units.some(unit => unit.startsWith('I have to book'))).toBe(true);
+  expect(units.some(unit => unit.includes('Mr Collins'))).toBe(true);
+  expect(units.some(unit => unit.includes('meeting Julia on Monday'))).toBe(true);
+  expect(units.some(unit => unit.startsWith('and I dropped'))).toBe(true);
+});
