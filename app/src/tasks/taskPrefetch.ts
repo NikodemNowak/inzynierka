@@ -5,7 +5,7 @@ import { ensureModelReady } from '../ai/noteProcessing'
 import { PIPELINE_VERSION } from '../ai/processingContext'
 import { createTaskProposal, type TaskProposal } from '../ai/taskProposal'
 import { findPendingProcessingResult } from '../data/processingJobsRepository'
-import { jobSourceIdentity } from '../processing/jobIdentity'
+import { taskSourceIdentity } from '../processing/jobIdentity'
 import { runDurableProcessing } from '../processing/jobRunner'
 import { isTaskProposalResult, parseSavedProcessingResult } from '../processing/savedResults'
 import { useNotesStore } from '../state/notesStore'
@@ -36,7 +36,7 @@ export const prefetchTaskProposal = async (noteId: string): Promise<TaskProposal
   const note = currentNote(noteId)
   if (!note || note.transcriptionIncomplete || !note.content.trim()) return null
   if (useTaskPrefetchStore.getState().running[noteId] || useNotesStore.getState().processing[noteId]) return null
-  const identity = jobSourceIdentity(note)
+  const identity = taskSourceIdentity(note)
   const request = { noteId, kind: 'tasks' as const, source: identity, model: MODEL_CONFIG.url, pipeline: PIPELINE_VERSION }
   const content = note.content
   const saved = parseSavedProcessingResult(await findPendingProcessingResult(request), (value): value is TaskProposal =>
@@ -44,7 +44,7 @@ export const prefetchTaskProposal = async (noteId: string): Promise<TaskProposal
   if (saved) return saved
   const sourceIsCurrent = (): boolean => {
     const current = currentNote(noteId)
-    return Boolean(current && !current.transcriptionIncomplete && jobSourceIdentity(current) === identity)
+    return Boolean(current && !current.transcriptionIncomplete && taskSourceIdentity(current) === identity)
   }
   setRunning(noteId, true)
   try {

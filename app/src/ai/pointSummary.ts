@@ -6,6 +6,7 @@ import { numberWordValue, pointNumbers, promptView, spokenClockForPrompt, stated
 import { throwIfProcessingAborted, type ProcessingExecutionContext } from './processingContext';
 import { noteSourceSystem, sourceFirstPrompt } from './sharedSourcePrompt';
 import { documentFromSummaryDraft } from './summaryProtocol';
+import { englishPromptView } from './taskLinesEn';
 import { renderSummarySources, type SummarySourceUnit } from './summarySources';
 
 // Point summary: one model call per chunk of the note produces "- text [ids]"
@@ -1575,7 +1576,7 @@ export const generatePointSummaryDetailed = async (
       const share = options.pointsForNote(Math.round(noteWeight)) * weightOf(chunk) / noteWeight;
       const maxPoints = Math.max(rambling ? 2 : 3, chunks.length > 1 ? Math.ceil(share * CHUNK_ASK_FACTOR) : Math.round(share));
       const nPredict = outputTokensFor(maxPoints);
-      const shown = language === 'pl' ? chunk.map(unit => ({ ...unit, text: promptView(unit.text) })) : chunk;
+      const shown = chunk.map(unit => ({ ...unit, text: language === 'pl' ? promptView(unit.text) : englishPromptView(unit.text) }));
       const prompt = sourceFirstPrompt(renderSummarySources(shown), pointSummaryInstructions(language, maxPoints, options.promptVariant));
       const result = await generate(prompt, () => undefined, {
         system, nPredict, temperature: 0.1, topP: 0.8, topK: 20, minP: 0, ...(execution?.signal ? { signal: execution.signal } : {}),

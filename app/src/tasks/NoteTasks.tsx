@@ -22,7 +22,7 @@ import { createTaskProposal, type TaskProposal } from '../ai/taskProposal'
 import { ensureModelReady, getModelMissingMessage } from '../ai/noteProcessing'
 import type { Language } from '../i18n/language'
 import { runDurableProcessing } from '../processing/jobRunner'
-import { jobSourceIdentity } from '../processing/jobIdentity'
+import { taskSourceIdentity } from '../processing/jobIdentity'
 import { MODEL_CONFIG } from '../ai/modelConfig'
 import { PIPELINE_VERSION } from '../ai/processingContext'
 import { recordOperationTiming } from '../ai/generationMetrics'
@@ -90,7 +90,7 @@ export function NoteTasks({
   const seenPrefetch = useRef(prefetchSettled)
   const shownStatus = status ?? (prefetching ? t('Przygotowuję propozycje zadań…', 'Preparing task suggestions…') : null)
   const busy = shownStatus !== null || saving || discarding
-  const currentIdentity = note ? jobSourceIdentity(note) : null
+  const currentIdentity = note ? taskSourceIdentity(note) : null
   const proposalReveal = useTaskTextReveal(motionActive, reducedMotion, `${noteId}:${currentIdentity}`)
   const savedReveal = useTaskTextReveal(motionActive, reducedMotion, `${noteId}:${currentIdentity}`)
   const [proposalBatch, setProposalBatch] = useState(0)
@@ -219,11 +219,11 @@ export function NoteTasks({
     generationInFlight.current = version
     const snapshot = content
     const snapshotLanguage = note.language ?? 'pl'
-    const snapshotIdentity = jobSourceIdentity(note)
+    const snapshotIdentity = taskSourceIdentity(note)
     const ownsView = () => suggestionVersion.current === version && generationInFlight.current === version
     const sourceIsCurrent = () => {
       const current = useNotesStore.getState().notes.find((item) => item.id === noteId)
-      return Boolean(current && !current.transcriptionIncomplete && jobSourceIdentity(current) === snapshotIdentity)
+      return Boolean(current && !current.transcriptionIncomplete && taskSourceIdentity(current) === snapshotIdentity)
     }
     const reportStatus = (label: string) => {
       if (ownsView() && sourceIsCurrent()) setStatus(label)
@@ -243,7 +243,7 @@ export function NoteTasks({
           {
             noteId,
             kind: 'tasks',
-            source: jobSourceIdentity(note),
+            source: taskSourceIdentity(note),
             model: MODEL_CONFIG.url,
             pipeline: PIPELINE_VERSION,
           },
@@ -372,7 +372,7 @@ export function NoteTasks({
     }
     if (
       sourceContent === null ||
-      sourceIdentity !== jobSourceIdentity(currentNote) ||
+      sourceIdentity !== taskSourceIdentity(currentNote) ||
       currentNote.transcriptionIncomplete ||
       currentNote.content !== sourceContent ||
       (currentNote.language ?? 'pl') !== sourceLanguage

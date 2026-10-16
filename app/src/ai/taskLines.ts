@@ -3,7 +3,7 @@ import { recordGeneration } from './generationMetrics'
 import { generate, getContextWindowSize, measureFormattedPromptTokens } from './llm'
 import { throwIfProcessingAborted, type ProcessingExecutionContext } from './processingContext'
 import { numberSpans, promptView } from './polishNumbers'
-import { TASK_LINES_PROMPT_EN, isTaskCandidateEn, postprocessTaskLinesEn } from './taskLinesEn'
+import { TASK_LINES_PROMPT_EN, englishPromptView, isTaskCandidateEn, postprocessTaskLinesEn } from './taskLinesEn'
 import { noteSourceSystem, sourceFirstPrompt } from './sharedSourcePrompt'
 
 // Single-call task extractor: one batched pass over the candidate sentences of
@@ -443,7 +443,7 @@ export const cleanDue = (t: TaskDraft): TaskDraft => {
 }
 
 const LINE = /^\s*\[(\d+)\]\s*(.*?)\s*$/u
-export const parseTaskLines = (text: string, allowed: ReadonlySet<number>): TaskDraft[] => {
+export const parseTaskLines = (text: string, allowed: ReadonlySet<number>, language: Language = 'pl'): TaskDraft[] => {
   const out: TaskDraft[] = []
   for (const line of text.split(/\r\n|[\n\r\v\f\x1c-\x1e\x85\u2028\u2029]/u)) {
     const m = LINE.exec(line)
@@ -454,7 +454,10 @@ export const parseTaskLines = (text: string, allowed: ReadonlySet<number>): Task
     if (!body || ['-', '—', '–'].includes(body) || body.toUpperCase().startsWith('BRAK') || body.startsWith('- ')) continue
     for (const part of body.split('|')) {
       const { title, due } = splitTitleDue(part)
-      if (title && title !== '-') out.push(cleanDue(repairPlaceholder({ title, due, sourceIds: [id], modelIds: [] })))
+      if (!title || title === '-') continue
+      const draft = { title, due, sourceIds: [id], modelIds: [] }
+      // English deadlines are checked by the English guards; the Polish cleanup would drop "today".
+      out.push(language === 'en' ? draft : cleanDue(repairPlaceholder(draft)))
     }
   }
   return out
@@ -1680,7 +1683,7 @@ export const extractTaskLines = async (
   const candidates = limitCandidates(en ? pool.filter((unit) => isTaskCandidateEn(unit.text)) : selectCandidates(pool), candidateLimit(units))
   if (!candidates.length && !nominal.length) return emptyResult()
   const system = noteSourceSystem(language)
-  const view = (text: string): string => (en ? text : promptView(text))
+  const view = (text: string): string => (en ? englishPromptView(text) : promptView(text))
   const numbered = units.map((unit) => `[${unit.id}] ${view(unit.text)}`).join('\n')
   const head = en ? `${TASK_LINES_PROMPT_EN}\n\nNow the sentences of this note.\nSENTENCES:\n` : `${TASK_LINES_PROMPT}\n\nTeraz zdania tej notatki.\nZDANIA:\n`
   const answer = en ? 'ANSWER:' : 'ODPOWIEDŹ:'
@@ -1747,7 +1750,7 @@ export const extractTaskLines = async (
     }
     // A cut answer ends in a half-written line; drop it.
     const answer = cutAnswer(result.text, stopped)
-    raw.push(...parseTaskLines(answer, new Set(batch.map((unit) => unit.id))))
+    raw.push(...parseTaskLines(answer, new Set(batch.map((unit) => unit.id)), language))
     partial = null
     if (!stopped) {
       rest = rest.slice(batch.length)

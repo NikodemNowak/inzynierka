@@ -9,7 +9,7 @@ jest.mock('../ai/noteProcessing', () => ({ ensureModelReady: jest.fn(async () =>
 jest.mock('../ai/taskProposal', () => ({ createTaskProposal: jest.fn(async () => ({ tasks: ['Kupić mleko'], warnings: [] })) }))
 jest.mock('../data/processingJobsRepository', () => ({ findPendingProcessingResult: jest.fn(async () => null) }))
 jest.mock('../processing/jobRunner', () => ({ runDurableProcessing: jest.fn() }))
-jest.mock('../processing/jobIdentity', () => ({ jobSourceIdentity: (note: { content: string }) => `id:${note.content}` }))
+jest.mock('../processing/jobIdentity', () => ({ taskSourceIdentity: (note: { content: string }) => `id:${note.content}` }))
 jest.mock('../processing/savedResults', () => ({
   parseSavedProcessingResult: (value: unknown) => value ?? null,
   isTaskProposalResult: () => true,

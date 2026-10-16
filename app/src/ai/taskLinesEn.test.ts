@@ -1,4 +1,4 @@
-import { isTaskCandidateEn, postprocessTaskLinesEn, rejectReasonEn, splitJoinedEn, tidyTaskEn } from './taskLinesEn'
+import { dueSaidIn, englishPromptView, isTaskCandidateEn, postprocessTaskLinesEn, rejectReasonEn, splitJoinedEn, tidyTaskEn } from './taskLinesEn'
 
 const draft = (title: string, due: string | null = null, id = 1) => ({ title, due, sourceIds: [id], modelIds: [id] })
 
@@ -32,4 +32,22 @@ test('drops a task contained in a fuller one', () => {
   const units = [{ id: 1, text: 'I have to send the invoice to Mr Collins for the logo project.' }]
   expect(postprocessTaskLinesEn([draft('Send the invoice to Mr Collins'), draft('Send the invoice to Mr Collins for the logo project')], units).map((t) => t.title))
     .toEqual(['Send the invoice to Mr Collins for the logo project'])
+})
+
+test('short task words still count and keep both tasks', () => {
+  const units = [{ id: 1, text: 'I go to the gym now.' }, { id: 2, text: 'I have to go to the shop.' }]
+  expect(postprocessTaskLinesEn([draft('Go to the gym'), draft('Go to the shop', null, 2)], units).map((t) => t.title)).toEqual(['Go to the gym', 'Go to the shop'])
+})
+
+test('the model sees self-corrections already applied', () => {
+  expect(englishPromptView('and at 8 PM sorry 6 PM today I have an appointment')).toBe('and at 6 PM today I have an appointment')
+  expect(englishPromptView("I'm going to go by car sorry I'm going to go by tram there")).toBe("I'm going to go by tram there")
+  expect(englishPromptView('Sorry I am going to the shop')).toBe('I am going to the shop')
+})
+
+test('a deadline must be said in its own sentence', () => {
+  expect(dueSaidIn('today', "Sorry I'm going to the shop because I have to buy milk.")).toBe(false)
+  expect(dueSaidIn('today 18:00', 'and at 6 PM today I have an appointment')).toBe(true)
+  expect(dueSaidIn('Thursday evening', 'he said Thursday evening')).toBe(true)
+  expect(dueSaidIn('by the 20th', 'pay it by the twentieth')).toBe(true)
 })

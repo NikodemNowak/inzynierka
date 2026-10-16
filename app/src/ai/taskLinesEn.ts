@@ -39,6 +39,7 @@ SENTENCES:
 [10] Hannah asked me to give her the book back on Saturday.
 [11] Need to fix the login screen.
 [12] Kate will check the text by Wednesday.
+[13] I'm heading to the pool now and at 5 pm today I have a dentist appointment.
 ANSWER:
 [1] Hand in the project — Thursday
 [2] -
@@ -51,7 +52,8 @@ ANSWER:
 [9] Use the eye drops 3 times a day
 [10] Give Hannah the book back — Saturday
 [11] Fix the login screen
-[12] -`
+[12] -
+[13] Go to the pool — now | Dentist appointment — today 17:00`
 
 // Cheap pre-filter: only sentences that can carry a task go to the model.
 const CANDIDATE = new RegExp(
@@ -115,19 +117,59 @@ export const rejectReasonEn = (t: EnTaskDraft, source: string): string | null =>
   return null
 }
 
+const DUE_TOKEN = /\b(?:today|tonight|tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday|weekend|week|month|morning|afternoon|evening|noon|january|february|march|april|may|june|july|august|september|october|november|december|now)\b|\d+/gi
+const NUMBER_WORDS: Readonly<Record<string, string>> = { one: '1', two: '2', three: '3', four: '4', five: '5', six: '6', seven: '7', eight: '8', nine: '9', ten: '10', eleven: '11', twelve: '12' }
+export const dueSaidIn = (due: string, source: string): boolean => {
+  const said = new Set((source.toLowerCase().match(DUE_TOKEN) ?? []).map((token) => token.replace(/^0+(?=\d)/, '')))
+  for (const [word, digit] of Object.entries(NUMBER_WORDS)) if (new RegExp(`\\b${word}\\b`, 'i').test(source)) said.add(digit)
+  // "by the twentieth" said in words: any spoken number backs a digit in the deadline.
+  const spokenNumber = /\b(?:\w+teen(?:th)?|\w+t(?:y|ieth)|first|second|third|\w+th|hundred)\b/i.test(source)
+  const tokens = (due.toLowerCase().match(DUE_TOKEN) ?? []).map((token) => token.replace(/^0+(?=\d)/, ''))
+  // "18:00" for "6 PM": the hour may be written on a 24-hour clock.
+  return tokens.length === 0 || tokens.some((token) => said.has(token) || (Number(token) > 12 && said.has(String(Number(token) - 12))) || (spokenNumber && /^\d+$/.test(token)))
+}
+
 export const postprocessTaskLinesEn = (raw: readonly EnTaskDraft[], units: readonly { id: number; text: string }[]): EnTaskDraft[] => {
   const byId = new Map(units.map((unit) => [unit.id, unit.text]))
   const seen = new Set<string>()
   const kept: EnTaskDraft[] = []
-  for (const task of raw.map(tidyTaskEn).flatMap(splitJoinedEn)) {
+  for (const task of raw.map(tidyTaskEn).flatMap(splitJoinedEn).map((draft) => ({ ...draft }))) {
     const source = task.sourceIds.map((id) => byId.get(id) ?? '').join(' ')
-    if (rejectReasonEn(task, source)) continue
+    if (rejectReasonEn(task, englishPromptView(source))) continue
+    // A deadline the sentence never said ("Buy milk — today") is the model's guess.
+    if (task.due && !dueSaidIn(task.due, englishPromptView(source))) task.due = null
     const key = task.title.toLowerCase()
     if (seen.has(key)) continue
     seen.add(key)
     kept.push(task)
   }
   // A task whose words all appear in a fuller one says nothing new.
-  return kept.filter((task) => !kept.some((other) => other !== task && other.title.length > task.title.length &&
-    [...stems(task.title)].every((stem) => stems(other.title).has(stem))))
+  return kept.filter((task) => {
+    const own = contentWords(task.title)
+    return own.size === 0 || !kept.some((other) => other !== task && other.title.length > task.title.length &&
+      [...own].every((word) => contentWords(other.title).has(word)))
+  })
+}
+
+// Words that carry meaning, short ones included ("gym", "eye").
+const FUNCTION_WORDS = new Set(['a', 'an', 'the', 'to', 'of', 'in', 'on', 'at', 'for', 'and', 'or', 'with', 'my', 'go', 'get', 'do'])
+const contentWords = (text: string): Set<string> =>
+  new Set((text.toLowerCase().match(/[a-z]+/g) ?? []).filter((word) => !FUNCTION_WORDS.has(word)).map((word) => word.slice(0, 5)))
+
+// Model-facing view of a self-corrected sentence: "at 8 PM sorry 6 PM" -> "at 6 PM",
+// "go by car sorry I'm going to go by tram" -> "I'm going to go by tram". The note keeps the original words.
+const CORRECTION = /\b(?:sorry|no wait|wait no|I mean|actually no)\b,?\s*/i
+export const englishPromptView = (text: string): string => {
+  let out = text.replace(/\b(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)\s+(?:sorry|no|I mean)\s+(?=\d)/gi, '')
+  for (let round = 0; round < 3; round += 1) {
+    const m = CORRECTION.exec(out)
+    if (!m) break
+    const before = out.slice(0, m.index)
+    const after = out.slice(m.index + m[0].length)
+    const head = after.split(/\s+/).slice(0, 3).join(' ').toLowerCase()
+    const restart = head ? before.toLowerCase().lastIndexOf(head) : -1
+    // Cut back to where the corrected phrase first started; otherwise only the marker goes.
+    out = restart >= 0 && before.slice(restart).split(/\s+/).length <= 14 ? before.slice(0, restart) + after : `${before}${after}`
+  }
+  return out.replace(/\s{2,}/g, ' ').trim()
 }
