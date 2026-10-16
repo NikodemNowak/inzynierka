@@ -64,8 +64,20 @@
       ],
       "expo-sharing",
       [
+        "expo-calendar",
+        {
+          "calendarPermission": "Pozwól aplikacji Notatki dodawać zadania do kalendarza.",
+          "remindersPermission": "Pozwól aplikacji Notatki dodawać zadania do Przypomnień."
+        }
+      ],
+      [
         "expo-localization",
-        { "supportedLocales": ["pl", "en"] }
+        {
+          "supportedLocales": [
+            "pl",
+            "en"
+          ]
+        }
       ]
     ]
   }

@@ -28,6 +28,7 @@ import { PIPELINE_VERSION } from '../ai/processingContext'
 import { recordOperationTiming } from '../ai/generationMetrics'
 import { useSettingsStore } from '../state/settingsStore'
 import { useTaskPrefetchStore } from './taskPrefetch'
+import { offerTaskExport } from './taskExport'
 import {
   discardPendingProcessingResult,
   findPendingProcessingResult,
@@ -507,6 +508,16 @@ export function NoteTasks({
               task.done && styles.taskDone,
             ]}
           />
+          {!task.done && note && (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={t(`Dodaj do kalendarza: ${task.text}`, `Add to calendar: ${task.text}`)}
+              onPress={() => offerTaskExport(task.text, new Date(note.createdAt), note.title || t('Bez tytułu', 'Untitled'))}
+              hitSlop={8}
+            >
+              <Icon name="calendar" size={18} color={colors.faint} />
+            </Pressable>
+          )}
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={t(

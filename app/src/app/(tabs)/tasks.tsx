@@ -17,6 +17,7 @@ import { TasksEmptyState } from '../../tasks/TasksEmptyState'
 import { Icon } from '../../ui/Icon'
 import { useReducedMotion } from '../../ui/Motion'
 import { TaskArrival, TaskCheck, TaskText, subscribePersistedTaskText, useTaskMotionActive, useTaskTextReveal } from '../../tasks/TaskMotion'
+import { offerTaskExport } from '../../tasks/taskExport'
 import { radius, spacing, type, useTheme } from '../../ui/theme'
 
 const ENTRANCE_WINDOW_MS = 1400
@@ -70,6 +71,7 @@ export default function TasksScreen() {
       ),
     [notes, t],
   )
+  const noteCreated = useMemo(() => new Map(notes.map((note) => [note.id, note.createdAt])), [notes])
   const sections = useMemo(
     () => [
       {
@@ -210,6 +212,17 @@ export default function TasksScreen() {
                   <Icon name="chevron-right" color={colors.faint} size={17} />
                 </Pressable>
               </View>
+              {!item.done && noteCreated.has(item.noteId) && (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={t(`Dodaj do kalendarza: ${item.text}`, `Add to calendar: ${item.text}`)}
+                  onPress={() => offerTaskExport(item.text, new Date(noteCreated.get(item.noteId)!), noteTitles.get(item.noteId) ?? t('Bez tytułu', 'Untitled'))}
+                  hitSlop={8}
+                  style={styles.exportButton}
+                >
+                  <Icon name="calendar" color={colors.faint} size={18} />
+                </Pressable>
+              )}
               {index < section.data.length - 1 && (
                 <View
                   pointerEvents="none"
@@ -241,6 +254,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing.xs,
   },
   completedSectionTitle: { marginTop: spacing.xl },
+  exportButton: { alignSelf: 'center', paddingHorizontal: 4 },
   taskRow: {
     minHeight: 78,
     flexDirection: 'row',

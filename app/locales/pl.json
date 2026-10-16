@@ -1,8 +1,14 @@
 {
-  "android": { "app_name": "Notatki" },
+  "android": {
+    "app_name": "Notatki"
+  },
   "ios": {
     "CFBundleDisplayName": "Notatki",
     "NSMicrophoneUsageDescription": "Pozwól aplikacji Notatki na nagrywanie dźwięku.",
-    "NSSpeechRecognitionUsageDescription": "Pozwól aplikacji Notatki na rozpoznawanie mowy."
+    "NSSpeechRecognitionUsageDescription": "Pozwól aplikacji Notatki na rozpoznawanie mowy.",
+    "NSCalendarsUsageDescription": "Pozwól aplikacji Notatki dodawać zadania do kalendarza.",
+    "NSCalendarsFullAccessUsageDescription": "Pozwól aplikacji Notatki dodawać zadania do kalendarza.",
+    "NSRemindersUsageDescription": "Pozwól aplikacji Notatki dodawać zadania do Przypomnień.",
+    "NSRemindersFullAccessUsageDescription": "Pozwól aplikacji Notatki dodawać zadania do Przypomnień."
   }
 }
