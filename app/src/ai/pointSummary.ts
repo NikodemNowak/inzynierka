@@ -866,7 +866,7 @@ export const repairPoint = (
 
 // ---------------------------------------------------------------- literal cleaner
 const LEAD_FILLERS_PL = [
-  String.raw`(?:a\s+)?poza\s+tym`, String.raw`no\s+(?:więc|dobra|i|to|ale|tak|nic)`, 'dobra', 'okej', 'ok', String.raw`aha(?:\s+i)?(?:\s+jeszcze)?`, String.raw`i\s+jeszcze`, String.raw`jeszcze\s+jedno`, 'jeszcze',
+  String.raw`(?:a\s+)?poza\s+tym`, String.raw`na\s+koniec(?:\s+najważniejsze)?`, String.raw`no\s+(?:więc|dobra|i|to|ale|tak|nic)`, 'dobra', 'okej', 'ok', String.raw`aha(?:\s+i)?(?:\s+jeszcze)?`, String.raw`i\s+jeszcze`, String.raw`jeszcze\s+jedno`, 'jeszcze',
   String.raw`a\s+propos(?:\s+\w+)?`, String.raw`swoją\s+drogą`, String.raw`w\s+ogóle`, 'generalnie', 'znaczy', 'tak', 'no', 'a', 'i', 'oraz',
   'czyli', String.raw`w\s+sumie`, 'ogólnie', 'ale', 'więc', String.raw`tak\s+serio`, 'serio', 'słuchaj', 'wiesz', 'kurczę', 'matko', String.raw`ostatnia\s+rzecz`, 'dalej', 'ważne', 'uwaga', String.raw`nie(?=\s*,)`, String.raw`chyba\s+wszystko`, String.raw`to\s+chyba\s+tyle`,
   String.raw`ważne(?:\s+jest)?(?:\s+tylko)?(?:\s+to)?,?\s+że`, String.raw`jeszcze\s+jedno`, String.raw`co\s+jeszcze`,
@@ -1321,7 +1321,10 @@ const CLAUSE_CUE = rx(String.raw`(?<=[^\s,;:–-])\s+(?=(?:(?:trzeba|muszę|musi
 const MIN_CLAUSE_CHARS = 20;
 const clauseStart = (input: string, offset: number): boolean => offset - (input.lastIndexOf(',', offset) + 1) >= MIN_CLAUSE_CHARS;
 const splitSpokenClauses = (input: string): string =>
-  (input.length > MIN_SPLIT_CHARS && (input.match(/,/gu)?.length ?? 0) * COMMA_SPACING_CHARS < input.length ? input.replace(CLAUSE_CUE, (space: string, offset: number) => (clauseStart(input, offset) ? ', ' : space)) : input);
+  (input.length > MIN_SPLIT_CHARS && (input.match(/,/gu)?.length ?? 0) * COMMA_SPACING_CHARS < input.length
+    // "nie mam zajęć": a negation stays with its verb.
+    ? input.replace(CLAUSE_CUE, (space: string, offset: number) => (clauseStart(input, offset) && !/(?<![\p{L}])nie$/iu.test(input.slice(0, offset)) ? ', ' : space))
+    : input);
 
 // A closing explanation ("..., bo ceny rosną") adds nothing to a point that already carries its facts.
 const EXPLANATION_CLAUSE = rx(String.raw`^(?:bo|ale|więc|co|który\w*|która|które|czyli|dlatego|ponieważ|jest\s+to|to\s+jest|tak\s+ustal\w+)(?![^\W\d_])`, 'i');

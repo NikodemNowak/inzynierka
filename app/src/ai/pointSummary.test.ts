@@ -885,3 +885,12 @@ test('capPoints keeps a literal that carries a number and a condition over weake
   const plain = { text: 'Mama bierze Stasia w sobotę', sourceIds: [3] };
   expect(capPoints([dose, weak, plain], units, 2).map(p => p.text)).toContain(dose.text);
 });
+
+test('a spoken clause split never separates "nie" from its verb', () => {
+  const literal = shortenLiteral('na koniec najważniejsze w piątek nie mam zajęć więc mogę zostać dłużej na uczelni i dokończyć prezentację spokojnie w bibliotece');
+  expect(literal).not.toMatch(/nie,/u);
+});
+
+test('"na koniec najważniejsze" is a lead filler', () => {
+  expect(cleanLiteral('na koniec najważniejsze w piątek nie mam zajęć')).toBe('W piątek nie mam zajęć.');
+});
