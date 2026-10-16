@@ -2,7 +2,7 @@ import type { LoadModelOptions, LoadedModelInfo } from "./llm";
 import type { SourceEvidence } from "./sourcePipeline";
 import { validateSourceUnitPlan, type SourceUnitPlan } from "./sourceUnits";
 
-export const PIPELINE_VERSION = "point-summary-v49";
+export const PIPELINE_VERSION = "point-summary-v50";
 
 export interface ProcessingCheckpointStore {
   read(key: string): Promise<unknown | null>;

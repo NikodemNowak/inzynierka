@@ -3,6 +3,7 @@ import { recordGeneration } from './generationMetrics'
 import { generate, getContextWindowSize, measureFormattedPromptTokens } from './llm'
 import { throwIfProcessingAborted, type ProcessingExecutionContext } from './processingContext'
 import { numberSpans, promptView } from './polishNumbers'
+import { TASK_LINES_PROMPT_EN, isTaskCandidateEn, postprocessTaskLinesEn } from './taskLinesEn'
 import { noteSourceSystem, sourceFirstPrompt } from './sharedSourcePrompt'
 
 // Single-call task extractor: one batched pass over the candidate sentences of
@@ -1660,8 +1661,10 @@ export const cutLine = (text: string, nextId: number | undefined): string | null
   return m && Number(m[1]) === nextId ? `[${m[1]}] ${m[2]!.trim()}` : null
 }
 // Ask the follow-up call to finish the cut line instead of judging the sentence anew.
-export const continuationHint = (partial: string): string =>
-  `Poprzednia odpowiedź urwała się w połowie linii: ${partial}\nZacznij od tej linii i ją dokończ.\n`
+export const continuationHint = (partial: string, language: Language = 'pl'): string =>
+  language === 'en'
+    ? `The previous answer stopped in the middle of a line: ${partial}\nStart with that line and finish it.\n`
+    : `Poprzednia odpowiedź urwała się w połowie linii: ${partial}\nZacznij od tej linii i ją dokończ.\n`
 const emptyResult = (): TaskLinesResult => ({ tasks: [], rendered: [], warnings: [] })
 const renderTask = (t: TaskLine): string => (t.due ? `${t.title} — ${t.due}` : t.title)
 
@@ -1670,18 +1673,21 @@ export const extractTaskLines = async (
   language: Language,
   execution?: ProcessingExecutionContext,
 ): Promise<TaskLinesResult> => {
-  if (language !== 'pl') return emptyResult()
-  const nominal = nominalListTasks(units)
+  const en = language === 'en'
+  const nominal = en ? [] : nominalListTasks(units)
   const nominalIds = new Set(nominal.flatMap((t) => t.sourceIds))
-  const candidates = limitCandidates(selectCandidates(units.filter((unit) => !nominalIds.has(unit.id))), candidateLimit(units))
+  const pool = units.filter((unit) => !nominalIds.has(unit.id))
+  const candidates = limitCandidates(en ? pool.filter((unit) => isTaskCandidateEn(unit.text)) : selectCandidates(pool), candidateLimit(units))
   if (!candidates.length && !nominal.length) return emptyResult()
   const system = noteSourceSystem(language)
-  const numbered = units.map((unit) => `[${unit.id}] ${promptView(unit.text)}`).join('\n')
-  const head = `${TASK_LINES_PROMPT}\n\nTeraz zdania tej notatki.\nZDANIA:\n`
+  const view = (text: string): string => (en ? text : promptView(text))
+  const numbered = units.map((unit) => `[${unit.id}] ${view(unit.text)}`).join('\n')
+  const head = en ? `${TASK_LINES_PROMPT_EN}\n\nNow the sentences of this note.\nSENTENCES:\n` : `${TASK_LINES_PROMPT}\n\nTeraz zdania tej notatki.\nZDANIA:\n`
+  const answer = en ? 'ANSWER:' : 'ODPOWIEDŹ:'
   const promptFor = (batch: readonly Unit[], partial: string | null): string =>
     sourceFirstPrompt(
       numbered,
-      `${head}${batch.map((unit) => `[${unit.id}] ${promptView(unit.text)}`).join('\n')}\n${partial ? continuationHint(partial) : ''}ODPOWIEDŹ:\n`,
+      `${head}${batch.map((unit) => `[${unit.id}] ${view(unit.text)}`).join('\n')}\n${partial ? continuationHint(partial, language) : ''}${answer}\n`,
     )
   const maxOutput = isLongNote(units) ? MAX_OUTPUT_TOKENS_LONG : MAX_OUTPUT_TOKENS
   const warnings: string[] = []
@@ -1761,8 +1767,9 @@ export const extractTaskLines = async (
   }
   if (cut) warnings.push('Odpowiedź modelu została ucięta; część zadań mogła zostać pominięta.')
   const answered = new Set(raw.flatMap((t) => t.sourceIds))
-  raw.push(...candidates.filter((unit) => !answered.has(unit.id)).flatMap((unit) => modalTask(unit) ?? []))
-  const kept = dedupeTasks(mergeSimilar(mergeVague([...postprocessTaskLines(raw, units).kept, ...nominal]))).sort((a, b) => a.sourceIds[0]! - b.sourceIds[0]!)
+  if (!en) raw.push(...candidates.filter((unit) => !answered.has(unit.id)).flatMap((unit) => modalTask(unit) ?? []))
+  const kept = (en ? postprocessTaskLinesEn(raw, units) : dedupeTasks(mergeSimilar(mergeVague([...postprocessTaskLines(raw, units).kept, ...nominal]))))
+    .sort((a, b) => a.sourceIds[0]! - b.sourceIds[0]!)
   const tasks = kept.map((t): TaskLine => ({ title: t.title, due: t.due, sourceIds: [...t.sourceIds] }))
   return { tasks, rendered: tasks.map(renderTask), warnings }
 }

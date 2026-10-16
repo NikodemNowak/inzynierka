@@ -70,7 +70,8 @@ const dayOfMonthOf = (words: readonly string[]): number | null => {
     // "25 listopada", "listopad 25" are dates with a month; handled by monthDate.
     if (MONTHS.some(([pattern]) => pattern.test(next))) continue
     const prev = words[index - 1] ?? ''
-    if (/^\d{1,2}$/u.test(word) && (prev === 'do' || prev === 'by' || prev === 'dnia' || prev === 'on')) return Number(word)
+    const digits = /^(\d{1,2})(?:st|nd|rd|th)?$/u.exec(word)
+    if (digits && ['do', 'by', 'dnia', 'on', 'the'].includes(prev)) return Number(digits[1])
     if (/(?:ego|go)$/u.test(word)) {
       const value = numberWordValue(word)
       if (value !== null && value >= 1 && value <= 31) return value
@@ -83,9 +84,13 @@ const monthDate = (words: readonly string[], base: Date): Date | null => {
   for (let index = 0; index < words.length; index += 1) {
     const month = MONTHS.find(([pattern]) => pattern.test(words[index]!))?.[1]
     if (month === undefined) continue
-    const before = words[index - 1] ?? ''
-    const after = words[index + 1] ?? ''
-    const raw = /^\d{1,2}$/u.test(before) ? Number(before) : /^\d{1,2}$/u.test(after) ? Number(after) : numberWordValue(before) ?? null
+    // "25 listopada", "22nd of November", "November 22nd"
+    const ordinal = (word: string | undefined): number | null => {
+      const m = /^(\d{1,2})(?:st|nd|rd|th)?$/u.exec(word ?? '')
+      return m ? Number(m[1]) : null
+    }
+    const before = words[index - 1] === 'of' ? words[index - 2] : words[index - 1]
+    const raw = ordinal(before) ?? ordinal(words[index + 1]) ?? (before ? numberWordValue(before) : null)
     const day = raw !== null && raw >= 1 && raw <= 31 ? raw : null
     if (day === null) {
       // "do końca listopada" / "w listopadzie": the last or first day of that month.

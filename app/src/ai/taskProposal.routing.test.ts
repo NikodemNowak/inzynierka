@@ -71,13 +71,13 @@ describe('createTaskProposal routing', () => {
     expect(result.warnings).toEqual(['Warning 1', 'Warning 2']);
   });
 
-  it('routes English+points to legacy extractTasks', async () => {
-    mockExtractTasks.mockResolvedValueOnce(['Task A', 'Task B']);
+  it('routes English+points to createQualityTaskLines', async () => {
+    mockCreateQualityTaskLines.mockResolvedValueOnce({ tasks: ['Task A', 'Task B'], warnings: [] });
 
     const result = await createTaskProposal('source', () => {}, 'en', undefined);
 
-    expect(mockExtractTasks).toHaveBeenCalledTimes(1);
-    expect(mockCreateQualityTaskLines).not.toHaveBeenCalled();
+    expect(mockCreateQualityTaskLines).toHaveBeenCalledTimes(1);
+    expect(mockExtractTasks).not.toHaveBeenCalled();
     expect(result.tasks).toEqual(['Task A', 'Task B']);
   });
 
@@ -94,6 +94,7 @@ describe('createTaskProposal routing', () => {
   it('deduplicates legacy extractTasks results case-insensitively', async () => {
     mockExtractTasks.mockResolvedValueOnce(['Kupić mleko', 'kupić mleko', 'Zapłacić rachunek']);
 
+    setSummaryEngineMode('auto');
     const result = await createTaskProposal('source', () => {}, 'en', undefined);
 
     expect(result.tasks).toHaveLength(2);
@@ -103,6 +104,7 @@ describe('createTaskProposal routing', () => {
   it('drops meta tasks from legacy extractTasks', async () => {
     mockExtractTasks.mockResolvedValueOnce(['Task A', 'Test nagrania', 'Task B']);
 
+    setSummaryEngineMode('auto');
     const result = await createTaskProposal('source', () => {}, 'en', undefined);
 
     expect(result.tasks).not.toContain('Test nagrania');
@@ -114,6 +116,7 @@ describe('createTaskProposal routing', () => {
       return ['Task A'];
     });
 
+    setSummaryEngineMode('auto');
     const result = await createTaskProposal('source', () => {}, 'en', undefined);
 
     expect(result.warnings).toContain('Warning from extract');

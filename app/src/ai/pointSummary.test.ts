@@ -8,6 +8,7 @@ import {
   lowerStrayCapitals,
   snapToNoteSpelling,
   hedgeClock,
+  impersonalizeEn,
   cleanLiteral,
   outputTokensFor,
   splitIntoChunks,
@@ -769,4 +770,10 @@ test('restores the hedge on a spoken hour and allows u/do person paraphrase', ()
 
 test('a literal keeps the hedged clock and drops "jakąś tam"', () => {
   expect(cleanLiteral('zajęcia Jakość jakąś tam oprogramowania z panem mgr')).toBe('Zajęcia Jakość oprogramowania z panem mgr.');
+});
+
+test('an English literal drops the first-person duty', () => {
+  expect(impersonalizeEn('I should book a slot in the lab for the user tests, probably next Wednesday')).toBe('Book a slot in the lab for the user tests, probably next Wednesday');
+  expect(impersonalizeEn('If the fever stays high, I have to call the clinic and not wait')).toBe('If the fever stays high, call the clinic and not wait');
+  expect(impersonalizeEn('Okay so I need to pay the rent')).toBe('Pay the rent');
 });

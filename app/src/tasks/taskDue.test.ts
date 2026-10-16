@@ -54,3 +54,9 @@ test('words without a date give nothing', () => {
   expect(resolveDue('przed obroną', base)).toBeNull()
   expect(resolveDue('jak najszybciej', base)).toBeNull()
 })
+
+test('English ordinal dates', () => {
+  expect(at('22nd of November at 14:00')).toEqual({ day: '2026-11-22', time: '14:00' })
+  expect(at('November 4th')).toEqual({ day: '2026-11-4', time: null })
+  expect(at('by the 20th')).toEqual({ day: '2026-10-20', time: null })
+})

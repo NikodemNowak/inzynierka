@@ -514,6 +514,13 @@ const EN_NEG = /(?:\b(?:not|no|never|without|none|nothing|nobody|cannot)\b|n't)/
 const EN_HEDGE = /\b(?:if|maybe|might|perhaps|probably|possibly|unless|depends|not sure|i guess)\b/giu;
 const EN_VOCAB = new Set('task tasks plan plans meeting decision deadline total about around approximately note need needs'.split(' '));
 
+// "I have to call the clinic" -> "Call the clinic": a quoted English sentence
+// reads as a note, not as the speaker talking.
+const EN_DUTY = /(^|[,;]\s+|\band\s+)(?:so\s+)?I\s+(?:really\s+)?(?:have to|need to|must|should|will have to|have got to|'ll|will)\s+/g;
+const EN_LEAD = /^(?:(?:okay|ok|so|well|also|and|anyway|right)\b[,\s]*)+/i;
+export const impersonalizeEn = (text: string): string =>
+  capitalize(text.replace(EN_LEAD, '').replace(EN_DUTY, (_match, lead: string) => lead).replace(/\s{2,}/g, ' ').trim());
+
 const checkPointEn = (text: string, src: string, allUnits: readonly Unit[] | null, minOverlap: number): string[] => {
   const issues: string[] = [];
   const srcNumbers = new Set((src.match(/\d+/gu) ?? []).map(Number));
@@ -1244,7 +1251,7 @@ export const finalizePoints = (
     const rest = reject.sourceIds.filter(id => !covered.has(id));
     if (!rest.length) continue;
     const quoted = convert(clauseLiteral({ text: reject.text, sourceIds: rest }, byId, language), language);
-    const literal = language === 'pl' ? capitalize(shortenLiteral(impersonalize(quoted, noteWords))) : quoted;
+    const literal = language === 'pl' ? capitalize(shortenLiteral(impersonalize(quoted, noteWords))) : impersonalizeEn(quoted);
     // Narration with nothing to act on is not worth quoting.
     if (language === 'pl' && (rambling || REFLECTION.test(literal)) && substanceScore(literal) < MIN_LITERAL_SUBSTANCE) continue;
     if (language === 'pl' && isTrivia(literal, rest.flatMap(id => byId.get(id) ?? []))) continue;

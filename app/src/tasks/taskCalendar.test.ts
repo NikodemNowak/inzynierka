@@ -3,7 +3,7 @@ import { getCalendars, requestRemindersPermissions } from 'expo-calendar'
 import { createEventInCalendarAsync } from 'expo-calendar/legacy'
 
 jest.mock('react-native', () => ({ Platform: { OS: 'ios' } }))
-const createReminder = jest.fn(async () => ({}))
+const createReminder = jest.fn(async (_details: unknown) => ({}))
 jest.mock('expo-calendar', () => ({
   EntityTypes: { REMINDER: 'reminder', EVENT: 'event' },
   requestRemindersPermissions: jest.fn(),
