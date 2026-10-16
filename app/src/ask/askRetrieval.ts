@@ -64,7 +64,7 @@ const TASK_QUESTION = /\b(?:zadan\w*|zrobic|zalatwic|do\s+zrobienia|co\s+mam|mus
 
 const DUTY = /\b(?:musze|trzeba|mam\s+\w+c|mam\s+do|nalezy|przypomnij|oddac|zaplacic|kupic|zadzwonic|odebrac|have\s+to|need\s+to|must|remind|should|pick\s+up|pay|buy|call)\b/u
 
-const KIND_WEIGHT: Readonly<Record<AskChunk['kind'], number>> = { sentence: 1, point: 1.1, task: 1.2, title: 0.7 }
+const KIND_WEIGHT: Readonly<Record<AskChunk['kind'], number>> = { sentence: 1, point: 0.8, task: 0.9, title: 0.7 }
 const K1 = 1.2
 const B = 0.6
 
@@ -136,7 +136,15 @@ export const retrieve = (question: string, index: AskIndex, options: RetrieveOpt
   // Drop notes far weaker than the best one: they are noise for the model.
   const best = notes[0]?.score ?? 0
   const kept = notes.filter((note, position) => position < maxNotes && note.score >= best * 0.25)
-  let budget = maxPassages
+  // "Co muszę zrobić w sprawie urodzin taty?" is answered by one note: every
+  // duty in it belongs to the answer, not only the sentences that share words.
+  const top = kept[0]
+  if (wantsTasks && !days && top && (kept[1]?.score ?? 0) < top.score * 0.7) {
+    const have = new Set(top.passages.map((chunk) => chunk.id))
+    const duties = index.chunks.filter((chunk) => chunk.noteId === top.noteId && !have.has(chunk.id) && (chunk.kind === 'task' ? !chunk.done : chunk.kind === 'sentence' && DUTY.test(plain(chunk.text))))
+    top.passages.push(...duties.slice(0, 8))
+  }
+  let budget = maxPassages + (top ? Math.max(0, top.passages.length - 6) : 0)
   for (const note of kept) {
     note.passages = note.passages.slice(0, Math.max(1, Math.min(note.passages.length, budget)))
     budget -= note.passages.length
