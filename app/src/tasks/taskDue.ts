@@ -22,8 +22,8 @@ export interface ResolvedDue {
 }
 
 const WEEKDAYS: readonly (readonly [RegExp, number])[] = [
-  [/^(?:poniedział|monday|mon$)/u, 1], [/^(?:wtor|tuesday|tue$)/u, 2], [/^(?:środ|srod|wednesday|wed$)/u, 3],
-  [/^(?:czwart|thursday|thu$)/u, 4], [/^(?:piąt(?:ek|ku|kiem)$|piatek|friday|fri$)/u, 5],
+  [/^(?:poniedział|monday|mon$)/u, 1], [/^(?:wtor|tuesday|tue$)/u, 2], [/^(?:(?:środ|srod)(?:a|ę|e|y|zie|ą)[,.;:!?]?$|wednesday|wed$)/u, 3],
+  [/^(?:czwart(?:ek|ku|kiem|ki)[,.;:!?]?$|thursday|thu$)/u, 4], [/^(?:piąt(?:ek|ku|kiem)$|piatek|friday|fri$)/u, 5],
   [/^(?:sobot|saturday|sat$)/u, 6], [/^(?:niedziel|sunday|sun$)/u, 0],
 ]
 const MONTHS: readonly (readonly [RegExp, number])[] = [

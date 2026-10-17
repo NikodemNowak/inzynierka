@@ -312,6 +312,7 @@ test('does not publish a full detail payload into a disposed screen', async () =
   } finally { state.mockRestore() }
 })
 
+jest.mock('../benchmark/FullFlowSuiteCard', () => ({ FullFlowSuiteCard: () => null }))
 jest.mock('expo-router', () => ({ Stack: { Screen: () => null } }))
 jest.mock('../i18n/useI18n', () => ({
   useI18n: () => ({ language: 'pl', t: (pl: string) => pl }),

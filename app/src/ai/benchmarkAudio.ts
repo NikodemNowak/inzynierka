@@ -52,7 +52,7 @@ const waitForPermissionForeground = (signal?: AbortSignal): Promise<void> =>
 // Permission dialogs can make iOS inactive. Run this before installing the
 // benchmark's foreground-only lifecycle listeners and starting its timers.
 export const prepareBenchmarkAudio = async (
-  locale: 'en-US',
+  locale: 'en-US' | 'pl-PL',
   signal?: AbortSignal,
   speechBackend: SpeechBackend = 'recognizer',
 ): Promise<void> => {

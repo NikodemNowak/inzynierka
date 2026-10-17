@@ -11,6 +11,7 @@ import {
   type TextProps,
 } from 'react-native'
 import { useI18n } from '../../i18n/useI18n'
+import { FullFlowSuiteCard } from '../../benchmark/FullFlowSuiteCard'
 import {
   BENCHMARK_PROFILES,
   BENCHMARK_QWEN3,
@@ -383,6 +384,7 @@ export default function BenchmarkScreen() {
           'Measure transcription and note processing: title, summary, categories and tasks. The screen stays awake during the test. Keep the app open. Leaving the app or memory pressure cancels the attempt.',
         )}
       </Text>
+      <FullFlowSuiteCard />
       <View style={styles.card}>
         <Text style={styles.heading}>{t('Szybki test szybkości', 'Quick speed test')}</Text>
         <Text style={styles.copy}>

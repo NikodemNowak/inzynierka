@@ -4,6 +4,7 @@ import { englishWordsToDigits } from './englishNumbers'
 import type { Language } from '../i18n/language'
 import { localeForLanguage } from '../i18n/language'
 import { resolveDue, splitTaskText } from '../tasks/taskDue'
+import { plain } from './askText'
 import type { AskChunk, AskIndex, AskNote } from './askIndex'
 import type { RetrievedNote } from './askRetrieval'
 
@@ -31,7 +32,7 @@ const formatMoment = (date: Date, allDay: boolean, language: Language): string =
   allDay ? formatDay(date.getTime(), language) : `${formatDay(date.getTime(), language)}, ${date.toLocaleTimeString(localeForLanguage(language), { hour: '2-digit', minute: '2-digit' })}`
 
 const DAY = 86400000
-const DAY_PHRASE = /(?<![\p{L}])(?:(?:w\s+|we\s+|na\s+|on\s+|next\s+|this\s+)?(?:przysz\p{L}+\s+|ten\s+|t[eę]\s+)?)(?:dzi[sś]|dzisiaj|jutr\p{L}*|pojutrze|poniedzia\p{L}*|wtor\p{L}*|[sś]rod\p{L}*|czwart\p{L}*|pi[aą]t\p{L}*|sobot\p{L}*|niedziel\p{L}*|today|tonight|tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday)(?![\p{L}])/giu
+const DAY_PHRASE = /(?<![\p{L}])(?:(?:w\s+|we\s+|na\s+|on\s+|next\s+|this\s+)?(?:przysz\p{L}+\s+|ten\s+|t[eę]\s+)?)(?:dzi[sś]|dzisiaj|jutr\p{L}*|pojutrze|poniedzia\p{L}*|wtor\p{L}*|[sś]rod(?:a|ę|e|y|zie|ą)|czwart(?:ek|ku|kiem)|pi[aą]t(?:ek|ku|kiem)|sobot\p{L}*|niedziel\p{L}*|today|tonight|tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday)(?![\p{L}])/giu
 const DATE_FOLLOWS = /^[,\s]*(?:the\s+)?\d|^[,\s]*(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\p{L}*\s+\d/iu
 
 // The model reads "jutro o szesnastej" badly and cannot count days: numbers
@@ -116,6 +117,8 @@ const rules = (language: Language, today: string): string =>
         '6. Gdy odpowiedzi nie ma we fragmentach, napisz: „Nie znalazłem tego w notatkach.”',
         '7. Liczby i godziny pisz cyframi.',
         '8. Gdy pytanie dotyczy rzeczy do zrobienia, wypisz każdą z fragmentów jako listę z myślnikami. W innym wypadku najwyżej 3 zdania.',
+        '9. Na pytanie „Czy…?” zacznij od „Tak” albo „Nie” według fragmentu („chleba nie kupuję” znaczy „Nie”), a potem w tym samym zdaniu podaj, co mówi notatka. Nie przepisuj wtrąceń typu „nie, czekaj”.',
+        'Fragmenty mogą być po angielsku; odpowiedz wtedy po polsku na ich podstawie.',
       ].join('\n')
     : [
         `Today is ${today}.`,
@@ -128,6 +131,7 @@ const rules = (language: Language, today: string): string =>
         '6. If the excerpts do not contain the answer, write: "I couldn\'t find that in your notes."',
         '7. Write numbers and times with digits.',
         '8. When the question is about things to do, list every one from the excerpts with dashes. Otherwise at most 3 sentences.',
+        '9. For a yes/no question start with "Yes" or "No" as the excerpt says ("I won\'t buy bread" means "No"), then in the same sentence say what the note says. Do not copy fillers like "no, wait".',
         'The notes may be in Polish; answer in English anyway.',
       ].join('\n')
 
@@ -143,7 +147,10 @@ export const askPrompt = (question: string, context: string, history: readonly {
 export const askSystem = (language: Language): string => (language === 'pl' ? SYSTEM_PL : SYSTEM_EN)
 
 export const parseAnswer = (raw: string, sources: readonly AskSource[]): AskAnswer => {
-  const text = raw.replace(/<think>[\s\S]*?<\/think>/gu, '').replace(/<\/?think>/gu, '').trim()
+  const text = raw.replace(/<think>[\s\S]*?<\/think>/gu, '').replace(/<\/?think>/gu, '')
+    // Only [n] citations stay in brackets.
+    .replace(/\s*\[(?!\d+\])[^\]\n]{1,40}\]/gu, '')
+    .trim()
   const cited: AskSource[] = []
   for (const match of text.matchAll(/\[(\d+)\]/gu)) {
     const source = sources.find((item) => item.number === Number(match[1]))
@@ -163,14 +170,19 @@ export const answerQuestion = async (
 ): Promise<AskAnswer> => {
   const { context, sources } = buildAskContext(retrieved, index, language, options.now)
   const prompt = askPrompt(question, context, options.history ?? [], language, options.now)
-  const result = await generate(prompt, options.onToken ?? (() => undefined), {
-    system: askSystem(language),
-    nPredict: ASK_OUTPUT_TOKENS,
-    temperature: 0.2,
-    topP: 0.8,
-    topK: 20,
-    minP: 0,
-    ...(options.signal ? { signal: options.signal } : {}),
-  })
-  return parseAnswer(result.text, sources)
+  const run = (temperature: number, onToken: (token: string) => void) =>
+    generate(prompt, onToken, {
+      system: askSystem(language),
+      nPredict: ASK_OUTPUT_TOKENS,
+      temperature,
+      topP: 0.8,
+      topK: 20,
+      minP: 0,
+      ...(options.signal ? { signal: options.signal } : {}),
+    })
+  const first = parseAnswer((await run(0.2, options.onToken ?? (() => undefined))).text, sources)
+  // The small model sometimes repeats the question instead of answering; one warmer retry fixes it.
+  const bare = (text: string): string => plain(text.replace(/\[\d+\]/gu, '')).replace(/[^\p{L}\p{N}]+/gu, ' ').trim()
+  if (bare(first.text) !== bare(question)) return first
+  return parseAnswer((await run(0.6, () => undefined)).text, sources)
 }

@@ -22,11 +22,11 @@ const startOfDay = (date: Date): number => new Date(date.getFullYear(), date.get
 
 const WEEK_THIS = /\b(?:w\s+tym\s+tygodniu|ten\s+tydzien|tego\s+tygodnia|this\s+week)\b/u
 const WEEK_NEXT = /\b(?:w\s+przyszlym\s+tygodniu|przyszly\s+tydzien|next\s+week)\b/u
-const TEMPORAL = /\b(?:dzis|dzisiaj|jutro|pojutrze|wczoraj|poniedzial\w*|wtor\w*|srod\w*|czwart\w*|piat\w*|sobot\w*|niedziel\w*|weekend\w*|today|tonight|tomorrow|yesterday|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b|\d{1,2}\s+(?:stycz|lut|mar|kwie|maj|czerw|lip|sierp|wrze|pazdz|listop|grud|jan|feb|apr|jun|jul|aug|sep|oct|nov|dec)/u
+const TEMPORAL = /\b(?:dzis|dzisiaj|jutro|pojutrze|wczoraj|poniedzial\w*|wtor\w*|srod(?:a|e|y|zie)|czwart(?:ek|ku|kiem)|piat(?:ek|ku|kiem)|sobot\w*|niedziel\w*|weekend\w*|today|tonight|tomorrow|yesterday|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b|\d{1,2}\s+(?:stycz|lut|mar|kwie|maj|czerw|lip|sierp|wrze|pazdz|listop|grud|jan|feb|apr|jun|jul|aug|sep|oct|nov|dec)/u
 
 const WEEKDAY_WORDS: readonly [RegExp, number][] = [
-  [/^(?:niedziel\w*|sunday)$/u, 0], [/^(?:poniedzial\w*|monday)$/u, 1], [/^(?:wtor\w*|tuesday)$/u, 2], [/^(?:srod\w*|wednesday)$/u, 3],
-  [/^(?:czwart\w*|thursday)$/u, 4], [/^(?:piat\w*|friday)$/u, 5], [/^(?:sobot\w*|saturday)$/u, 6],
+  [/^(?:niedziel\w*|sunday)$/u, 0], [/^(?:poniedzial\w*|monday)$/u, 1], [/^(?:wtor\w*|tuesday)$/u, 2], [/^(?:srod(?:a|e|y|zie)|wednesday)$/u, 3],
+  [/^(?:czwart(?:ek|ku|kiem)|thursday)$/u, 4], [/^(?:piat(?:ek|ku|kiem)|friday)$/u, 5], [/^(?:sobot\w*|saturday)$/u, 6],
 ]
 // "co miałem w czwartek" asks about the last Thursday, "co mam w czwartek" about the next one.
 const PAST = /\b(?:mialem|mialam|bylo|byla|byl|bylem|bylam|zrobilem|zrobilam|ostatni\w*|zeszl\w*|did|was|were|had|last)\b/u
