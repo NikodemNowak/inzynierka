@@ -201,7 +201,8 @@ export const runFullFlowSuite = async (onProgress: (progress: SuiteProgress) => 
         : { text: language === 'pl' ? 'Nie znalazłem tego w notatkach.' : "I couldn't find that in your notes.", sources: [], cited: [] }
       return {
         id: question.id, type: question.type, question: question.question, gold: question.answer, text: answer.text,
-        cited: answer.cited.map((source) => source.noteId), expansion,
+        cited: answer.cited.map((source) => source.noteId), expansion, retried: answer.retried ?? false,
+        sourcesLexical: lexical.map((note) => note.noteId), sourcesHybrid: hybrid.map((note) => note.noteId),
         recallLexical: recall(lexical), recallHybrid: recall(hybrid),
         include: question.mustInclude.length ? question.mustInclude.filter((word) => includes(answer.text, word)).length / question.mustInclude.length : null,
         bad: question.mustNotInclude.filter((word) => includes(answer.text, word)),
