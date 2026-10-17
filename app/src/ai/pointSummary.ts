@@ -1523,15 +1523,19 @@ const hasDate = (text: string): boolean => DATE_SEARCH.some(pattern => pattern.t
 const COMMITMENT = rx(String.raw`(?<![^\W\d_])(?:postanowi(?:ł\w*|my|ć)|postanaw\w*|zdecyduj\w*|musz\w*|musi\w*|trzeba|mam(?:y)?\s+(?:\w+\s+){0,2}\w+ć|powinn?\w*|zamierz\w*|planuj\w*|termin\w*)(?![^\W\d_])`, 'i');
 // Obligations and decisions, or a dated event that is not a story about the past.
 export const isEventUnit = (text: string): boolean => {
+  // "zakupy na weekend: jabłka, ser i makaron": a shopping list is a duty of its own.
+  if (SHOPPING.test(text)) return true;
   if (COMMITMENT.test(text)) return hasDate(text) || SOON.test(text) || /\d/u.test(text) || [...statedNumbers(text)].some(n => n >= BIG_NUMBER);
   if (PAST_ANY.test(text) || REFLECTION.test(text)) return false;
   return (hasDate(text) && hasNumber(text)) || (PLAN_SIGNAL.test(text) && (hasDate(text) || SOON.test(text)));
 };
 
 // A chunk cut by the token limit loses its tail, so more of the skipped sentences are brought back.
-export const recoverMissed = (points: readonly WorkPoint[], units: readonly Unit[], cut = false): WorkPoint[] => {
+// A model that answered with fewer points than the note's budget (a dense plan
+// summarised in three lines) may bring back skipped events up to that budget.
+export const recoverMissed = (points: readonly WorkPoint[], units: readonly Unit[], cut = false, target = 0): WorkPoint[] => {
   const covered = new Set(points.flatMap(point => point.sourceIds));
-  const budget = Math.max(1, Math.round(points.length * (cut ? RECOVER_SHARE_CUT : RECOVER_SHARE)));
+  const budget = Math.max(1, Math.round(points.length * (cut ? RECOVER_SHARE_CUT : RECOVER_SHARE)), target - points.length);
   const byId = new Map(units.map(unit => [unit.id, unit]));
   const noteWords = new Set(units.flatMap(unit => words(unit.text)));
   const added: WorkPoint[] = [];
@@ -1723,6 +1727,8 @@ export const outputTokensFor = (points: number): number => Math.min(640, 38 * po
 // Points above the note's budget by more than this are dropped, least substantial first.
 const CAP_SLACK = 0;
 const CHUNK_ASK_FACTOR = 1.2;
+const RECORDING_INTRO = /^(?:dobra|okej|ok|no|więc)?[,\s]*(?:nagrywam|robię|zapisuję|dyktuję)\s+(?:sobie\s+)?(?:plan|notatkę|listę|krótką\s+notatkę)(?:[^\d]{0,60})$/iu;
+const SHOPPING = /(?:^|\s)(?:zakupy|lista\s+zakupów|do\s+kupienia)(?:\s|:|,|$)/iu;
 const EVENT_POINT_CAP = 10;
 
 export interface PointSummaryOptions {
@@ -1784,7 +1790,9 @@ export const generatePointSummaryDetailed = async (
     let cut = false;
     const unnarrated = units.filter(unit => !isNarrated(unit));
     const rambling = isRambling(units) && unnarrated.length >= options.minUnitsForModel;
-    const shown = rambling ? unnarrated : units;
+    // "Dobra, nagrywam plan na najbliższe dni, bo zapomnę" says nothing a point could keep.
+    const informative = (rambling ? unnarrated : units).filter(unit => !RECORDING_INTRO.test(unit.text));
+    const shown = informative.length >= options.minUnitsForModel ? informative : (rambling ? unnarrated : units);
     const noteWeight = shown.reduce((sum, unit) => sum + unitWeight(unit, rambling), 0);
     // A dense plan has a duty or a date in nearly every sentence; each of them deserves a point.
     const noteLimit = Math.max(options.pointsForNote(Math.round(noteWeight)), Math.min(EVENT_POINT_CAP, shown.filter(unit => isEventUnit(unit.text)).length));
@@ -1811,7 +1819,7 @@ export const generatePointSummaryDetailed = async (
     }
     if (cut) warnings.push('Summary model output was cut off; the last points may be missing.');
     const finalized = finalizePoints(language === 'pl' ? dropNarration(rawPoints, units) : rawPoints, units, language);
-    const recovered = language === 'pl' ? recoverMissed(finalized.points, units, cut) : finalized.points;
+    const recovered = language === 'pl' ? recoverMissed(finalized.points, units, cut, noteLimit) : finalized.points;
     finalPoints = capPoints(recovered, units, noteLimit + CAP_SLACK);
     if (language === 'pl') {
       // Recovered and literal points skip the per-point fixes; "…i wypchnę" can come back here.

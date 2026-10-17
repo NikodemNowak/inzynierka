@@ -13,3 +13,12 @@ test('keeps names and numbers that are not the deadline', () => {
   expect(polishTaskTitle({ title: 'Zadzwonić do Kuby', due: 'środa' }, new Set(['zadzwonić', 'do', 'kuby'])).title).toBe('Zadzwonić do Kuby')
   expect(polishTaskTitle({ title: 'Kupić 2 paczki', due: 'jutro' }, new Set(['kupić', 'paczki'])).title).toBe('Kupić 2 paczki')
 })
+
+import { dueFromCorrection } from './taskLines'
+
+test('a task without a date takes the corrected day and hour', () => {
+  const units = [{ id: 1, text: 'Trening siatkówki miał być w środę o dziewiętnastej nie czekaj Na czwartek na dwudziestą' }]
+  expect(dueFromCorrection({ title: 'Trening siatkówki', due: null, sourceIds: [1] }, units as never).due).toBe('czwartek 20:00')
+  expect(dueFromCorrection({ title: 'Trening siatkówki', due: 'środa', sourceIds: [1] }, units as never).due).toBe('środa')
+  expect(dueFromCorrection({ title: 'Kupić mleko', due: null, sourceIds: [2] }, [{ id: 2, text: 'muszę kupić mleko' }] as never).due).toBeNull()
+})

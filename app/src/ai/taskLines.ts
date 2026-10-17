@@ -2,7 +2,7 @@ import type { Language } from '../i18n/language'
 import { recordGeneration } from './generationMetrics'
 import { generate, getContextWindowSize, measureFormattedPromptTokens } from './llm'
 import { throwIfProcessingAborted, type ProcessingExecutionContext } from './processingContext'
-import { numberSpans, promptView } from './polishNumbers'
+import { numberSpans, numberWordValue, promptView } from './polishNumbers'
 import { TASK_LINES_PROMPT_EN, englishPromptView, isTaskCandidateEn, postprocessTaskLinesEn } from './taskLinesEn'
 import { noteSourceSystem, sourceFirstPrompt } from './sharedSourcePrompt'
 import { digitView, inferDue, repairDue, whenOf } from './taskDueRepair'
@@ -944,10 +944,13 @@ export const recoverAmount = (t: TaskDraft, units: readonly Unit[]): TaskDraft =
     const amounts = sentenceAmounts(s)
     if (amounts.length !== 1) continue
     const words = s.toLowerCase().match(rx(String.raw`\w+`, 'g')) ?? []
+    // "burrito kosztowało 27 zł … pomógł jej nosić kartony": a price already paid is
+    // a fact of its own clause, not the amount of a nearby duty.
     const near = words.some(
       (w, k) =>
         (w.startsWith('zł') || w.startsWith('złot') || w.startsWith('euro')) &&
-        words.slice(Math.max(0, k - 9), k + 9).some((x) => x.length >= 4 && ts.has(x.slice(0, 4))),
+        !words.slice(Math.max(0, k - 4), k).some((x) => /^(?:kosztował\w*|zapłacił\w*|wydał\w*|dostał\w*|kupił\w*)$/u.test(x)) &&
+        words.slice(Math.max(0, k - 6), k + 6).some((x) => x.length >= 4 && ts.has(x.slice(0, 4))),
     )
     if (near) found.set(`${amounts[0]!.value}|${amounts[0]!.currency}`, amounts[0]!)
   }
@@ -1391,6 +1394,8 @@ export const dativeName = (t: TaskDraft): TaskDraft => {
   for (let index = 1; index <= Math.min(3, parts.length - 1); index += 1) {
     const name = parts[index]!.replace(/[,;]$/u, '')
     if (!/^\p{Lu}\p{Ll}+a$/u.test(name) || NAME_PREPOSITIONS.has(parts[index - 1]!.toLowerCase())) continue
+    // "Przeprowadza" capitalized by the recognizer is a verb, not a name.
+    if (/^(?:prze|przy|po|wy|za|od|roz|na|do)\p{Ll}{5,}a$/iu.test(name)) continue
     const dative = dativeOf(name)
     if (!dative) return t
     parts[index] = parts[index]!.replace(name, dative)
@@ -1441,9 +1446,29 @@ export const postprocessTaskLines = (raw: readonly TaskDraft[], units: readonly 
   tasks = tasks.map((t) =>
     trimLongTitle(completeObjectClause(dativeName(perfective(dueFromSentenceLead(withWeekday(recoverAmount(repairVerb(dropClosingDue(t, units), units), units), units), units))), units)),
   )
-  tasks = tasks.map((t) => cleanTaskDue(t, units))
+  tasks = tasks.map((t) => cleanTaskDue(dueFromCorrection(t, units), units))
   const noteWords = new Set(units.flatMap((unit) => unit.text.toLowerCase().match(/\p{L}+/gu) ?? []))
   return { kept: dedupeTasks(mergeVague(tasks)).map((t) => polishTaskTitle(t, noteWords)), rejected }
+}
+
+const CORRECTION_TURN = /(?:nie,?\s+czekaj|przenie\p{L}+|przesun\p{L}+|zmienili\s+na|jednak)\s+(.{0,60})/iu
+const DAY_AFTER = /(?:^|\s)(?:w|we|na)\s+(poniedziałek|wtorek|środę|środa|czwartek|piątek|sobotę|sobota|niedzielę|niedziela)(?:\s+(?:na|o)\s+(\p{L}+(?:\s+\p{L}+)?|\d{1,2}(?::\d{2})?))?/iu
+// "Trening miał być w środę o 19, nie czekaj, przenieśli go na czwartek na 20":
+// a task the model left without a date takes the corrected day and hour.
+export const dueFromCorrection = <T extends { title: string; due: string | null; sourceIds: number[] }>(task: T, units: readonly Unit[]): T => {
+  if (task.due) return task
+  const text = units.filter((unit) => task.sourceIds.includes(unit.id)).map((unit) => unit.text).join(' ')
+  const turn = CORRECTION_TURN.exec(text)
+  const day = turn ? DAY_AFTER.exec(turn[1]!) : null
+  if (!day) return task
+  const nominative = day[1]!.toLowerCase().replace(/ę$/u, 'a')
+  const spoken = day[2]?.split(/\s+/u) ?? []
+  const first = spoken[0] ? numberWordValue(spoken[0]) : null
+  const second = spoken[1] ? numberWordValue(spoken[1]) : null
+  // "dwudziestą pierwszą" is 21; "dwudziestą" alone 20.
+  const hour = day[2] && /^\d/u.test(day[2]) ? day[2] : first === null ? null : first + (first === 20 && second !== null && second < 10 ? second : 0)
+  const clock = typeof hour === 'number' && hour >= 1 && hour <= 24 ? `${hour}:00` : typeof hour === 'string' ? (hour.includes(':') ? hour : `${hour}:00`) : ''
+  return { ...task, due: clock ? `${nominative} ${clock}` : nominative }
 }
 
 const TITLE_ADJECTIVE = /^\p{Lu}\p{Ll}{3,}(?:ych|ymi|ego|emu|owej|owym|nej|nym|skiej|skich)$/u
