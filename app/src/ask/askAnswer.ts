@@ -23,7 +23,11 @@ export interface AskAnswer {
   sources: AskSource[]
   // The notes the answer cites, in citation order.
   cited: AskSource[]
+  // The first answer was "not found" and a second look at the best note answered.
+  retried?: boolean
 }
+
+const NOT_FOUND = /nie znalaz(?:łem|łam)|nie ma (?:tego|informacji)|couldn't find|could not find|no information/iu
 
 const formatDay = (ms: number, language: Language): string =>
   new Date(ms).toLocaleDateString(localeForLanguage(language), { weekday: 'long', day: 'numeric', month: 'long' })
@@ -114,7 +118,7 @@ const rules = (language: Language, today: string): string =>
         '3. Daty w notatkach są już przeliczone na kalendarz („20 października (dziś)”). Podawaj je tak, jak są we fragmentach.',
         '4. Gdy notatka się poprawia („nie, czekaj”, „jednak”, „przesunięte na”), obowiązuje późniejsza wersja.',
         '5. Zachowaj zaprzeczenia i warunki („nie kupować”, „tylko jeśli”). Linie „Zadanie:” są skrótem notatki; gdy zdanie notatki mówi co innego, obowiązuje zdanie.',
-        '6. Gdy odpowiedzi nie ma we fragmentach, napisz: „Nie znalazłem tego w notatkach.”',
+        '6. Notatki to zapis mowy, więc słowa bywają przekręcone („pen” zamiast „pendrive”, „Krakoff” zamiast „Kraków”). Gdy fragment mówi o tej samej sprawie, nawet innymi słowami albo bez jakiegoś szczegółu z pytania (np. nazwy miasta), odpowiedz na jego podstawie i dopisz krótko, czego notatka nie mówi. Gdy żaden fragment nie mówi o tej sprawie, napisz: „Nie znalazłem tego w notatkach.”',
         '7. Liczby i godziny pisz cyframi.',
         '8. Gdy pytanie dotyczy rzeczy do zrobienia, wypisz każdą z fragmentów jako listę z myślnikami. W innym wypadku najwyżej 3 zdania.',
         '9. Na pytanie „Czy…?” zacznij od „Tak” albo „Nie” według fragmentu („chleba nie kupuję” znaczy „Nie”), a potem w tym samym zdaniu podaj, co mówi notatka. Nie przepisuj wtrąceń typu „nie, czekaj”.',
@@ -128,7 +132,7 @@ const rules = (language: Language, today: string): string =>
         '3. Dates in the notes are already turned into calendar days ("October 20 (today)"). Give them as they appear in the excerpts.',
         '4. When a note corrects itself ("no, wait", "actually", "moved to"), the later version counts.',
         '5. Keep negations and conditions ("don\'t buy", "only if"). "Task:" lines are shorthand; when a sentence of the note says otherwise, the sentence counts.',
-        '6. If the excerpts do not contain the answer, write: "I couldn\'t find that in your notes."',
+        '6. The notes are transcribed speech, so words can be garbled ("pen" for "pendrive", "Krakoff" for "Krakow"). When an excerpt talks about the same matter, even in other words or without some detail of the question (e.g. the city name), answer from it and briefly say what the note does not say. When no excerpt talks about it, write: "I couldn\'t find that in your notes."',
         '7. Write numbers and times with digits.',
         '8. When the question is about things to do, list every one from the excerpts with dashes. Otherwise at most 3 sentences.',
         '9. For a yes/no question start with "Yes" or "No" as the excerpt says ("I won\'t buy bread" means "No"), then in the same sentence say what the note says. Do not copy fillers like "no, wait".',
@@ -170,8 +174,8 @@ export const answerQuestion = async (
 ): Promise<AskAnswer> => {
   const { context, sources } = buildAskContext(retrieved, index, language, options.now)
   const prompt = askPrompt(question, context, options.history ?? [], language, options.now)
-  const run = (temperature: number, onToken: (token: string) => void) =>
-    generate(prompt, onToken, {
+  const run = (temperature: number, onToken: (token: string) => void, text = prompt) =>
+    generate(text, onToken, {
       system: askSystem(language),
       nPredict: ASK_OUTPUT_TOKENS,
       temperature,
@@ -183,6 +187,15 @@ export const answerQuestion = async (
   const first = parseAnswer((await run(0.2, options.onToken ?? (() => undefined))).text, sources)
   // The small model sometimes repeats the question instead of answering; one warmer retry fixes it.
   const bare = (text: string): string => plain(text.replace(/\[\d+\]/gu, '')).replace(/[^\p{L}\p{N}]+/gu, ' ').trim()
-  if (bare(first.text) !== bare(question)) return first
-  return parseAnswer((await run(0.6, () => undefined)).text, sources)
+  if (bare(first.text) === bare(question)) return parseAnswer((await run(0.6, () => undefined)).text, sources)
+  // A recognizer that dropped a word ("Prague") makes the model refuse a note
+  // that does answer; one second look at the best note, told so, recovers it.
+  if (sources.length && NOT_FOUND.test(first.text) && first.text.length < 120) {
+    const hint = language === 'pl'
+      ? `\n\nUWAGA: Notatka [1] prawdopodobnie dotyczy tej sprawy, choć zapis mowy mógł przekręcić lub pominąć niektóre słowa. Jeśli tak, odpowiedz na jej podstawie i dopisz, czego w niej brakuje. Jeśli naprawdę nie dotyczy, napisz: „Nie znalazłem tego w notatkach.”`
+      : `\n\nNOTE: Note [1] is probably about this matter, though the transcript may have garbled or dropped some words. If so, answer from it and say what is missing. If it really is not about it, write: "I couldn't find that in your notes."`
+    const second = parseAnswer((await run(0.2, () => undefined, prompt.replace(/\n\n(?:ODPOWIEDŹ|ANSWER):$/u, `${hint}$&`))).text, sources)
+    if (!NOT_FOUND.test(second.text)) return { ...second, retried: true }
+  }
+  return first
 }
