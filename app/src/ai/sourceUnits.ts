@@ -99,7 +99,7 @@ const MAX_UNIT_WORDS = 30;
 const CAPITALIZED = /^\p{Lu}\p{Ll}*$/u;
 const FIRST_PAST = /^\p{L}{3,}(?:łem|łam|liśmy|łyśmy)$/u;
 const FIRST_PRESENT = /^\p{L}{3,}uję$/u;
-const NUMBER_WORD = /^(?:\d+(?::\d+)?|jeden|jedna|jedno|dwa|dwie|trzy|cztery|pięć|sześć|siedem|osiem|dziewięć|dziesięć|\p{L}+naście|\p{L}*dzieści|\p{L}*dziesiąt|sto|dwieście|\p{L}*set|tysiąc\p{L}*|(?:pierwsz|drug|trzeci|ósm|siódm|szóst|dziewiąt|dziesiąt|\p{L}+nast|dwudziest|trzydziest)\p{L}*)$/iu;
+const NUMBER_WORD = /^(?:\d+(?::\d+)?|jeden|jedna|jedno|dwa|dwie|trzy|cztery|pięć|sześć|siedem|osiem|dziewięć|dziesięć|\p{L}+naście|\p{L}*dzieści|\p{L}*dziesiąt|sto|dwieście|\p{L}*set|tysiąc\p{L}*|(?:pierwsz|drug|trzeci|ósm|siódm|szóst|dziewiąt|dziesiąt|\p{L}+nast|dwudziest|trzydziest)\p{L}*|(?:czwart|piąt)(?:y|a|e|ego|ej|ym|emu|ą)?)$/iu;
 const WEEKDAY = /^(?:poniedziałek|wtorek|środę|środa|czwartek|piątek|sobotę|sobota|niedzielę|niedziela|weekend)$/iu;
 const TIME_STARTS = new Set(["jutro", "pojutrze", "dzisiaj", "dziś", "wczoraj", "później", "potem"]);
 const PRONOUN_STARTS = new Set(["on", "ona", "oni", "one"]);
@@ -113,6 +113,8 @@ const INTENSIFIER = new Set(["całkiem", "bardzo", "dość", "naprawdę", "nawet
 const OBJECT_PRONOUN = new Set(["ją", "go", "mu", "je", "jej", "im", "ich", "cię", "ci", "nią", "nim"]);
 const ADJECTIVE_END = /^\p{L}{4,}(?:ych|ymi|ego|emu|owej|owym|nej|nym|skiej|skim)$/u;
 const ORDINAL_END = /(?:ej|ego|ym)$/u;
+const MEAL = /^(?:obiad|lunch|śniadanie|kolację|kolacje|kawę|kawe|deser)$/u;
+const CAPITAL_VERB = /^(?:prze|przy|po|wy|za|od|roz|na|do)\p{Ll}{4,}(?:a|e|i|uje|ją)$/u;
 const TOPIC_STARTS = new Set(["spotkanie", "rachunek", "rachunki", "wizyta", "zaliczka", "zaliczkę", "zakupy", "prezentacja", "egzamin", "kolokwium", "termin", "rata", "czynsz", "przegląd", "urodziny", "wyjazd", "lot", "pociąg"]);
 
 // English speech: capitals mark names, days and months, so only "I…" and spoken
@@ -140,6 +142,13 @@ const boundaryScore = (index: number, raw: readonly string[], norm: readonly str
   const previous = norm[index - 1];
   // "całkiem dobra": an adjective after an intensifier, not the discourse "Dobra,".
   if (STRONG_STARTS.some((phrase) => startsWith(index, phrase)) && !INTENSIFIER.has(previous)) return 5;
+  // "miał być w środę nie czekaj Na czwartek": the words after the cue are the correction.
+  if (previous === "czekaj" || previous === "sorry" || previous === "poprawka" || (previous === "nie" && norm[index - 2] === "czekaj")) return 0;
+  // "przygotować harmonogram na lunch wziąłem": the phrase before the speaker's verb is its own.
+  if (norm[index] === "na" && MEAL.test(norm[index + 1] ?? "") && (FIRST_PAST.test(norm[index + 2] ?? "") || FIRST_PRESENT.test(norm[index + 2] ?? ""))) return 3;
+  if ((FIRST_PAST.test(norm[index]) || FIRST_PRESENT.test(norm[index])) && norm[index - 2] === "na" && MEAL.test(previous)) return 0;
+  // "w niedzielę Przeprowadza": a verb the recognizer capitalized after a day is not a new statement.
+  if (CAPITALIZED.test(raw[index]) && (WEEKDAY.test(previous) || TIME_TAIL.test(previous)) && CAPITAL_VERB.test(norm[index])) return 0;
   // "muszę zrobić Slajdy", "nie zapomnieć oddać": an infinitive keeps its object.
   // "to ja ją przygotowuję": an object pronoun keeps its verb.
   if (/\p{L}{2,}ć$/u.test(previous) || OBJECT_PRONOUN.has(previous)) return 0;
