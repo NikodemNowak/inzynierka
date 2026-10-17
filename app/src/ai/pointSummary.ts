@@ -1292,7 +1292,7 @@ const correctionContext = (ids: readonly number[], byId: ReadonlyMap<number, Uni
   }).join(' ');
 
 // A point about the recording itself ("Nagrywam to") is not part of the note.
-const META_POINT = rx(String.raw`^(?:nagrywam|nagrywamy|dyktuję|dyktuje)(?![^\W\d_])(?:\s*,|\s+(?:to|się|notatk\w+|dla|bo|że)(?![^\W\d_]))|^(?:nagrywam|dyktuję)\s*$|(?<![^\W\d_])test\s+mikrofonu`, 'i');
+const META_POINT = rx(String.raw`^(?:nagrywam|nagrywamy|dyktuję|dyktuje)(?![^\W\d_])(?:\s*,|\s+(?:to|się|notatk\w+|dla|bo|że)(?![^\W\d_]))|^(?:nagrywam|dyktuję)\s*$|(?<![^\W\d_])test\s+mikrofonu|^(?:plan|notatka|lista|podsumowanie)(?:\s+[^\W\d_]+){1,4}\s*$`, 'i');
 export const isMetaPoint = (text: string): boolean =>
   META_POINT.test(text) && !/\d/u.test(text) && !DATE_SEARCH.some(pattern => pattern.test(text));
 
@@ -1723,6 +1723,7 @@ export const outputTokensFor = (points: number): number => Math.min(640, 38 * po
 // Points above the note's budget by more than this are dropped, least substantial first.
 const CAP_SLACK = 0;
 const CHUNK_ASK_FACTOR = 1.2;
+const EVENT_POINT_CAP = 10;
 
 export interface PointSummaryOptions {
   readonly chunkMaxUnits: number;
@@ -1785,12 +1786,14 @@ export const generatePointSummaryDetailed = async (
     const rambling = isRambling(units) && unnarrated.length >= options.minUnitsForModel;
     const shown = rambling ? unnarrated : units;
     const noteWeight = shown.reduce((sum, unit) => sum + unitWeight(unit, rambling), 0);
+    // A dense plan has a duty or a date in nearly every sentence; each of them deserves a point.
+    const noteLimit = Math.max(options.pointsForNote(Math.round(noteWeight)), Math.min(EVENT_POINT_CAP, shown.filter(unit => isEventUnit(unit.text)).length));
     const chunks = splitIntoChunks(shown, options.chunkMaxUnits);
     for (const chunk of chunks) {
       throwIfProcessingAborted(execution);
       const weightOf = (list: readonly Unit[]): number => list.reduce((sum, unit) => sum + unitWeight(unit, rambling), 0);
       // With several chunks each asks for a little extra; the surplus is trimmed after the checks.
-      const share = options.pointsForNote(Math.round(noteWeight)) * weightOf(chunk) / noteWeight;
+      const share = noteLimit * weightOf(chunk) / noteWeight;
       const maxPoints = Math.max(rambling ? 2 : 3, chunks.length > 1 ? Math.ceil(share * CHUNK_ASK_FACTOR) : Math.round(share));
       const nPredict = outputTokensFor(maxPoints);
       const shown = chunk.map(unit => ({ ...unit, text: language === 'pl' ? promptView(unit.text) : englishPromptView(unit.text) }));
@@ -1809,7 +1812,7 @@ export const generatePointSummaryDetailed = async (
     if (cut) warnings.push('Summary model output was cut off; the last points may be missing.');
     const finalized = finalizePoints(language === 'pl' ? dropNarration(rawPoints, units) : rawPoints, units, language);
     const recovered = language === 'pl' ? recoverMissed(finalized.points, units, cut) : finalized.points;
-    finalPoints = capPoints(recovered, units, options.pointsForNote(Math.round(noteWeight)) + CAP_SLACK);
+    finalPoints = capPoints(recovered, units, noteLimit + CAP_SLACK);
     if (language === 'pl') {
       // Recovered and literal points skip the per-point fixes; "…i wypchnę" can come back here.
       const byId = new Map(units.map(unit => [unit.id, unit]));

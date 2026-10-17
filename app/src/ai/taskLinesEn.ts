@@ -203,6 +203,9 @@ export const postprocessTaskLinesEn = (raw: readonly EnTaskDraft[], units: reado
     if (!task.due) task.due = inferDueEn(task.title, wide)
     task.due = correctedDueEn(task.due, Math.max(...task.sourceIds), byId)
     Object.assign(task, repairDueEn(task.title, task.due))
+    // "Call Chris on Friday — Friday": the due already says when.
+    const when = /\b(?:on\s+)?(monday|tuesday|wednesday|thursday|friday|saturday|sunday|today|tomorrow|tonight)\s*$/iu.exec(task.title)
+    if (when && task.due?.toLowerCase().includes(when[1]!.toLowerCase())) task.title = task.title.slice(0, when.index).trim()
     const key = task.title.toLowerCase()
     if (seen.has(key)) continue
     seen.add(key)

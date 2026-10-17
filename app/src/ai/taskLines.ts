@@ -1442,7 +1442,32 @@ export const postprocessTaskLines = (raw: readonly TaskDraft[], units: readonly 
     trimLongTitle(completeObjectClause(dativeName(perfective(dueFromSentenceLead(withWeekday(recoverAmount(repairVerb(dropClosingDue(t, units), units), units), units), units))), units)),
   )
   tasks = tasks.map((t) => cleanTaskDue(t, units))
-  return { kept: dedupeTasks(mergeVague(tasks)), rejected }
+  const noteWords = new Set(units.flatMap((unit) => unit.text.toLowerCase().match(/\p{L}+/gu) ?? []))
+  return { kept: dedupeTasks(mergeVague(tasks)).map((t) => polishTaskTitle(t, noteWords)), rejected }
+}
+
+const TITLE_ADJECTIVE = /^\p{Lu}\p{Ll}{3,}(?:ych|ymi|ego|emu|owej|owym|nej|nym|skiej|skich)$/u
+// Last pass over a title: the model's "Spotkanie z ..." placeholder, "Odać" for
+// the note's "oddać", "z sieci Komputerowych" from the recognizer's capitals and
+// a deadline number repeated in the title ("sprawozdanie 23 — piątek do 23:00").
+export const polishTaskTitle = <T extends { title: string; due: string | null }>(task: T, noteWords: ReadonlySet<string>): T => {
+  let title = task.title
+    .replace(/\s+(?:z|ze|u|do|na|dla|o)\s*(?:\.{2,}|…|\[[^\]]{1,24}\])/gu, '')
+    .replace(/\s*(?:\.{2,}|…|\[[^\]]{1,24}\])\s*/gu, ' ')
+    .replace(/\p{L}{4,}/gu, (word, offset: number) => {
+      const lower = word.toLowerCase()
+      if (offset > 0 && TITLE_ADJECTIVE.test(word)) return lower
+      if (noteWords.has(lower)) return word
+      const near = [...noteWords].filter((candidate) => candidate.length >= 4 && candidate[0] === lower[0] &&
+        candidate.slice(-2) === lower.slice(-2) && Math.abs(candidate.length - lower.length) <= 1 && editDistance(candidate, lower) === 1)
+      if (near.length !== 1) return word
+      const fixed = near[0]!
+      return word[0] === word[0]!.toUpperCase() ? fixed.charAt(0).toUpperCase() + fixed.slice(1) : fixed
+    })
+  const trailing = /\s+(\d{1,2})$/u.exec(title)
+  if (trailing && task.due && new RegExp(`(?:^|\\D)${trailing[1]}(?:\\D|$)`, 'u').test(task.due)) title = title.slice(0, trailing.index)
+  title = title.replace(/\s{2,}/gu, ' ').trim()
+  return title === task.title ? task : { ...task, title }
 }
 
 // ---------------------------------------------------------------- candidate pre-filter

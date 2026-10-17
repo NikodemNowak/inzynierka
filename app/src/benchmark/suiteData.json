@@ -5,17 +5,17 @@
   {
    "id": "pl-plan",
    "language": "pl",
-   "reference": "Dobra, nagrywam plan na najbliższe dni, bo inaczej o czymś zapomnę. Jutro o szesnastej trzydzieści mam dentystę na ulicy Piotrkowskiej, to jest kontrola i może jedna plomba. W piątek muszę oddać sprawozdanie z sieci komputerowych, termin jest do dwudziestej trzeciej. Zakupy na weekend: mleko, jajka, pomidory i kawa, ale chleba nie kupuję, bo mama upiekła. Spotkanie z promotorem miało być w poniedziałek o dziesiątej, nie, czekaj, przesunął je na wtorek na czternastą. Muszę jeszcze zadzwonić do Kuby w sprawie wyjazdu do Zakopanego, bo do środy trzeba wpłacić zaliczkę trzysta złotych za nocleg. Rachunek za internet, osiemdziesiąt dziewięć złotych, zapłacić do końca miesiąca. A, i nie zapomnieć oddać Marcie ładowarki do laptopa."
+   "reference": "Dobra, nagrywam plan na najbliższe dni, bo inaczej o czymś zapomnę. W czwartek o siedemnastej piętnaście oddaję hulajnogę elektryczną do naprawy, pęknięty błotnik. W piątek muszę oddać projekt z robotyki, termin jest do dwudziestej. Zakupy na weekend: jabłka, ser i makaron, ale masła nie kupuję, bo mam w zamrażarce. Trening siatkówki miał być w środę o dziewiętnastej, nie, czekaj, przenieśli go na czwartek na dwudziestą. Muszę jeszcze zadzwonić do Bartka w sprawie festiwalu jazzowego, bo do niedzieli trzeba kupić bilety po sto osiemdziesiąt złotych. Abonament za telefon, sześćdziesiąt pięć złotych, zapłacić do dwudziestego piątego. A, i nie zapomnieć oddać Zuzi pendrive'a."
   },
   {
    "id": "pl-dziennik",
    "language": "pl",
-   "reference": "Dzisiaj był dość męczący dzień w pracy, od rana spotkania jedno za drugim. Klient z Gdańska zmienił wymagania i projekt Orion przesuwa się o dwa tygodnie. Szef powiedział, że prezentacja dla zarządu jest w czwartek o jedenastej i to ja ją przygotowuję, więc w środę wieczorem muszę zrobić slajdy. Na obiad byłem w nowej knajpie z ramenem, miska kosztowała trzydzieści dwa złote, całkiem dobra. Wieczorem dzwoniła Ola, że jej kot jest chory i w sobotę jedzie z nim do weterynarza, prosiła, żebym ją podwiózł o dziewiątej. Powiedziałem, że tak. Jutro rano siłownia, a po pracy odebrać paczkę z paczkomatu."
+   "reference": "Dzisiaj był dość męczący dzień w pracy, od rana telefony jeden za drugim. Klient z Katowic zmienił zakres i projekt Kometa opóźnia się o tydzień. Kierowniczka powiedziała, że hackathon dla nowych pracowników jest w piątek o trzynastej i to ja go prowadzę, więc w czwartek wieczorem muszę przygotować harmonogram. Na lunch wziąłem burrito z nowego food trucka, kosztowało dwadzieścia siedem złotych, bardzo dobre. Wieczorem dzwoniła Lena, że w niedzielę się przeprowadza, i prosiła, żebym pomógł jej nosić kartony o dziesiątej. Powiedziałem, że tak. Jutro rano joga, a po pracy odebrać buty od szewca."
   },
   {
    "id": "en-trip",
    "language": "en",
-   "reference": "Quick note about the trip to Lisbon. The flight is on November fifth at seven ten in the morning from Warsaw. I still need to book the hotel near the old town, the budget is about ninety euros per night. Emma said she can drive us to the airport, so no taxi. I must renew my ID card before the trip, the appointment at the city office is next Tuesday at nine. Also buy a travel adapter and pack two chargers. Don't buy new headphones, the old ones are fine. Call Chris on Friday to ask about the restaurant recommendations."
+   "reference": "Quick note about the trip to Prague. The train is on December third at six forty five in the morning from Krakow. I still need to book a hostel near the old town square, the budget is about forty euros per night. Nina said she can lend us a big backpack, so no need to buy one. I must renew my driving licence before the trip, the appointment is next Wednesday at ten. Also buy a power bank and pack warm gloves. Don't buy a new jacket, the old one is fine. Email Peter on Thursday about the museum tickets."
   }
  ],
  "notes": [
@@ -781,11 +781,12 @@
   {
    "id": "a01",
    "language": "pl",
-   "question": "Kiedy mam dentystę?",
+   "question": "Kiedy oddaję hulajnogę do naprawy?",
    "type": "when",
    "answer": "",
    "mustInclude": [
-    "16:30"
+    "czwart",
+    "17:15"
    ],
    "mustNotInclude": [],
    "sourceNotes": [
@@ -797,15 +798,15 @@
   {
    "id": "a02",
    "language": "pl",
-   "question": "Kiedy jest spotkanie z promotorem?",
+   "question": "Kiedy jest trening siatkówki?",
    "type": "when",
    "answer": "",
    "mustInclude": [
-    "wtor",
-    "14"
+    "czwart",
+    "20"
    ],
    "mustNotInclude": [
-    "poniedział"
+    "środ"
    ],
    "sourceNotes": [
     "suite-pl-plan"
@@ -816,7 +817,7 @@
   {
    "id": "a03",
    "language": "pl",
-   "question": "Czy mam kupić chleb?",
+   "question": "Czy mam kupić masło?",
    "type": "negated",
    "answer": "",
    "mustInclude": [
@@ -832,12 +833,12 @@
   {
    "id": "a04",
    "language": "pl",
-   "question": "Ile wynosi zaliczka za nocleg w Zakopanem i do kiedy trzeba ją wpłacić?",
+   "question": "Ile kosztują bilety na festiwal jazzowy i do kiedy trzeba je kupić?",
    "type": "fact",
    "answer": "",
    "mustInclude": [
-    "300",
-    "śr"
+    "180",
+    "niedziel"
    ],
    "mustNotInclude": [],
    "sourceNotes": [
@@ -849,11 +850,11 @@
   {
    "id": "a05",
    "language": "pl",
-   "question": "Komu mam oddać ładowarkę?",
+   "question": "Komu mam oddać pendrive?",
    "type": "fact",
    "answer": "",
    "mustInclude": [
-    "Mart"
+    "Zuz"
    ],
    "mustNotInclude": [],
    "sourceNotes": [
@@ -865,11 +866,11 @@
   {
    "id": "a06",
    "language": "pl",
-   "question": "O której jest prezentacja dla zarządu?",
+   "question": "O której jest hackathon dla nowych pracowników?",
    "type": "when",
    "answer": "",
    "mustInclude": [
-    "11"
+    "13"
    ],
    "mustNotInclude": [],
    "sourceNotes": [
@@ -881,11 +882,11 @@
   {
    "id": "a07",
    "language": "pl",
-   "question": "Ile kosztował ramen?",
+   "question": "Ile kosztowało burrito?",
    "type": "fact",
    "answer": "",
    "mustInclude": [
-    "32"
+    "27"
    ],
    "mustNotInclude": [],
    "sourceNotes": [
@@ -897,11 +898,11 @@
   {
    "id": "a08",
    "language": "en",
-   "question": "When is my flight to Lisbon?",
+   "question": "When is my train to Prague?",
    "type": "when",
    "answer": "",
    "mustInclude": [
-    "7:10"
+    "6:45|6.45|645"
    ],
    "mustNotInclude": [],
    "sourceNotes": [
@@ -913,7 +914,7 @@
   {
    "id": "a09",
    "language": "en",
-   "question": "Should I buy new headphones?",
+   "question": "Should I buy a new jacket?",
    "type": "negated",
    "answer": "",
    "mustInclude": [
@@ -929,11 +930,11 @@
   {
    "id": "a10",
    "language": "pl",
-   "question": "Ile mogę wydać na hotel w Lizbonie?",
+   "question": "Ile mogę wydać na hostel w Pradze?",
    "type": "crosslang",
    "answer": "",
    "mustInclude": [
-    "90"
+    "40"
    ],
    "mustNotInclude": [],
    "sourceNotes": [
@@ -945,16 +946,33 @@
   {
    "id": "a11",
    "language": "pl",
-   "question": "Co mam zrobić przed wyjazdem do Lizbony?",
+   "question": "Co mam zrobić przed wyjazdem do Pragi?",
    "type": "tasks",
    "answer": "",
    "mustInclude": [
-    "hotel|hotelu",
-    "dow|ID"
+    "hostel",
+    "prawo jazdy|licence|licencj|prawa jazdy"
    ],
    "mustNotInclude": [],
    "sourceNotes": [
     "suite-en-trip"
+   ],
+   "followUpOf": null,
+   "liveDate": true
+  },
+  {
+   "id": "a12",
+   "language": "pl",
+   "question": "Komu mam pomóc w niedzielę i o której?",
+   "type": "when",
+   "answer": "",
+   "mustInclude": [
+    "Len",
+    "10"
+   ],
+   "mustNotInclude": [],
+   "sourceNotes": [
+    "suite-pl-dziennik"
    ],
    "followUpOf": null,
    "liveDate": true

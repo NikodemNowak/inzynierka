@@ -92,7 +92,7 @@ const STRONG_STARTS: readonly (readonly string[])[] = [
   ["i", "jeszcze"], ["kolejna", "rzecz"], ["kolejna", "sprawa"], ["tak", "czy", "inaczej"],
   ["uwaga"], ["jeszcze", "jedna", "rzecz"], ["ostatnia", "rzecz"],
 ];
-const DANGLING_END = /^(?:i|w|we|na|z|ze|do|od|po|za|o|u|nad|pod|przy|bez|dla|przez|oraz|albo|lub|a|ale|bo|nie|że|jak|ten|ta|te|tę|to|ma|mam|mój|moje)$/iu;
+const DANGLING_END = /^(?:i|w|we|na|z|ze|do|od|po|za|o|u|nad|pod|przy|bez|dla|przez|oraz|albo|lub|a|ale|bo|więc|nie|że|jak|ten|ta|te|tę|to|ma|mam|mój|moje)$/iu;
 const MAX_UNIT_WORDS = 30;
 // Speech recognizers capitalize where they hear a new phrase; a capital mid-text
 // is the strongest cue an unpunctuated transcript has.
@@ -109,6 +109,11 @@ const SOFT_STARTS = new Set(["albo", "lub", "bo", "ponieważ", "jeszcze"]);
 const NAMED_AFTER = /^(?:zajęci\p{L}*|wykład\p{L}*|kurs\p{L}*|przedmiot\p{L}*|ćwiczeni\p{L}*|laboratori\p{L}*|lab|projekt\p{L}*|egzamin\p{L}*|kolokwi\p{L}*|firm\p{L}*|ulic\p{L}*|sklep\p{L}*|aplikacj\p{L}*|program\p{L}*|szkoł\p{L}*|szpital\p{L}*|restauracj\p{L}*|hotel\p{L}*|kawiarni\p{L}*|pan|pani|panem|panią|doktor\p{L}*|dr|mgr)$/u;
 const REPORT_NEXT =new Set(["też", "także", "że", "żebym", "żeby", "mi", "mnie", "nam", "jeszcze", "wtedy"]);
 const TIME_TAIL = /^(?:o|około|rano|wieczorem|jutro|dzisiaj|dziś|wczoraj)$/iu;
+const INTENSIFIER = new Set(["całkiem", "bardzo", "dość", "naprawdę", "nawet", "mega", "super", "niezbyt", "nie"]);
+const OBJECT_PRONOUN = new Set(["ją", "go", "mu", "je", "jej", "im", "ich", "cię", "ci", "nią", "nim"]);
+const ADJECTIVE_END = /^\p{L}{4,}(?:ych|ymi|ego|emu|owej|owym|nej|nym|skiej|skim)$/u;
+const ORDINAL_END = /(?:ej|ego|ym)$/u;
+const TOPIC_STARTS = new Set(["spotkanie", "rachunek", "rachunki", "wizyta", "zaliczka", "zaliczkę", "zakupy", "prezentacja", "egzamin", "kolokwium", "termin", "rata", "czynsz", "przegląd", "urodziny", "wyjazd", "lot", "pociąg"]);
 
 // English speech: capitals mark names, days and months, so only "I…" and spoken
 // connectives start a statement, and never right after an article or preposition.
@@ -132,10 +137,17 @@ const englishScore = (index: number, raw: readonly string[], norm: readonly stri
 const boundaryScore = (index: number, raw: readonly string[], norm: readonly string[],
   startsWith: (index: number, phrase: readonly string[]) => boolean, english = false): number => {
   if (english) return englishScore(index, raw, norm, startsWith);
-  if (STRONG_STARTS.some((phrase) => startsWith(index, phrase))) return 5;
   const previous = norm[index - 1];
-  // "dwa Terabajt", "dwudziestej 2": a number keeps its unit or second part.
-  if (NUMBER_WORD.test(previous) && (NUMBER_WORD.test(norm[index]) || CAPITALIZED.test(raw[index]))) return 0;
+  // "całkiem dobra": an adjective after an intensifier, not the discourse "Dobra,".
+  if (STRONG_STARTS.some((phrase) => startsWith(index, phrase)) && !INTENSIFIER.has(previous)) return 5;
+  // "muszę zrobić Slajdy", "nie zapomnieć oddać": an infinitive keeps its object.
+  // "to ja ją przygotowuję": an object pronoun keeps its verb.
+  if (/\p{L}{2,}ć$/u.test(previous) || OBJECT_PRONOUN.has(previous)) return 0;
+  // "z sieci Komputerowych": a capitalized adjective ending continues the noun phrase.
+  if (CAPITALIZED.test(raw[index]) && ADJECTIVE_END.test(norm[index]) && !NUMBER_WORD.test(norm[index])) return 0;
+  // "dwa Terabajt", "dwudziestej 2": a number keeps its unit or second part, but
+  // "do dwudziestej trzeciej Zakupy na weekend" starts a new statement after an ordinal.
+  if (NUMBER_WORD.test(previous) && (NUMBER_WORD.test(norm[index]) || (CAPITALIZED.test(raw[index]) && !(ORDINAL_END.test(previous) && raw[index].length > 3)))) return 0;
   // "zadzwoniła Ola": a name right after a past verb is its subject.
   // "zajęcia Jakość oprogramowania": a capital after such a noun starts its name.
   if (CAPITALIZED.test(raw[index]) && NAMED_AFTER.test(previous)) return 0;
@@ -148,9 +160,17 @@ const boundaryScore = (index: number, raw: readonly string[], norm: readonly str
   if (TIME_STARTS.has(norm[index]) && previous === "się") return 0;
   if (TIME_STARTS.has(norm[index]) || PRONOUN_STARTS.has(norm[index]) || norm[index] === "muszę" || norm[index] === "musimy") return 2;
   // "poprosił też żebym…": another person's past verb starts a report.
-  if (/^\p{L}{3,}(?:ł|ła|li|ły)$/u.test(norm[index]) && !afterTime && REPORT_NEXT.has(norm[index + 1] ?? "")) return 1;
+  // "… tygodnie szef powiedział że …": the subject of a reported statement opens it.
+  if (/^\p{Ll}{3,}$/u.test(raw[index]) && !/(?:ł|ła|li|ły|ć|ę|em|am)$/u.test(norm[index]) && !WEAK_STARTS.has(norm[index]) &&
+      /^\p{L}{3,}(?:ł|ła|li|ły)$/u.test(norm[index + 1] ?? "") && REPORT_NEXT.has(norm[index + 2] ?? "") && !DANGLING_END.test(previous)) return 1;
+  // "szef powiedział że": after a plain noun the verb has its subject right before it.
+  if (/^\p{L}{3,}(?:ł|ła|li|ły)$/u.test(norm[index]) && !afterTime && REPORT_NEXT.has(norm[index + 1] ?? "") &&
+      !(/^\p{Ll}{3,}$/u.test(raw[index - 1] ?? "") && !/(?:ł|ła|li|ły|ć|ę|em|am)$/u.test(previous) && !WEAK_STARTS.has(previous))) return 1;
   // "ale muszę jeszcze to dzisiaj przejrzeć": a new duty, not a qualifier of the last one.
   if (["ale", "a", "i", "więc"].includes(norm[index]) && DUTY_AFTER_CONJUNCTION.has(norm[index + 1] ?? "")) return 2;
+  // "… mama upiekła spotkanie miało być …", "… za nocleg rachunek za internet …":
+  // in a dictated plan these nouns open the next matter.
+  if (TOPIC_STARTS.has(norm[index]) && !/^(?:na|w|we|z|ze|do|o|za|po|przed|mam|mamy|ma|mój|moje|moja|ten|to|ta|jakiś|jedno|jeden|każdy)$/u.test(previous)) return 2;
   if (WEAK_STARTS.has(norm[index])) return 1;
   if (norm[index] === "trzeba") return 0.5;
   if (SOFT_STARTS.has(norm[index])) return 0.5;
@@ -166,7 +186,8 @@ const correctsLeft = (left: string, right: string): boolean => {
   const nie = after.indexOf("nie");
   if (nie < 0) return false;
   const target = after.slice(nie + 1).find((word) => !CORRECTION_SKIP.test(word));
-  return target !== undefined && target.length >= 3 && tail.includes(target.slice(0, 3));
+  // "zapłacić … i nie zapomnieć oddać" is a new reminder: corrections fix values, not verbs.
+  return target !== undefined && target.length >= 3 && !/ć$/u.test(target) && tail.includes(target.slice(0, 3));
 };
 
 const deterministicEnds = (content: string): number[] | null => {
@@ -187,6 +208,8 @@ const deterministicEnds = (content: string): number[] | null => {
     const wanted = (score >= 4 && length >= 3) || (score >= 3 && length >= 5) || (score >= 2 && length >= 9) ||
       (score >= 1 && length >= 15) || (score > 0 && length >= 22) || length >= MAX_UNIT_WORDS;
     if (!wanted || DANGLING_END.test(norm[index - 1]) || (english && EN_DANGLING.has(norm[index - 1]))) continue;
+    // A forced cut waits a few words rather than separating an infinitive or pronoun from what follows.
+    if (score === 0 && length < MAX_UNIT_WORDS + 8 && !english && (/\p{L}{2,}ć$/u.test(norm[index - 1]) || OBJECT_PRONOUN.has(norm[index - 1]))) continue;
     const left = content.slice(words[segment].index, wordEnd(index - 1));
     const right = content.slice(words[index].index, wordEnd(Math.min(words.length - 1, index + 3)));
     if (unsafeBoundary(left, right) || correctsLeft(left, content.slice(words[index].index, wordEnd(Math.min(words.length - 1, index + 7))))) continue;
