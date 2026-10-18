@@ -5,6 +5,7 @@ import type { Language } from '../i18n/language'
 import { localeForLanguage } from '../i18n/language'
 import { resolveDue, splitTaskText } from '../tasks/taskDue'
 import { plain } from './askText'
+import { isTaskQuestion } from './askRetrieval'
 import type { AskChunk, AskIndex, AskNote } from './askIndex'
 import type { RetrievedNote } from './askRetrieval'
 
@@ -27,7 +28,8 @@ export interface AskAnswer {
   retried?: boolean
 }
 
-const NOT_FOUND = /nie znalaz(?:łem|łam)|nie ma (?:tego|informacji)|couldn't find|could not find|no information/iu
+const YES_NO_QUESTION = /^(?:czy|should|do|does|did|is|are|can|will|must|have)\b/iu
+const NOT_FOUND =/nie znalaz(?:łem|łam)|nie ma (?:tego|informacji)|couldn't find|could not find|no information/iu
 
 const formatDay = (ms: number, language: Language): string =>
   new Date(ms).toLocaleDateString(localeForLanguage(language), { weekday: 'long', day: 'numeric', month: 'long' })
@@ -122,6 +124,7 @@ const rules = (language: Language, today: string): string =>
         '7. Liczby i godziny pisz cyframi.',
         '8. Gdy pytanie dotyczy rzeczy do zrobienia, wypisz każdą z fragmentów jako listę z myślnikami. W innym wypadku najwyżej 3 zdania.',
         '9. Na pytanie „Czy…?” zacznij od „Tak” albo „Nie” według fragmentu („chleba nie kupuję” znaczy „Nie”), a potem w tym samym zdaniu podaj, co mówi notatka. Nie przepisuj wtrąceń typu „nie, czekaj”.',
+        '10. Gdy odpowiedź jest w kilku notatkach, uwzględnij wszystkie. Gdy notatki mówią co innego (np. jedna „kupić mleko”, druga „mleka nie kupuj”), podaj obie wersje z datami nagrania; nowsza zwykle obowiązuje.',
         'Fragmenty mogą być po angielsku; odpowiedz wtedy po polsku na ich podstawie.',
       ].join('\n')
     : [
@@ -136,15 +139,22 @@ const rules = (language: Language, today: string): string =>
         '7. Write numbers and times with digits.',
         '8. When the question is about things to do, list every one from the excerpts with dashes. Otherwise at most 3 sentences.',
         '9. For a yes/no question start with "Yes" or "No" as the excerpt says ("I won\'t buy bread" means "No"), then in the same sentence say what the note says. Do not copy fillers like "no, wait".',
+        '10. When the answer is in several notes, include all of them. When notes disagree (e.g. one says "buy milk", another "don\'t buy milk"), give both with their recording dates; the newer one usually counts.',
         'The notes may be in Polish; answer in English anyway.',
       ].join('\n')
 
 export const askPrompt = (question: string, context: string, history: readonly { question: string; answer: string }[], language: Language, now: Date): string => {
   const today = formatDay(now.getTime(), language)
   const earlier = history.slice(-2).map((turn) => (language === 'pl' ? `Pytanie: ${turn.question}\nOdpowiedź: ${turn.answer}` : `Question: ${turn.question}\nAnswer: ${turn.answer}`)).join('\n\n')
+  // A question about things to do gets a list; the model otherwise answers with one of them.
+  const list = isTaskQuestion(question)
+    ? language === 'pl'
+      ? 'Wypisz każdą rzecz do zrobienia z fragmentów, których dotyczy pytanie, w osobnej linii z myślnikiem, z terminem w nawiasie.'
+      : 'List every thing to do from the excerpts the question is about, one per line with a dash, with its date in brackets.'
+    : ''
   const parts = language === 'pl'
-    ? [rules(language, today), `FRAGMENTY NOTATEK:\n${context || '(brak pasujących fragmentów)'}`, earlier ? `WCZEŚNIEJ W ROZMOWIE:\n${earlier}` : '', `PYTANIE: ${question}`, 'ODPOWIEDŹ:']
-    : [rules(language, today), `NOTE EXCERPTS:\n${context || '(no matching excerpts)'}`, earlier ? `EARLIER IN THE CONVERSATION:\n${earlier}` : '', `QUESTION: ${question}`, 'ANSWER:']
+    ? [rules(language, today), `FRAGMENTY NOTATEK:\n${context || '(brak pasujących fragmentów)'}`, earlier ? `WCZEŚNIEJ W ROZMOWIE:\n${earlier}` : '', `PYTANIE: ${question}`, list, 'ODPOWIEDŹ:']
+    : [rules(language, today), `NOTE EXCERPTS:\n${context || '(no matching excerpts)'}`, earlier ? `EARLIER IN THE CONVERSATION:\n${earlier}` : '', `QUESTION: ${question}`, list, 'ANSWER:']
   return parts.filter(Boolean).join('\n\n')
 }
 
@@ -188,6 +198,14 @@ export const answerQuestion = async (
   // The small model sometimes repeats the question instead of answering; one warmer retry fixes it.
   const bare = (text: string): string => plain(text.replace(/\[\d+\]/gu, '')).replace(/[^\p{L}\p{N}]+/gu, ' ').trim()
   if (bare(first.text) === bare(question)) return parseAnswer((await run(0.6, () => undefined)).text, sources)
+  // "Nie, czekaj [1]." copies the speaker's filler; a bare "Nie." gives no reason.
+  if (YES_NO_QUESTION.test(question.trim()) && sources.length && bare(first.text.replace(/^(nie|no)[,\s]+(?:czekaj|wait)\b/iu, '$1')).split(' ').filter(Boolean).length <= 3) {
+    const hint = language === 'pl'
+      ? '\n\nOdpowiedz „Tak” albo „Nie”, a potem w tym samym zdaniu podaj, co dokładnie mówi notatka i dlaczego.'
+      : '\n\nAnswer "Yes" or "No", then in the same sentence say what exactly the note says and why.'
+    const fuller = parseAnswer((await run(0.2, () => undefined, prompt.replace(/\n\n(?:ODPOWIEDŹ|ANSWER):$/u, `${hint}$&`))).text, sources)
+    if (bare(fuller.text).split(' ').length > 3 && !NOT_FOUND.test(fuller.text)) return fuller
+  }
   // A recognizer that dropped a word ("Prague") makes the model refuse a note
   // that does answer; one second look at the best note, told so, recovers it.
   if (sources.length && NOT_FOUND.test(first.text) && first.text.length < 120) {

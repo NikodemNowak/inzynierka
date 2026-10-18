@@ -60,7 +60,9 @@ export const questionDays = (question: string, now: Date): DayRange | null => {
   return resolved ? single(startOfDay(resolved.date)) : null
 }
 
-const TASK_QUESTION = /\b(?:zadan\w*|zrobic|zalatwic|do\s+zrobienia|co\s+mam|musze|mam\s+do|plan\w*|to\s*do|tasks?|have\s+to|need\s+to|what\s+do\s+i|errands?|remind\w*)\b/u
+const GENERIC_DAY_WORDS = 'dzisiaj dziś jutro pojutrze wczoraj tydzień tygodniu tygodnia zrobienia zrobić załatwić zadania zadań plan planie today tomorrow week tasks things plate todo poniedziałek wtorek środa środę czwartek piątek sobota sobotę niedziela niedzielę weekend monday tuesday wednesday thursday friday saturday sunday października listopada grudnia'
+export const isTaskQuestion = (question: string): boolean => TASK_QUESTION.test(plain(question))
+const TASK_QUESTION =/\b(?:zadan\w*|zrobic|zalatwic|do\s+zrobienia|co\s+mam|musze|mam\s+do|plan\w*|to\s*do|tasks?|have\s+to|need\s+to|what\s+do\s+i|errands?|remind\w*)\b/u
 
 const WHEN_QUESTION = /\b(?:kiedy|kiedys|o\s+ktorej|na\s+kiedy|do\s+kiedy|ktorego|when|what\s+time|which\s+day|by\s+when)\b/u
 
@@ -124,6 +126,9 @@ export const retrieve = (question: string, index: AskIndex, options: RetrieveOpt
   for (const extra of options.expansion ?? []) add(extra, 0.5)
   const days = questionDays(question, options.now) ?? (last && terms(question).length <= 3 ? questionDays(last, options.now) : null)
   const wantsTasks = TASK_QUESTION.test(plain(question))
+  // "Co mam dzisiaj do zrobienia?": the day is matched by dates and the duty by
+  // task cues, so these words would only reward notes that happen to repeat them.
+  if (days && wantsTasks) for (const term of terms(GENERIC_DAY_WORDS)) query.delete(term)
   // "Co mam dzisiaj?" gathers from many notes; a topic question needs few.
   const maxNotes = options.maxNotes ?? (days ? 8 : 4)
   const maxPassages = options.maxPassages ?? (days ? 18 : 10)

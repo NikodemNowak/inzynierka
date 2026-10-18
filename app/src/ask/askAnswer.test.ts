@@ -31,3 +31,10 @@ test('an echoed question is asked again', async () => {
   const answer = await answerQuestion('Ile mogę wydać na hostel?', found, index, 'pl', { now })
   expect(answer.text).toBe('40 euro za noc [1].')
 })
+
+test('a bare yes/no gets a second, fuller answer', async () => {
+  jest.mocked(generate).mockResolvedValueOnce(reply('Nie, czekaj [1].')).mockResolvedValueOnce(reply('Nie, budżet to około 40 euro za noc, więcej nie wydawać [1].'))
+  const answer = await answerQuestion('Czy mogę wydać 100 euro na hostel?', found, index, 'pl', { now })
+  expect(answer.text).toBe('Nie, budżet to około 40 euro za noc, więcej nie wydawać [1].')
+  expect(jest.mocked(generate).mock.calls[1]?.[0]).toContain('podaj, co dokładnie mówi notatka')
+})
