@@ -6,7 +6,7 @@ import { useI18n } from '../i18n/useI18n'
 import { BottomSheet } from './BottomSheet'
 import { Button } from './Button'
 import { Icon, IconButton, type IconName } from './Icon'
-import { type, useTheme } from './theme'
+import { type, useTheme, fonts } from './theme'
 
 export function HomeHeader({ title }: { title: string }) {
   const { t } = useI18n()
@@ -159,7 +159,7 @@ export function HomeNavigation({
                 style={{
                   fontSize: 11,
                   lineHeight: 15,
-                  fontWeight: active === tab ? '600' : '400',
+                  fontFamily: active === tab ? fonts.semibold : fonts.regular,
                   color: active === tab ? colors.accent : colors.muted,
                 }}
               >

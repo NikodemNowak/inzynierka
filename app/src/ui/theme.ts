@@ -2,51 +2,57 @@ import { useColorScheme } from 'react-native'
 import { useSettingsStore } from '../state/settingsStore'
 import { resolveColorScheme } from './appearance'
 
-// Stable semantic palettes shared by every screen.
+// Warm paper, black ink and one highlighter yellow.
 const lightColors = {
-  ink: '#172131',
-  body: '#49576A',
-  muted: '#64748A',
-  faint: '#8794A6',
-  line: '#E2E8F0',
-  surface: '#EDF2F8',
-  canvas: '#F9FBFE',
+  ink: '#18181B',
+  body: '#3F3E3A',
+  muted: '#6B6A66',
+  faint: '#A3A19B',
+  line: '#E6E3DB',
+  surface: '#EFEDE7',
+  canvas: '#F7F6F2',
   paper: '#FFFFFF',
-  navy: '#3566A8',
-  navySoft: '#E8F0FC',
-  accent: '#286BC2',
-  accentSoft: '#E8F0FC',
-  onAccent: '#FFFFFF',
-  action: '#286BC2',
-  onAction: '#FFFFFF',
-  ember: '#D95750',
-  emberSoft: '#FFF0EE',
-  danger: '#B93F44',
-  success: '#39705F',
-  overlay: 'rgba(13,22,35,0.38)',
+  navy: '#18181B',
+  navySoft: '#EFEDE7',
+  accent: '#18181B',
+  accentSoft: '#FFF3B8',
+  onAccent: '#F7F6F2',
+  action: '#18181B',
+  onAction: '#F7F6F2',
+  marker: '#FFE066',
+  markerLine: '#E8C93A',
+  onMarker: '#18181B',
+  ember: '#D2493A',
+  emberSoft: '#FBEAE6',
+  danger: '#B3362B',
+  success: '#2E7D4F',
+  overlay: 'rgba(24,24,27,0.38)',
 }
 export const colors = lightColors
 export type ThemeColors = typeof colors
 const darkColors: ThemeColors = {
-  ink: '#EEF3FA',
-  body: '#C0CBD9',
-  muted: '#99A9BE',
-  faint: '#75869D',
-  line: '#293746',
-  surface: '#1E2C36',
-  canvas: '#121C23',
-  paper: '#192630',
-  navy: '#8BB8F2',
-  navySoft: '#223952',
-  accent: '#80B9F2',
-  accentSoft: '#22394D',
-  onAccent: '#10233D',
-  action: '#2E70BB',
-  onAction: '#FFFFFF',
-  ember: '#F38A80',
-  emberSoft: '#36262C',
-  danger: '#F39297',
-  success: '#8DC3B1',
+  ink: '#EDEBE6',
+  body: '#CFCDC7',
+  muted: '#9A9892',
+  faint: '#77756F',
+  line: '#2C2C30',
+  surface: '#26262A',
+  canvas: '#141416',
+  paper: '#1E1E21',
+  navy: '#EDEBE6',
+  navySoft: '#26262A',
+  accent: '#EDEBE6',
+  accentSoft: '#3A3420',
+  onAccent: '#141416',
+  action: '#EDEBE6',
+  onAction: '#141416',
+  marker: '#FFE066',
+  markerLine: '#E8C93A',
+  onMarker: '#141416',
+  ember: '#F08C7F',
+  emberSoft: '#3A2522',
+  danger: '#F39288',
+  success: '#8CC8A6',
   overlay: 'rgba(0,0,0,0.6)',
 }
 export function useTheme() {
@@ -55,6 +61,16 @@ export function useTheme() {
   const isDark = resolveColorScheme(preference, systemScheme) === 'dark'
   return { colors: isDark ? darkColors : colors, isDark }
 }
+
+// Custom fonts ship one family per weight, so weights are picked by family.
+export const fonts = {
+  regular: 'Onest_400Regular',
+  medium: 'Onest_500Medium',
+  semibold: 'Onest_600SemiBold',
+  bold: 'Onest_700Bold',
+  serif: 'Literata_500Medium',
+  serifRegular: 'Literata_400Regular',
+} as const
 
 export const spacing = {
   xs: 4,
@@ -68,30 +84,30 @@ export const spacing = {
 export const radius = {
   sm: 8,
   md: 14,
-  lg: 22,
+  lg: 18,
   pill: 999,
 } as const
 
 export const type = {
   display: {
-    fontSize: 28,
-    lineHeight: 35,
-    fontWeight: '700',
-    letterSpacing: -0.65,
+    fontFamily: fonts.serif,
+    fontSize: 30,
+    lineHeight: 36,
+    letterSpacing: -0.3,
   },
   title: {
+    fontFamily: fonts.semibold,
     fontSize: 18,
     lineHeight: 25,
-    fontWeight: '600',
     letterSpacing: -0.2,
   },
-  body: { fontSize: 16, lineHeight: 25, fontWeight: '400' },
-  label: { fontSize: 14, lineHeight: 20, fontWeight: '600' },
-  meta: { fontSize: 12, lineHeight: 18, fontWeight: '400' },
+  body: { fontFamily: fonts.regular, fontSize: 16, lineHeight: 25 },
+  label: { fontFamily: fonts.semibold, fontSize: 14, lineHeight: 20 },
+  meta: { fontFamily: fonts.regular, fontSize: 12, lineHeight: 18 },
   counter: {
+    fontFamily: fonts.medium,
     fontSize: 58,
     lineHeight: 70,
-    fontWeight: '500',
     letterSpacing: -2,
   },
 } as const

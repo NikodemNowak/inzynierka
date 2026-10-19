@@ -5,7 +5,7 @@ import { ProcessingIndicator, RevealText, SkeletonText } from './Motion'
 jest.mock('../i18n/useI18n', () => ({ useI18n: () => ({ t: (pl: string) => pl }) }))
 jest.mock('./Icon', () => ({ Icon: () => null }))
 let mockDark = false
-jest.mock('./theme', () => ({ type: { display: { fontSize: 28, lineHeight: 35, fontWeight: '700', letterSpacing: -0.65 }, body: { fontSize: 16, lineHeight: 25, fontWeight: '400' } }, useTheme: () => ({ colors: { accent: mockDark ? '#80B9F2' : '#286BC2', ink: '#172131', body: '#49576A' }, isDark: mockDark }) }))
+jest.mock('./theme', () => ({ type: { display: { fontFamily: 'Literata_500Medium', fontSize: 28, lineHeight: 35, letterSpacing: -0.65 }, body: { fontSize: 16, lineHeight: 25, fontWeight: '400' } }, useTheme: () => ({ colors: { accent: mockDark ? '#80B9F2' : '#286BC2', ink: '#172131', body: '#49576A' }, isDark: mockDark }) }))
 type Capture = { callback: (base64: string) => void; width: number; height: number }
 const mockCaptures: Capture[] = []
 let mockCaptureMode: 'normal' | 'missing' | 'throw' = 'normal'
@@ -884,7 +884,7 @@ test('title loading uses the actual display typography scale, not a smaller unre
   const ink = tree!.root.findAll(node => Array.isArray(node.props.softWords))[0]
   expect(ink.props.typography.fontSize).toBe(28)
   const type = tree!.root.findAll(node => String(node.type) === 'SvgText')[0]
-  expect(type.props.fontWeight).toBe('700')
+  expect(type.props.fontFamily).toBe('Literata_500Medium')
   expect(mockCaptures[0].height).toBe(51)
 })
 

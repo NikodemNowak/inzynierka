@@ -3,7 +3,7 @@ import { Text, View, type ColorValue } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useI18n } from '../i18n/useI18n'
 import { IconButton } from './Icon'
-import { useTheme } from './theme'
+import { useTheme, fonts } from './theme'
 import { RecordingBanner } from '../stt/RecordingBanner'
 
 interface HeaderButtonProps {
@@ -91,7 +91,7 @@ export function AppHeader({ back, navigation, options, route }: HeaderProps) {
               style={{
                 fontSize: 17,
                 lineHeight: 24,
-                fontWeight: '600',
+                fontFamily: fonts.semibold,
                 color: colors.ink,
               }}
             >

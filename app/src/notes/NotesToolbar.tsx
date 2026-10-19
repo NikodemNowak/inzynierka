@@ -12,7 +12,7 @@ import {
 import type { NoteSortMode } from './noteListView'
 import { Icon, IconButton } from '../ui/Icon'
 import { BottomSheet } from '../ui/BottomSheet'
-import { type, useTheme } from '../ui/theme'
+import { type, useTheme, fonts } from '../ui/theme'
 import { categoryLabel } from '../domain/categories'
 
 interface NotesToolbarProps {
@@ -127,7 +127,7 @@ export function NotesToolbar({
                       selectedCategory === category
                         ? colors.onAction
                         : colors.body,
-                    fontWeight: selectedCategory === category ? '600' : '400',
+                    fontFamily: selectedCategory === category ? fonts.semibold : fonts.regular,
                   }}
                 >
                   {category === null

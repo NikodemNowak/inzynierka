@@ -7,7 +7,7 @@ import {
   useAudioPlayerStatus,
 } from 'expo-audio'
 import { Icon } from '../ui/Icon'
-import { useTheme } from '../ui/theme'
+import { useTheme, fonts } from '../ui/theme'
 import { nextPlaybackRate, type PlaybackRate } from './playbackRate'
 import { nativeCapture } from '../stt/nativeCapture'
 
@@ -229,7 +229,7 @@ export function AudioNotePlayer({ uri, durationMs }: Props) {
           }}
         >
           <Text
-            style={{ color: colors.accent, fontSize: 14, fontWeight: '600' }}
+            style={{ color: colors.accent, fontSize: 14, fontFamily: fonts.semibold }}
           >
             {activeRate}×
           </Text>

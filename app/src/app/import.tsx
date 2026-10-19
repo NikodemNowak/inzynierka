@@ -41,7 +41,7 @@ import { BottomSheet } from '../ui/BottomSheet'
 import { Button } from '../ui/Button'
 import { Icon } from '../ui/Icon'
 import { ProcessingIndicator } from '../ui/Motion'
-import { spacing, type, useTheme } from '../ui/theme'
+import { spacing, type, useTheme, fonts } from '../ui/theme'
 
 interface SelectedAudio {
   name: string
@@ -837,7 +837,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   fileDetails: { flex: 1, gap: 3 },
-  fileName: { ...type.body, fontWeight: '600' },
+  fileName: { ...type.body, fontFamily: fonts.semibold },
   fileSize: { ...type.meta },
   content: { flex: 1 },
   contentInner: {

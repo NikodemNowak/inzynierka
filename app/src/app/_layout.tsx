@@ -1,5 +1,16 @@
 import { useEffect } from 'react'
-import { Alert, AppState } from 'react-native'
+import { Alert, AppState, View } from 'react-native'
+import { useFonts } from 'expo-font'
+import {
+  Onest_400Regular,
+  Onest_500Medium,
+  Onest_600SemiBold,
+  Onest_700Bold,
+} from '@expo-google-fonts/onest'
+import {
+  Literata_400Regular,
+  Literata_500Medium,
+} from '@expo-google-fonts/literata'
 import { Stack } from 'expo-router'
 import { StatusBar } from 'expo-status-bar'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
@@ -96,6 +107,18 @@ export default function RootLayout() {
   useEffect(startModelMemoryGuard, [])
   useEffect(startTaskPrefetch, [])
   useEffect(startSearchIndexing, [])
+
+  const [fontsLoaded, fontError] = useFonts({
+    Onest_400Regular,
+    Onest_500Medium,
+    Onest_600SemiBold,
+    Onest_700Bold,
+    Literata_400Regular,
+    Literata_500Medium,
+  })
+  // Fall back to system fonts rather than block the app on a font error.
+  if (!fontsLoaded && !fontError)
+    return <View style={{ flex: 1, backgroundColor: colors.canvas }} />
 
   return (
     <SafeAreaProvider>

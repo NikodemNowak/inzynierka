@@ -1,6 +1,6 @@
 import { useI18n } from '../i18n/useI18n'
 import { Pressable, StyleSheet, Text, View } from 'react-native'
-import { radius, spacing, type, useTheme } from '../ui/theme'
+import { radius, spacing, type, useTheme, fonts } from '../ui/theme'
 
 export function TasksEmptyState({ onOpenNotes }: { onOpenNotes: () => void }) {
   const { colors } = useTheme()
@@ -130,5 +130,5 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginTop: spacing.xs,
   },
-  actionText: { ...type.body, fontSize: 15, fontWeight: '500' },
+  actionText: { ...type.body, fontSize: 15, fontFamily: fonts.medium },
 })

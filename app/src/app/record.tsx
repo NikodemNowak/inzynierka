@@ -33,7 +33,7 @@ import { pushWaveformSample, waveformBarHeight } from '../stt/microphoneMeter'
 import { BottomSheet } from '../ui/BottomSheet'
 import { Button } from '../ui/Button'
 import { Icon } from '../ui/Icon'
-import { spacing, type, useTheme } from '../ui/theme'
+import { spacing, type, useTheme, fonts } from '../ui/theme'
 
 const formatDuration = (durationMs: number): string => {
   const totalSeconds = Math.floor(durationMs / 1000)
@@ -686,7 +686,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   liveDot: { width: 9, height: 9, borderRadius: 5 },
-  status: { ...type.label, fontWeight: '500' },
+  status: { ...type.label, fontFamily: fonts.medium },
   counter: { ...type.counter, fontVariant: ['tabular-nums'] },
   waveform: {
     width: '82%',

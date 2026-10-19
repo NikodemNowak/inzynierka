@@ -3,7 +3,7 @@ import { Pressable, StyleSheet, Switch, Text, View } from 'react-native'
 import { useI18n } from '../i18n/useI18n'
 import { useSettingsStore } from '../state/settingsStore'
 import { Icon } from '../ui/Icon'
-import { radius, spacing, type, useTheme } from '../ui/theme'
+import { radius, spacing, type, useTheme, fonts } from '../ui/theme'
 import {
   nativeProcessing,
   requestCompletionNotifications,
@@ -193,7 +193,7 @@ const styles = StyleSheet.create({
     minHeight: 68,
   },
   copy: { flex: 1, gap: 5 },
-  label: { fontSize: 15, fontWeight: '600' },
+  label: { fontSize: 15, fontFamily: fonts.semibold },
   detail: { fontSize: 13, lineHeight: 19 },
   notify: { minHeight: 44, justifyContent: 'center' },
 })

@@ -18,7 +18,7 @@ import { useSettingsStore } from '../state/settingsStore'
 import { Button } from '../ui/Button'
 import { Icon, IconButton } from '../ui/Icon'
 import { useReducedMotion } from '../ui/Motion'
-import { useTheme } from '../ui/theme'
+import { useTheme, fonts } from '../ui/theme'
 
 const PAGES = [
   {
@@ -420,7 +420,7 @@ const styles = StyleSheet.create({
   pager: { flex: 1 },
   pagerContent: { flexGrow: 1 },
   pageContent: { paddingBottom: 20, paddingHorizontal: 24 },
-  title: { fontWeight: '700', letterSpacing: -1.1 },
+  title: { fontFamily: fonts.bold, letterSpacing: -1.1 },
   body: { fontSize: 19, lineHeight: 26, marginTop: 18 },
   footer: { alignSelf: 'center', paddingTop: 10, gap: 14 },
   cta: { borderRadius: 11, minHeight: 53 },
@@ -436,7 +436,7 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     overflow: 'hidden',
   },
-  modelName: { flex: 1, fontSize: 15, fontWeight: '600' },
+  modelName: { flex: 1, fontSize: 15, fontFamily: fonts.semibold },
   modelSize: { fontSize: 13 },
   progressTrack: {
     position: 'absolute',

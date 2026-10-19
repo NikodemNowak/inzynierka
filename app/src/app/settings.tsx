@@ -20,7 +20,7 @@ import type { AppearancePreference } from '../ui/appearance'
 import { Button } from '../ui/Button'
 import { BottomSheet } from '../ui/BottomSheet'
 import { Icon } from '../ui/Icon'
-import { radius, spacing, type, useTheme } from '../ui/theme'
+import { radius, spacing, type, useTheme, fonts } from '../ui/theme'
 import { ProcessingSettingsSection } from '../processing/ProcessingSettingsSection'
 
 const formatGb = (bytes: number, locale: string): string =>
@@ -907,7 +907,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 6,
   },
-  statusLabel: { ...type.meta, fontWeight: '600' },
+  statusLabel: { ...type.meta, fontFamily: fonts.semibold },
   modelSize: { ...type.body, fontSize: 14 },
   progressSection: { gap: spacing.sm },
   progressTrack: { height: 7, borderRadius: radius.pill, overflow: 'hidden' },
@@ -922,7 +922,7 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     paddingTop: spacing.sm,
   },
-  removeLabel: { ...type.body, flex: 1, fontWeight: '600' },
+  removeLabel: { ...type.body, flex: 1, fontFamily: fonts.semibold },
   error: { ...type.body, fontSize: 14 },
   privacyCard: {
     paddingHorizontal: spacing.lg,
@@ -936,7 +936,7 @@ const styles = StyleSheet.create({
     gap: spacing.md,
   },
   privacyCopy: { flex: 1, gap: 2 },
-  privacyTitle: { ...type.body, fontWeight: '500' },
+  privacyTitle: { ...type.body, fontFamily: fonts.medium },
   dataCard: {
     minHeight: 76,
     paddingHorizontal: spacing.lg,
@@ -946,7 +946,7 @@ const styles = StyleSheet.create({
   },
   dataRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   dataCopy: { flex: 1, gap: 2 },
-  dataTitle: { ...type.body, fontWeight: '500' },
+  dataTitle: { ...type.body, fontFamily: fonts.medium },
   dataDescription: { ...type.body, fontSize: 14 },
   hint: { ...type.meta, marginHorizontal: spacing.md },
   preferenceCard: {
@@ -972,7 +972,7 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.md,
   },
   appearanceOptionCopy: { flex: 1, gap: 3 },
-  appearanceOptionTitle: { ...type.body, fontWeight: '600' },
+  appearanceOptionTitle: { ...type.body, fontFamily: fonts.semibold },
   appearanceOptionDescription: { ...type.meta },
   appearanceCheckSpace: { width: 22, height: 22 },
   appearanceError: { ...type.meta },

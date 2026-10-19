@@ -23,7 +23,7 @@ import { useI18n } from '../i18n/useI18n'
 import { useNotesStore } from '../state/notesStore'
 import { useTasksStore } from '../state/tasksStore'
 import { Icon, IconButton } from '../ui/Icon'
-import { radius, spacing, type, useTheme, type ThemeColors } from '../ui/theme'
+import { radius, spacing, type, useTheme, type ThemeColors, fonts } from '../ui/theme'
 
 const EXAMPLES = {
   pl: ['Co mam dzisiaj do zrobienia?', 'Co mam w tym tygodniu?', 'Kiedy mam następną wizytę?'],
@@ -45,7 +45,7 @@ function AnswerText({ message, colors, onOpen }: { message: AskMessage; colors: 
             accessibilityRole="link"
             accessibilityLabel={source.title}
             onPress={() => onOpen(source)}
-            style={{ color: colors.accent, fontWeight: '600' }}
+            style={{ color: colors.accent, fontFamily: fonts.semibold }}
           >
             {` [${number}]`}
           </Text>
@@ -93,7 +93,7 @@ function Message({ message, onOpen }: { message: AskMessage; onOpen: (source: As
               onPress={() => onOpen(source)}
               style={({ pressed }) => [styles.source, { backgroundColor: colors.surface, opacity: pressed ? 0.7 : 1 }]}
             >
-              <Text style={[type.meta, { color: colors.accent, fontWeight: '600' }]}>{source.number}</Text>
+              <Text style={[type.meta, { color: colors.accent, fontFamily: fonts.semibold }]}>{source.number}</Text>
               <Icon name="note" size={14} color={colors.muted} />
               <Text numberOfLines={1} style={[type.meta, { color: colors.body, flexShrink: 1 }]}>
                 {source.title}

@@ -6,7 +6,7 @@ import {
   type StyleProp,
   type ViewStyle,
 } from 'react-native'
-import { radius, useTheme } from './theme'
+import { radius, useTheme, fonts } from './theme'
 import { Icon, type IconName } from './Icon'
 
 export type ButtonVariant = 'primary' | 'secondary' | 'danger' | 'quiet'
@@ -79,7 +79,7 @@ export function Button({
             color: foreground,
             fontSize: 15,
             lineHeight: 22,
-            fontWeight: '600',
+            fontFamily: fonts.semibold,
             flexShrink: 1,
             textAlign: 'center',
           }}

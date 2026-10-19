@@ -3,7 +3,7 @@ import { useRouter } from 'expo-router'
 import { Pressable, Text, View } from 'react-native'
 import { useModelStore } from '../state/modelStore'
 import { Icon } from '../ui/Icon'
-import { useTheme } from '../ui/theme'
+import { useTheme, fonts } from '../ui/theme'
 
 export function ModelDownloadBanner() {
   const { colors } = useTheme()
@@ -45,7 +45,7 @@ export function ModelDownloadBanner() {
             style={{
               color: colors.accent,
               fontSize: 12,
-              fontWeight: '600',
+              fontFamily: fonts.semibold,
               fontVariant: ['tabular-nums'],
             }}
           >

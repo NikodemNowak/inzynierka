@@ -1,7 +1,7 @@
 import { useI18n } from '../i18n/useI18n'
 import { Pressable, StyleSheet, Text, View } from 'react-native'
 import { categoryLabel, NOTE_CATEGORIES } from '../domain/categories'
-import { radius, spacing, type, useTheme } from '../ui/theme'
+import { radius, spacing, type, useTheme, fonts } from '../ui/theme'
 
 export function NoteTags({
   tags,
@@ -93,6 +93,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     borderWidth: 1,
   },
-  text: { ...type.label, fontSize: 13, lineHeight: 18, fontWeight: '500' },
-  compactText: { fontSize: 12, lineHeight: 16, fontWeight: '500' },
+  text: { ...type.label, fontSize: 13, lineHeight: 18, fontFamily: fonts.medium },
+  compactText: { fontSize: 12, lineHeight: 16, fontFamily: fonts.medium },
 })

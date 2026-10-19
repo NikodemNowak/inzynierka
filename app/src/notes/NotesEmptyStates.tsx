@@ -1,7 +1,7 @@
 import { useI18n } from '../i18n/useI18n'
 import { Pressable, StyleSheet, Text, View } from 'react-native'
 import { Icon } from '../ui/Icon'
-import { radius, spacing, type, useTheme } from '../ui/theme'
+import { radius, spacing, type, useTheme, fonts } from '../ui/theme'
 
 export function NotesEmptyState() {
   const { colors } = useTheme()
@@ -239,5 +239,5 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  clearActionText: { ...type.body, fontSize: 14, fontWeight: '500' },
+  clearActionText: { ...type.body, fontSize: 14, fontFamily: fonts.medium },
 })

@@ -24,7 +24,7 @@ import {
   SkeletonText,
   useReducedMotion,
 } from '../../ui/Motion'
-import { radius, spacing, type, useTheme } from '../../ui/theme'
+import { radius, spacing, type, useTheme, fonts } from '../../ui/theme'
 import { processingPresentation } from '../../ui/processingPresentation'
 import { useNotesStore } from '../../state/notesStore'
 import { useTasksStore } from '../../state/tasksStore'
@@ -1315,7 +1315,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
   choiceCancel: { width: 72, minHeight: 44, justifyContent: 'center' },
-  headerCancelText: { ...type.label, fontWeight: '500' },
+  headerCancelText: { ...type.label, fontFamily: fonts.medium },
   choiceScreenTitle: { ...type.label, textAlign: 'center', flex: 1 },
   choiceScroll: { flex: 1 },
   choiceScrollContent: {

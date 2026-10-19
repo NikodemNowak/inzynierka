@@ -204,7 +204,7 @@ export function SkeletonText({ lines = 3, title = false, animate = true, active 
   const rows = useMemo(() => skeletonTextRows(lines, title, width, fontSize), [lines, title, width, fontSize])
   const rasterLines = useMemo(() => rows.map((text, index) => ({ text, x: 0, y: index * lineHeight, baseline: index * lineHeight + fontSize, height: lineHeight, width, xPositions: skeletonGlyphPositions(text, skeletonRowWidth(width, index), fontSize) })), [rows, lineHeight, fontSize, width])
   const palette = useMemo(() => motionPalette(isDark, colors.accent), [isDark, colors.accent])
-  const typography = useMemo(() => ({ fontSize, fontWeight: baseType.fontWeight, letterSpacing: title ? typographyTokens.display.letterSpacing : 0 }), [fontSize, baseType.fontWeight, title])
+  const typography = useMemo(() => ({ fontSize, fontWeight: '400', fontFamily: baseType.fontFamily, letterSpacing: title ? typographyTokens.display.letterSpacing : 0 }), [fontSize, baseType.fontFamily, title])
   const key = JSON.stringify([rows, width, typography, palette])
   const [bitmap, setBitmap] = useState<{ key: string; uri: string } | null>(null)
   const currentKey = useRef(key)
@@ -349,7 +349,7 @@ export function RevealText({ text, animate = false, style, active = true, access
   const placeholderType = (nativeStyle.fontSize ?? 14) >= 24 ? typographyTokens.display : typographyTokens.body
   const placeholderFont = Math.min(48, placeholderType.fontSize * fontScale)
   const placeholderLineHeight = Math.min(80, placeholderType.lineHeight * fontScale)
-  const placeholderTypography = useMemo<RasterTypography>(() => ({ fontSize: placeholderFont, fontWeight: placeholderType.fontWeight,
+  const placeholderTypography = useMemo<RasterTypography>(() => ({ fontSize: placeholderFont, fontWeight: '400', fontFamily: placeholderType.fontFamily,
     letterSpacing: placeholderType === typographyTokens.display ? typographyTokens.display.letterSpacing : 0 }), [placeholderFont, placeholderType])
   const palette = useMemo(() => motionPalette(isDark, colors.accent), [isDark, colors.accent])
   const visual = JSON.stringify([typography, palette, nativeStyle, numberOfLines, morphEnabled, placeholderCount, placeholderTypography])

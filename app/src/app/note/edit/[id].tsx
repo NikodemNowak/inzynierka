@@ -12,7 +12,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { BottomSheet } from '../../../ui/BottomSheet'
 import { Button } from '../../../ui/Button'
 import { Field } from '../../../ui/Field'
-import { useTheme, spacing, type } from '../../../ui/theme'
+import { useTheme, spacing, type, fonts } from '../../../ui/theme'
 import { useNotesStore } from '../../../state/notesStore'
 import { useModelStore } from '../../../state/modelStore'
 import { getModelMissingMessage } from '../../../ai/noteProcessing'
@@ -379,7 +379,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.sm,
   },
   headerSaveText: { ...type.label },
-  titleField: { fontSize: 20, lineHeight: 28, fontWeight: '600' },
+  titleField: { fontSize: 20, lineHeight: 28, fontFamily: fonts.semibold },
   body: { ...type.body },
   hint: { ...type.meta },
 })
