@@ -27,10 +27,13 @@ export const liveTranscriptSegments = (content: string, live: LiveSummaryProgres
   const cited = new Set(live.drafts.flatMap((draft) => draft.sourceIds))
   const last = lastCitedIndex(live)
   const next = new Set(live.units.slice(last + 1, last + 1 + NEXT_UNITS).map((unit) => unit.id))
+  // Spans from another revision of the text would mark the wrong words.
+  const valid = live.units.every((unit, index) =>
+    unit.start >= (index ? live.units[index - 1].end : 0) && unit.start <= unit.end && unit.end <= content.length)
+  if (!valid) return [{ text: content, kind: 'plain' }]
   const segments: LiveSegment[] = []
   let cursor = 0
   for (const unit of live.units) {
-    if (unit.start < cursor || unit.end > content.length) continue
     if (unit.start > cursor) segments.push({ text: content.slice(cursor, unit.start), kind: 'plain' })
     const kind: LiveSegmentKind = cited.has(unit.id) ? 'cited' : next.has(unit.id) ? 'next' : 'plain'
     segments.push({ text: content.slice(unit.start, unit.end), kind })

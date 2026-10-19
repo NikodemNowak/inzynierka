@@ -1819,6 +1819,7 @@ export const generatePointSummaryDetailed = async (
       const onToken = (token: string): void => {
         if (!onLive) return;
         streamed += token;
+        if (!token.includes('\n')) return;
         const done = streamed.slice(0, streamed.lastIndexOf('\n') + 1);
         const drafts = done ? parsePoints(done, allowed) : [];
         if (drafts.length === reported) return;

@@ -35,3 +35,8 @@ test('before the first point the opening sentences are lit', () => {
   expect(segments.filter((segment) => segment.kind === 'next').map((segment) => segment.text))
     .toEqual(['Hulajnoga w czwartek.', 'Projekt w piątek.'])
 })
+
+test('spans that do not fit the text leave it unmarked', () => {
+  const stale: LiveSummaryProgress = { units: [{ id: 1, start: 0, end: 500 }], drafts: [{ text: 'x', sourceIds: [1] }] }
+  expect(liveTranscriptSegments(content, stale)).toEqual([{ text: content, kind: 'plain' }])
+})
