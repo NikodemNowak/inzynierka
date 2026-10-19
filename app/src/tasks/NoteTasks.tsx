@@ -9,7 +9,7 @@ import {
 } from 'react-native'
 import { useIsFocused } from 'expo-router/react-navigation'
 import { Button } from '../ui/Button'
-import { Icon } from '../ui/Icon'
+import { SwipeToDelete } from '../ui/SwipeToDelete'
 import { ProcessingIndicator, SkeletonText, useReducedMotion } from '../ui/Motion'
 import { TaskArrival, TaskCheck, TaskText, TaskPlaceholder, isFastReveal, publishPersistedTaskText, useTaskMotionActive, useTaskTextReveal, usePlaceholderExit, useTaskRevealSequence } from './TaskMotion'
 import { useLayoutTransition } from '../ui/LayoutMotion'
@@ -460,14 +460,52 @@ export function NoteTasks({
     ...(shown.loading && motionActive ? [0, 1, 2] : exitingPlaceholders),
   ])].sort((left, right) => left - right)
 
+  const confirmRemove = (id: string, text: string) => {
+    Alert.alert(
+      t('Usunąć zadanie?', 'Delete task?'),
+      text,
+      [
+        { text: t('Anuluj', 'Cancel'), style: 'cancel' },
+        {
+          text: t('Usuń', 'Delete'),
+          style: 'destructive',
+          onPress: () => {
+            void remove(id).catch((cause: unknown) =>
+              setError(cause instanceof Error ? cause.message : String(cause)),
+            )
+          },
+        },
+      ],
+      { cancelable: true },
+    )
+  }
+
   return (
     <View style={styles.container}>
-      <Text style={[styles.heading, { color: colors.ink }]}>
-        {t('Zadania', 'Tasks')}
-      </Text>
+      <View style={styles.header}>
+        <Text style={[styles.heading, { color: colors.muted }]}>
+          {shown.tasks.length ? t(`Do zrobienia · ${shown.tasks.length}`, `To do · ${shown.tasks.length}`) : t('Do zrobienia', 'To do')}
+        </Text>
+        {shown.proposals.length === 0 && (
+          <Button
+            compact
+            label={t('Zaproponuj zadania', 'Suggest tasks')}
+            onPress={() => void propose()}
+            disabled={busy || noteProcessing || !modelReady || !content.trim() || Boolean(note?.transcriptionIncomplete)}
+          />
+        )}
+      </View>
+
+      {shown.tasks.length > 0 && <View style={[styles.card, { backgroundColor: colors.paper, borderColor: colors.line }]}>
 
       {shown.tasks.map((task, index) => (
-        <TaskArrival key={task.id} index={index} count={shown.tasks.length} active={motionActive} reducedMotion={reducedMotion} style={styles.row}>
+        <TaskArrival key={task.id} index={index} count={shown.tasks.length} active={motionActive} reducedMotion={reducedMotion}>
+        <SwipeToDelete
+          label={t(`Usuń zadanie: ${task.text}`, `Delete task: ${task.text}`)}
+          actionText={t('Usuń', 'Delete')}
+          onDelete={() => confirmRemove(task.id, task.text)}
+        >
+        <View style={[styles.row, index < shown.tasks.length - 1 && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line }]}>
           <Pressable
             accessibilityRole="checkbox"
             accessibilityLabel={task.text}
@@ -489,7 +527,7 @@ export function NoteTasks({
               style={[
                 styles.checkbox,
                 {
-                  borderColor: task.done ? colors.action : colors.faint,
+                  borderColor: task.done ? colors.action : colors.ink,
                   backgroundColor: task.done ? colors.action : 'transparent',
                 },
               ]}
@@ -514,41 +552,11 @@ export function NoteTasks({
               <TaskDueChip text={task.text} recordedAt={new Date(note.createdAt)} noteTitle={note.title || t('Bez tytułu', 'Untitled')} done={task.done} />
             )}
           </View>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={t(
-              `Usuń zadanie: ${task.text}`,
-              `Delete task: ${task.text}`,
-            )}
-            onPress={() => {
-              Alert.alert(
-                t('Usunąć zadanie?', 'Delete task?'),
-                task.text,
-                [
-                  { text: t('Anuluj', 'Cancel'), style: 'cancel' },
-                  {
-                    text: t('Usuń', 'Delete'),
-                    style: 'destructive',
-                    onPress: () => {
-                      void remove(task.id).catch((cause: unknown) =>
-                        setError(
-                          cause instanceof Error
-                            ? cause.message
-                            : String(cause),
-                        ),
-                      )
-                    },
-                  },
-                ],
-                { cancelable: true },
-              )
-            }}
-            hitSlop={8}
-          >
-            <Icon name="close" size={18} color={colors.faint} />
-          </Pressable>
+        </View>
+        </SwipeToDelete>
         </TaskArrival>
       ))}
+      </View>}
       {shown.tasks.length === 0 &&
         shown.proposals.length === 0 &&
         !busy &&
@@ -664,26 +672,21 @@ export function NoteTasks({
           {t('Najpierw uzupełnij transkrypcję z zachowanego audio.', 'Complete the transcript from the saved audio first.')}
         </Text>
       )}
-      {shown.proposals.length === 0 && (
-        <Button
-          label={t('Zaproponuj zadania', 'Suggest tasks')}
-          icon="sparkles"
-          onPress={() => void propose()}
-          disabled={busy || noteProcessing || !modelReady || !content.trim() || Boolean(note?.transcriptionIncomplete)}
-        />
-      )}
     </View>
   )
 }
 
 const styles = StyleSheet.create({
   container: { gap: spacing.md },
-  heading: { ...type.title },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.md },
+  heading: { ...type.label, fontSize: 13, lineHeight: 18 },
+  card: { borderRadius: radius.lg, borderWidth: 1, paddingHorizontal: 14, overflow: 'hidden' },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.md,
-    minHeight: 46,
+    gap: spacing.sm,
+    minHeight: 56,
+    paddingVertical: 6,
   },
   checkPressable: {
     minWidth: 36,
@@ -694,7 +697,7 @@ const styles = StyleSheet.create({
   checkbox: {
     width: 22,
     height: 22,
-    borderRadius: radius.sm,
+    borderRadius: 11,
     borderWidth: 1.5,
     alignItems: 'center',
     justifyContent: 'center',

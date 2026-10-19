@@ -1,7 +1,7 @@
 import { Pressable, StyleSheet, Text } from 'react-native'
 import { useI18n } from '../i18n/useI18n'
 import { Icon } from '../ui/Icon'
-import { type, useTheme } from '../ui/theme'
+import { type, useTheme, fonts } from '../ui/theme'
 import { resolveDue, splitTaskText } from './taskDue'
 import { offerTaskExport } from './taskExport'
 
@@ -23,22 +23,27 @@ export function TaskDueChip({ text, recordedAt, noteTitle, done }: { text: strin
   const label = due ? formatResolvedDue(due, recordedAt, locale) : null
   if (done) return label ? <Text style={[styles.label, { color: colors.faint }]}>{label}</Text> : null
   // A task without a deadline can still go to Reminders or Calendar; the date is set there.
-  const shown = label ?? t('Dodaj przypomnienie', 'Add reminder')
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={label ? t(`Termin: ${label}. Dodaj do kalendarza`, `Due: ${label}. Add to calendar`) : t('Dodaj przypomnienie lub wydarzenie', 'Add a reminder or event')}
       onPress={() => offerTaskExport(text, recordedAt, noteTitle)}
       hitSlop={6}
-      style={({ pressed }) => [styles.chip, { opacity: pressed ? 0.6 : 1 }]}
+      style={({ pressed }) => [
+        styles.chip,
+        label
+          ? { backgroundColor: colors.surface, borderColor: colors.surface }
+          : { borderColor: colors.faint, borderStyle: 'dashed' },
+        { opacity: pressed ? 0.6 : 1 },
+      ]}
     >
-      <Icon name="calendar" size={13} color={label ? colors.muted : colors.faint} />
-      <Text style={[styles.label, { color: label ? colors.muted : colors.faint }]}>{shown}</Text>
+      <Icon name="calendar" size={12} color={label ? colors.ink : colors.muted} />
+      <Text style={[styles.label, { color: label ? colors.ink : colors.muted, fontFamily: label ? fonts.semibold : fonts.regular }]}>{label ?? t('Przypomnij', 'Remind me')}</Text>
     </Pressable>
   )
 }
 
 const styles = StyleSheet.create({
-  chip: { flexDirection: 'row', alignItems: 'center', gap: 5, alignSelf: 'flex-start', marginTop: 3 },
+  chip: { flexDirection: 'row', alignItems: 'center', gap: 5, alignSelf: 'flex-start', marginTop: 6, minHeight: 26, paddingHorizontal: 10, borderRadius: 13, borderWidth: 1 },
   label: { ...type.meta, fontVariant: ['tabular-nums'] },
 })

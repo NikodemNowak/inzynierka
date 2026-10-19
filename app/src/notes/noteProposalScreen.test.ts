@@ -88,7 +88,7 @@ const radios = () => chooser().findAll((item) => item.props.accessibilityRole ==
 const open = async () => {
   const action = tree.root.findAll((item) => item.props.accessibilityRole === 'button' &&
     typeof item.props.onPress === 'function').find((item) =>
-      item.findAllByType(Text).some((text) => text.props.children === 'Przetwórz ponownie'))
+      item.props.accessibilityLabel === 'Opracuj na nowo')
   expect(action).toBeDefined()
   await act(async () => { action!.props.onPress() })
 }

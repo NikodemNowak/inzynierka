@@ -2,6 +2,8 @@ import { useI18n } from '../../i18n/useI18n'
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import {
   Alert,
+  Animated,
+  Easing,
   Modal,
   Pressable,
   ScrollView,
@@ -39,6 +41,7 @@ import { parseSummaryDocument } from '../../domain/summary'
 import { SummaryWithSources } from '../../notes/SummaryWithSources'
 import { ProcessingLive } from '../../notes/ProcessingLive'
 import { addedWords } from '../../notes/wordDiff'
+import { MarkedLabel } from '../../ui/MarkedLabel'
 import {
   getEffectiveNoteProposalSelection,
   getNoteProposalChanges,
@@ -181,6 +184,7 @@ export default function NoteDetailScreen() {
   const { t, language } = useI18n()
   const insets = useSafeAreaInsets()
   const reducedMotion = useReducedMotion()
+  const reprocessSweep = useRef(new Animated.Value(1)).current
   const note = useNotesStore((state) =>
     state.notes.find((item) => item.id === id),
   )
@@ -539,10 +543,10 @@ export default function NoteDetailScreen() {
                   accessibilityLabel={t('Edytuj notatkę', 'Edit note')}
                   style={({ pressed }) => [
                     styles.editAction,
-                    { opacity: pressed ? 0.6 : 1 },
+                    { borderColor: colors.line, backgroundColor: colors.paper, opacity: pressed ? 0.7 : 1 },
                   ]}
                 >
-                  <Text style={[styles.editText, { color: colors.accent }]}>
+                  <Text style={[styles.editText, { color: colors.ink }]}>
                     {t('Edytuj', 'Edit')}
                   </Text>
                 </Pressable>
@@ -633,7 +637,7 @@ export default function NoteDetailScreen() {
         <View style={[styles.divider, { backgroundColor: colors.line }]} />
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <Text style={[styles.sectionTitle, { color: colors.ink }]}>
+            <Text style={[styles.sectionTitle, { color: colors.muted }]}>
               {t('Podsumowanie', 'Summary')}
             </Text>
             {!shown.processing && (
@@ -643,9 +647,14 @@ export default function NoteDetailScreen() {
                     if (note.audioUri) router.push({ pathname: '/import', params: { noteId: note.id } })
                     return
                   }
+                  if (!reducedMotion) {
+                    reprocessSweep.setValue(0)
+                    Animated.timing(reprocessSweep, { toValue: 1, duration: 360, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start()
+                  }
                   setSheetMode(proposal ? 'choose' : 'confirm')
                 }}
                 disabled={reprocessDisabled}
+                accessibilityLabel={note.transcriptionIncomplete ? t('Uzupełnij i przetwórz', 'Complete and process') : t('Opracuj na nowo', 'Process again')}
                 accessibilityRole="button"
                 accessibilityState={{
                   disabled: reprocessDisabled,
@@ -653,21 +662,20 @@ export default function NoteDetailScreen() {
                 style={({ pressed }) => [
                   styles.reprocessAction,
                   {
-                    opacity:
-                      reprocessDisabled
-                        ? 0.45
-                        : pressed
-                          ? 0.62
-                          : 1,
+                    borderColor: colors.line,
+                    backgroundColor: colors.paper,
+                    opacity: reprocessDisabled ? 0.45 : 1,
+                    transform: [{ scale: pressed ? 0.97 : 1 }],
                   },
                 ]}
               >
-                <Icon name="sparkles" size={20} color={colors.accent} />
-                <Text style={[styles.reprocessText, { color: colors.accent }]}>
-                  {note.transcriptionIncomplete
-                    ? t('Uzupełnij i przetwórz', 'Complete and process')
-                    : t('Przetwórz ponownie', 'Process again')}
-                </Text>
+                {note.transcriptionIncomplete ? (
+                  <Text style={[styles.reprocessText, { color: colors.ink }]}>
+                    {t('Uzupełnij i przetwórz', 'Complete and process')}
+                  </Text>
+                ) : (
+                  <MarkedLabel lead={t('Opracuj', 'Process')} marked={t('na nowo', 'again')} sweep={reprocessSweep} />
+                )}
               </Pressable>
             )}
           </View>
@@ -759,74 +767,73 @@ export default function NoteDetailScreen() {
           )}
         </View>
 
-        <View style={[styles.divider, { backgroundColor: colors.line }]} />
-        <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: colors.ink }]}>
-            {t('Transkrypcja', 'Transcript')}
-          </Text>
-          {(note.transcriptionIncomplete || note.audioUri) && (
-            <View style={{ gap: spacing.sm, marginBottom: spacing.md }}>
-              {note.transcriptionIncomplete && <Text
-                accessibilityRole="alert"
-                style={[styles.hint, { color: colors.ember }]}
-              >
-                {t(
-                  'Audio zostało zapisane. Transkrypcja może być niepełna.',
-                  'Audio has been saved. The transcript may be incomplete.',
-                )}
-              </Text>}
-              {note.audioUri && <Button
-                label={note.transcriptionIncomplete
-                  ? t('Uzupełnij transkrypcję', 'Complete transcript')
-                  : t('Transkrybuj audio ponownie', 'Transcribe audio again')}
-                variant="secondary"
-                disabled={processing || taskAnalysisBusy}
-                onPress={() =>
-                  router.push({
-                    pathname: '/import',
-                    params: { noteId: note.id },
-                  })
-                }
-              />}
-              {note.audioUri && !note.transcriptionIncomplete && (
-                <Text style={[styles.hint, { color: colors.muted }]}>
-                  {t(
-                    'Użyj, jeśli brakuje fragmentów. Ponowna transkrypcja zastąpi obecny tekst.',
-                    'Use this if parts are missing. Transcribing again replaces the current text.',
-                  )}
-                </Text>
-              )}
-            </View>
-          )}
-          <Text
-            selectable
-            style={[
-              styles.body,
-              { color: note.content.trim() ? colors.body : colors.muted },
-            ]}
-          >
-            {note.content.trim() ||
-              (note.audioUri
-                ? t(
-                    'To nagranie nie ma jeszcze transkrypcji.',
-                    'This recording has no transcript yet.',
-                  )
-                : t('Brak transkrypcji', 'No transcript'))}
-          </Text>
-        </View>
-
-        <View style={[styles.divider, { backgroundColor: colors.line }]} />
+        <View style={{ height: spacing.sm }} />
         <NoteTasks
           noteId={note.id}
           content={note.content}
           onBusyChange={setTaskAnalysisBusy}
         />
 
-        <View style={[styles.divider, { backgroundColor: colors.line }]} />
+        <View style={styles.section}>
+          <Text style={[styles.sectionTitle, { color: colors.muted }]}>
+            {note.content.trim()
+              ? t(`Transkrypt · ${note.content.trim() ? note.content.trim().split(/\s+/u).length : 0} sł.`, `Transcript · ${note.content.trim() ? note.content.trim().split(/\s+/u).length : 0} words`)
+              : t('Transkrypt', 'Transcript')}
+          </Text>
+          {note.transcriptionIncomplete && (
+            <View style={{ gap: spacing.sm }}>
+              <Text accessibilityRole="alert" style={[styles.hint, { color: colors.ember }]}>
+                {t(
+                  'Audio zostało zapisane. Transkrypcja może być niepełna.',
+                  'Audio has been saved. The transcript may be incomplete.',
+                )}
+              </Text>
+              {note.audioUri && (
+                <Button
+                  label={t('Uzupełnij transkrypcję', 'Complete transcript')}
+                  variant="secondary"
+                  disabled={processing || taskAnalysisBusy}
+                  onPress={() => router.push({ pathname: '/import', params: { noteId: note.id } })}
+                />
+              )}
+            </View>
+          )}
+          <View style={[styles.transcriptCard, { backgroundColor: colors.paper, borderColor: colors.line }]}>
+            <Text
+              selectable
+              style={[
+                styles.transcript,
+                { color: note.content.trim() ? colors.body : colors.muted },
+              ]}
+            >
+              {note.content.trim() ||
+                (note.audioUri
+                  ? t(
+                      'To nagranie nie ma jeszcze transkrypcji.',
+                      'This recording has no transcript yet.',
+                    )
+                  : t('Brak transkrypcji', 'No transcript'))}
+            </Text>
+          </View>
+          {note.audioUri && !note.transcriptionIncomplete && (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityHint={t('Ponowna transkrypcja zastąpi obecny tekst.', 'Transcribing again replaces the current text.')}
+              disabled={processing || taskAnalysisBusy}
+              onPress={() => router.push({ pathname: '/import', params: { noteId: note.id } })}
+              style={({ pressed }) => ({ alignSelf: 'flex-start', minHeight: 44, justifyContent: 'center', opacity: processing || taskAnalysisBusy ? 0.45 : pressed ? 0.6 : 1 })}
+            >
+              <Text style={[styles.retranscribe, { color: colors.ink, textDecorationColor: colors.markerLine }]}>
+                {t('Brakuje fragmentów? Przepisz nagranie jeszcze raz', 'Parts missing? Transcribe the recording again')}
+              </Text>
+            </Pressable>
+          )}
+        </View>
+
+        <View style={[styles.divider, { backgroundColor: colors.line, marginTop: spacing.lg }]} />
         <Button
           label={t('Usuń notatkę', 'Delete note')}
           variant="danger"
-          icon="trash"
           onPress={confirmDelete}
           disabled={processing}
         />
@@ -1265,11 +1272,13 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
   },
   editAction: {
-    minHeight: 44,
+    minHeight: 40,
     justifyContent: 'center',
-    paddingHorizontal: spacing.xs,
+    paddingHorizontal: 16,
+    borderRadius: radius.pill,
+    borderWidth: 1,
   },
-  editText: { ...type.label },
+  editText: { ...type.label, fontSize: 15 },
   noteTitle: { ...type.display },
   metadata: {
     flexDirection: 'row',
@@ -1288,24 +1297,28 @@ const styles = StyleSheet.create({
     columnGap: spacing.md,
     rowGap: spacing.xs,
   },
-  sectionTitle: { ...type.title, fontSize: 20 },
+  sectionTitle: { ...type.label, fontSize: 13, lineHeight: 18 },
   reprocessAction: {
     minHeight: 36,
-    maxWidth: '58%',
+    maxWidth: '62%',
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'flex-end',
-    gap: spacing.xs,
+    justifyContent: 'center',
+    paddingHorizontal: 14,
+    borderRadius: radius.pill,
+    borderWidth: 1,
     flexShrink: 1,
   },
   reprocessText: {
     ...type.label,
-    fontSize: 13,
-    lineHeight: 18,
+    fontSize: 14,
+    lineHeight: 20,
     flexShrink: 1,
-    textAlign: 'right',
   },
   body: { ...type.body, fontSize: 15, lineHeight: 23 },
+  transcriptCard: { borderRadius: radius.lg, borderWidth: 1, paddingHorizontal: spacing.lg, paddingVertical: 14 },
+  transcript: { ...type.body, fontSize: 16, lineHeight: 26 },
+  retranscribe: { ...type.label, textDecorationLine: 'underline', textDecorationStyle: 'solid' },
   hint: { ...type.meta },
   error: { ...type.body },
   processingError: {

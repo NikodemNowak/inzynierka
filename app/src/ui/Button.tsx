@@ -18,6 +18,7 @@ interface ButtonProps {
   busy?: boolean
   style?: StyleProp<ViewStyle>
   icon?: IconName
+  compact?: boolean
 }
 export function Button({
   label,
@@ -27,6 +28,7 @@ export function Button({
   busy = false,
   style,
   icon,
+  compact = false,
 }: ButtonProps) {
   const { colors } = useTheme()
   const inactive = disabled || busy
@@ -44,10 +46,10 @@ export function Button({
       accessibilityState={{ disabled: inactive, busy }}
       style={({ pressed }) => [
         {
-          minHeight: variant === 'primary' ? 54 : 48,
+          minHeight: compact ? 36 : variant === 'primary' ? 54 : 48,
           borderRadius: radius.pill,
-          paddingVertical: 13,
-          paddingHorizontal: 20,
+          paddingVertical: compact ? 6 : 13,
+          paddingHorizontal: compact ? 14 : 20,
           alignItems: 'center',
           justifyContent: 'center',
           backgroundColor:
@@ -80,7 +82,7 @@ export function Button({
         <Text
           style={{
             color: foreground,
-            fontSize: variant === 'primary' ? 16 : 15,
+            fontSize: compact ? 14 : variant === 'primary' ? 16 : 15,
             lineHeight: 22,
             fontFamily: fonts.semibold,
             flexShrink: 1,

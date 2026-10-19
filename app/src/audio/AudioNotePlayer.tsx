@@ -17,7 +17,7 @@ export const formatAudioTime = (seconds: number): string => {
   return `${Math.floor(safe / 60)}:${(safe % 60).toString().padStart(2, '0')}`
 }
 export function AudioNotePlayer({ uri, durationMs }: Props) {
-  const { colors } = useTheme()
+  const { colors, isDark } = useTheme()
   const { t } = useI18n()
   const player = useAudioPlayer({ uri }, { updateInterval: 250 })
   const status = useAudioPlayerStatus(player)
@@ -84,13 +84,27 @@ export function AudioNotePlayer({ uri, durationMs }: Props) {
       handleError(error)
     }
   }
+  const chip = {
+    minHeight: 32,
+    minWidth: 44,
+    paddingHorizontal: 12,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.line,
+    backgroundColor: colors.paper,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+  }
   return (
     <View
       style={{
-        backgroundColor: colors.surface,
-        borderRadius: 16,
-        padding: 12,
-        gap: 8,
+        backgroundColor: colors.paper,
+        borderRadius: 18,
+        borderWidth: 1,
+        borderColor: colors.line,
+        paddingHorizontal: 14,
+        paddingVertical: 12,
+        gap: 6,
       }}
     >
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
@@ -109,111 +123,97 @@ export function AudioNotePlayer({ uri, durationMs }: Props) {
             backgroundColor: colors.action,
             alignItems: 'center',
             justifyContent: 'center',
-            opacity: pressed ? 0.7 : 1,
+            transform: [{ scale: pressed ? 0.94 : 1 }],
           })}
         >
           <Icon
             name={status.playing ? 'pause' : 'play'}
-            color={colors.onAction}
-            size={21}
+            color={isDark ? colors.onAction : colors.marker}
+            size={20}
           />
         </Pressable>
-        <View style={{ flex: 1 }}>
-          <Pressable
-            accessibilityRole="adjustable"
-            accessibilityLabel={t('Pozycja nagrania', 'Recording position')}
-            accessibilityValue={{
-              min: 0,
-              max: Math.max(1, Math.floor(durationSeconds)),
-              now: Math.floor(currentSeconds),
-            }}
-            accessibilityActions={[
-              {
-                name: 'increment',
-                label: t('Przewiń o 10 sekund', 'Skip forward 10 seconds'),
-              },
-              {
-                name: 'decrement',
-                label: t('Cofnij o 10 sekund', 'Skip back 10 seconds'),
-              },
-            ]}
-            onAccessibilityAction={(event) => {
-              if (event.nativeEvent.actionName === 'increment')
-                void seek(currentSeconds + 10)
-              if (event.nativeEvent.actionName === 'decrement')
-                void seek(currentSeconds - 10)
-            }}
-            onLayout={(event) =>
-              setScrubberWidth(event.nativeEvent.layout.width)
-            }
-            onPress={(event) => {
-              if (scrubberWidth > 0)
-                void seek(
-                  (durationSeconds * event.nativeEvent.locationX) /
-                    scrubberWidth,
-                )
-            }}
-            style={{ minHeight: 44, justifyContent: 'center' }}
-          >
+        <Pressable
+          accessibilityRole="adjustable"
+          accessibilityLabel={t('Pozycja nagrania', 'Recording position')}
+          accessibilityValue={{
+            min: 0,
+            max: Math.max(1, Math.floor(durationSeconds)),
+            now: Math.floor(currentSeconds),
+          }}
+          accessibilityActions={[
+            {
+              name: 'increment',
+              label: t('Przewiń o 10 sekund', 'Skip forward 10 seconds'),
+            },
+            {
+              name: 'decrement',
+              label: t('Cofnij o 10 sekund', 'Skip back 10 seconds'),
+            },
+          ]}
+          onAccessibilityAction={(event) => {
+            if (event.nativeEvent.actionName === 'increment')
+              void seek(currentSeconds + 10)
+            if (event.nativeEvent.actionName === 'decrement')
+              void seek(currentSeconds - 10)
+          }}
+          onLayout={(event) =>
+            setScrubberWidth(event.nativeEvent.layout.width)
+          }
+          onPress={(event) => {
+            if (scrubberWidth > 0)
+              void seek(
+                (durationSeconds * event.nativeEvent.locationX) /
+                  scrubberWidth,
+              )
+          }}
+          style={{ flex: 1, minHeight: 44, justifyContent: 'center' }}
+        >
+          {/* Played time is a highlighter stroke across the recording. */}
+          <View style={{ height: 12, borderRadius: 3, backgroundColor: colors.surface, overflow: 'hidden' }}>
             <View
               style={{
-                height: 4,
-                borderRadius: 2,
-                backgroundColor: colors.line,
+                width: `${progress * 100}%`,
+                height: 12,
+                backgroundColor: colors.marker,
+                borderTopRightRadius: 6,
+                borderBottomRightRadius: 2,
               }}
-            >
-              <View
-                style={{
-                  width: `${progress * 100}%`,
-                  height: 4,
-                  backgroundColor: colors.accent,
-                  borderRadius: 2,
-                }}
-              />
-              <View
-                style={{
-                  position: 'absolute',
-                  left: Math.max(0, progress * scrubberWidth - 6),
-                  top: -4,
-                  width: 12,
-                  height: 12,
-                  borderRadius: 6,
-                  backgroundColor: colors.paper,
-                  borderWidth: 1,
-                  borderColor: colors.faint,
-                }}
-              />
-            </View>
-          </Pressable>
+            />
+          </View>
           <View
             style={{
-              flexDirection: 'row',
-              justifyContent: 'space-between',
-              marginTop: -7,
+              position: 'absolute',
+              left: Math.max(0, progress * scrubberWidth - 1),
+              top: 8,
+              bottom: 8,
+              width: 2,
+              borderRadius: 1,
+              backgroundColor: colors.ink,
             }}
-          >
-            <Text
-              style={{
-                fontSize: 11,
-                lineHeight: 17,
-                color: colors.muted,
-                fontVariant: ['tabular-nums'],
-              }}
-            >
-              {formatAudioTime(currentSeconds)}
-            </Text>
-            <Text
-              style={{
-                fontSize: 11,
-                lineHeight: 17,
-                color: colors.muted,
-                fontVariant: ['tabular-nums'],
-              }}
-            >
-              {formatAudioTime(durationSeconds)}
-            </Text>
-          </View>
-        </View>
+          />
+        </Pressable>
+      </View>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingLeft: 56 }}>
+        <Text
+          style={{
+            flex: 1,
+            fontSize: 12,
+            lineHeight: 17,
+            fontFamily: fonts.medium,
+            color: colors.muted,
+            fontVariant: ['tabular-nums'],
+          }}
+        >
+          {formatAudioTime(currentSeconds)} / {formatAudioTime(durationSeconds)}
+        </Text>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={t('Cofnij o 10 sekund', 'Skip back 10 seconds')}
+          onPress={() => void seek(currentSeconds - 10)}
+          style={({ pressed }) => [chip, { opacity: pressed ? 0.7 : 1 }]}
+        >
+          <Text style={{ color: colors.ink, fontSize: 12, fontFamily: fonts.semibold }}>−10 s</Text>
+        </Pressable>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={t(
@@ -221,16 +221,9 @@ export function AudioNotePlayer({ uri, durationMs }: Props) {
             `Speed ${activeRate}. Tap to change`,
           )}
           onPress={cycleRate}
-          style={{
-            minWidth: 44,
-            minHeight: 44,
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
+          style={({ pressed }) => [chip, { opacity: pressed ? 0.7 : 1 }]}
         >
-          <Text
-            style={{ color: colors.accent, fontSize: 14, fontFamily: fonts.semibold }}
-          >
+          <Text style={{ color: colors.ink, fontSize: 12, fontFamily: fonts.semibold }}>
             {activeRate}×
           </Text>
         </Pressable>

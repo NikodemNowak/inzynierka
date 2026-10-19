@@ -171,7 +171,7 @@ export function ProcessingLive({ content, live, reducedMotion }: {
               key={index}
               style={segment.kind === 'cited'
                 ? { color: colors.onMarker, backgroundColor: colors.marker }
-                : segment.kind === 'next' ? { color: colors.ink, backgroundColor: colors.accentSoft } : undefined}
+                : segment.kind === 'next' ? { color: colors.ink, backgroundColor: colors.markerSoft } : undefined}
             >
               {segment.text}
             </Text>
