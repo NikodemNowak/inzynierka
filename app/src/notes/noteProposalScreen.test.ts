@@ -151,7 +151,7 @@ test('shows one current value per identical field and an explicit no-change stat
   expect(mockNotesState.clearProposal).not.toHaveBeenCalled()
 })
 
-test('offers only the genuinely changed field, counts it, and uses RevealText for its new value', async () => {
+test('offers only the genuinely changed field, counts it, and highlights the new words', async () => {
   setProposal({ title: 'Nowy temat', tags: [' nauka ', 'NAUKA'] })
   await update()
   await open()
@@ -161,7 +161,7 @@ test('offers only the genuinely changed field, counts it, and uses RevealText fo
   const proposed = radios()[1]
   await act(async () => { proposed.props.onPress() })
   expect(button('Zastosuj 1 zmianę').props.disabled).toBe(false)
-  expect(chooser().findAllByType(RevealText).some((item) => item.props.text === 'Nowy temat')).toBe(true)
+  expect(textNodes('Nowy temat').length).toBeGreaterThan(0)
   await act(async () => { await button('Zastosuj 1 zmianę').props.onPress() })
   expect(mockNotesState.applyProposal).toHaveBeenCalledWith(mockNote.id, { title: true, summary: false, tags: false })
 })
@@ -209,13 +209,11 @@ test('retains the current-versus-new choice for actual category and summary chan
   expect(mockNotesState.applyProposal).toHaveBeenCalledWith(mockNote.id, { title: false, summary: true, tags: true })
 })
 
-test('marks main and proposed result reveal inactive after the note loses focus', async () => {
+test('shows proposals as static highlighted text and marks main reveals inactive after the note loses focus', async () => {
   setProposal({ title: 'Nowy temat', summary: 'Nowe podsumowanie.' })
   await update()
   await open()
-  const newReveals = chooser().findAllByType(RevealText)
-  expect(newReveals).toHaveLength(2)
-  expect(newReveals.every((item) => item.props.active === true)).toBe(true)
+  expect(chooser().findAllByType(RevealText)).toHaveLength(0)
   mockFocused = false
   await update()
   const mainReveals = tree.root.findAllByType(RevealText)

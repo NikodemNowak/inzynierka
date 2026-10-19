@@ -35,7 +35,7 @@ export function Button({
       ? colors.onAction
       : variant === 'danger'
         ? colors.danger
-        : colors.accent
+        : colors.ink
   return (
     <Pressable
       onPress={onPress}
@@ -44,19 +44,22 @@ export function Button({
       accessibilityState={{ disabled: inactive, busy }}
       style={({ pressed }) => [
         {
-          minHeight: 50,
-          borderRadius: radius.md,
+          minHeight: variant === 'primary' ? 54 : 48,
+          borderRadius: radius.pill,
           paddingVertical: 13,
-          paddingHorizontal: 18,
+          paddingHorizontal: 20,
           alignItems: 'center',
           justifyContent: 'center',
           backgroundColor:
             variant === 'primary'
               ? colors.action
               : variant === 'secondary'
-                ? colors.accentSoft
+                ? colors.paper
                 : 'transparent',
-          opacity: inactive ? 0.45 : pressed ? 0.7 : 1,
+          borderWidth: variant === 'secondary' ? 1 : 0,
+          borderColor: colors.line,
+          opacity: inactive ? 0.45 : 1,
+          transform: [{ scale: pressed && !inactive ? 0.98 : 1 }],
         },
         style,
       ]}
@@ -77,7 +80,7 @@ export function Button({
         <Text
           style={{
             color: foreground,
-            fontSize: 15,
+            fontSize: variant === 'primary' ? 16 : 15,
             lineHeight: 22,
             fontFamily: fonts.semibold,
             flexShrink: 1,

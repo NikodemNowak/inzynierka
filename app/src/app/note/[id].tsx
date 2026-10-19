@@ -38,6 +38,7 @@ import { NoteTags } from '../../tags/NoteTags'
 import { parseSummaryDocument } from '../../domain/summary'
 import { SummaryWithSources } from '../../notes/SummaryWithSources'
 import { ProcessingLive } from '../../notes/ProcessingLive'
+import { addedWords } from '../../notes/wordDiff'
 import {
   getEffectiveNoteProposalSelection,
   getNoteProposalChanges,
@@ -94,6 +95,7 @@ function ProposalChoice({
   active = true,
   onPress,
   children,
+  compareTo,
 }: {
   label: string
   value?: string
@@ -104,8 +106,9 @@ function ProposalChoice({
   active?: boolean
   onPress: () => void
   children?: ReactNode
+  compareTo?: string
 }) {
-  const { colors } = useTheme()
+  const { colors, isDark } = useTheme()
   return (
     <Pressable
       onPress={onPress}
@@ -115,7 +118,8 @@ function ProposalChoice({
       style={({ pressed }) => [
         styles.choice,
         {
-          backgroundColor: selected ? colors.accentSoft : colors.canvas,
+          backgroundColor: selected ? colors.markerSoft : colors.paper,
+          borderLeftColor: selected ? colors.markerLine : 'transparent',
           opacity: disabled ? 0.55 : pressed ? 0.78 : 1,
         },
       ]}
@@ -127,11 +131,17 @@ function ProposalChoice({
           selected && { backgroundColor: colors.action },
         ]}
       >
-        {selected && <Icon name="check" size={15} color={colors.onAction} />}
+        {selected && <Icon name="check" size={14} color={isDark ? colors.onAction : colors.marker} />}
       </View>
       <View style={styles.choiceValueContent}>
-        <Text style={[styles.choiceLabel, { color: colors.ink }]}>{label}</Text>
-        {children ?? (reveal ? (
+        <Text style={[styles.choiceLabel, { color: colors.muted }]}>{label}</Text>
+        {children ?? (compareTo !== undefined ? (
+          <Text style={[styles.choiceValue, { color: colors.body }]}>
+            {addedWords(compareTo, value ?? '').map((segment, index) => (
+              <Text key={index} style={segment.added ? { color: colors.onMarker, backgroundColor: colors.marker } : undefined}>{segment.text}</Text>
+            ))}
+          </Text>
+        ) : reveal ? (
           <RevealText text={value ?? ''} animate={animate} active={active} style={[styles.choiceValue, { color: colors.body }]} />
         ) : (
           <Text style={[styles.choiceValue, { color: colors.body }]}>
@@ -825,31 +835,50 @@ export default function NoteDetailScreen() {
       <BottomSheet
         visible={sheetMode === 'confirm' && isFocused}
         onClose={() => setSheetMode(null)}
-        title={t('Przygotować nową wersję?', 'Prepare a new version?')}
+        title={t('Opracować na nowo?', 'Process again?')}
       >
         {sheetMode === 'confirm' && (
           <>
-            <View style={styles.sheetIntro}>
-              <Icon name="sparkles" size={28} color={colors.accent} />
-              <Text style={[styles.sheetMessage, { color: colors.body }]}>
-                {t(
-                  'Powstaną propozycje tytułu, podsumowania i kategorii. Wybierzesz osobno, co zmienić.',
-                  'Suggestions for the title, summary, and categories will be created. You choose which fields to change.',
-                )}
+            <Text style={[styles.sheetMessage, { color: colors.muted }]}>
+              {t(
+                'Model przeczyta transkrypt jeszcze raz i przygotuje propozycję. Potem porównasz ją z obecną wersją i wybierzesz, co zmienić.',
+                'The model reads the transcript again and prepares a suggestion. Then you compare it with the current version and choose what to change.',
+              )}
+            </Text>
+            <View>
+              <Text style={[styles.choiceSectionTitle, { color: colors.muted }]}>
+                {t('Co przygotuję', 'What I will prepare')}
+              </Text>
+              {[
+                { label: t('Streszczenie', 'Summary'), detail: note.summary?.trim() ? t('zastąpi obecne, jeśli wybierzesz', 'replaces the current one if you choose') : t('notatka nie ma jeszcze streszczenia', 'the note has no summary yet') },
+                { label: t('Tytuł', 'Title'), detail: `„${note.title.trim() || t('Bez tytułu', 'Untitled')}”` },
+                { label: t('Kategorie', 'Categories'), detail: shown.tags.length ? t(`teraz: ${shown.tags.length}`, `now: ${shown.tags.length}`) : t('teraz brak', 'none yet') },
+              ].map((row, index) => (
+                <View key={row.label} style={[styles.prepareRow, index < 2 && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line }]}>
+                  <View style={[styles.prepareDot, { backgroundColor: colors.marker, borderColor: colors.markerLine }]} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={[type.body, { color: colors.ink, fontFamily: fonts.medium }]}>{row.label}</Text>
+                    <Text style={[type.meta, { color: colors.muted }]} numberOfLines={1}>{row.detail}</Text>
+                  </View>
+                </View>
+              ))}
+            </View>
+            <View style={[styles.offlineNote, { backgroundColor: colors.canvas }]}>
+              <Icon name="lock" size={18} color={colors.ink} />
+              <Text style={[type.meta, { color: colors.body, flex: 1, fontSize: 13, lineHeight: 19 }]}>
+                {t('Działa na telefonie, bez internetu. Możesz w tym czasie wrócić do listy.', 'Runs on this phone, without internet. You can go back to the list meanwhile.')}
               </Text>
             </View>
             <Button
-              label={t('Generuj propozycje', 'Generate suggestions')}
+              label={t('Przygotuj propozycję', 'Prepare suggestion')}
               variant="primary"
-              icon="sparkles"
               onPress={() => void startReprocessing()}
               disabled={!modelReady || processing || taskAnalysisBusy}
             />
             {supportsBackgroundProcessing() && (
               <Button
-                label={t('Generuj w tle', 'Generate in the background')}
+                label={t('Przygotuj w tle', 'Prepare in the background')}
                 variant="secondary"
-                icon="sparkles"
                 onPress={() => void startReprocessing(true)}
                 disabled={!modelReady || processing || taskAnalysisBusy}
               />
@@ -864,7 +893,7 @@ export default function NoteDetailScreen() {
             )}
             <Button
               label={t('Anuluj', 'Cancel')}
-              variant="secondary"
+              variant="quiet"
               onPress={() => setSheetMode(null)}
             />
             {!modelReady && (
@@ -916,7 +945,7 @@ export default function NoteDetailScreen() {
               numberOfLines={1}
               style={[styles.choiceScreenTitle, { color: colors.ink }]}
             >
-              {t('Wybierz zmiany', 'Choose changes')}
+              {t('Nowa wersja', 'New version')}
             </Text>
             <View style={styles.choiceCancel} />
           </View>
@@ -926,12 +955,17 @@ export default function NoteDetailScreen() {
             contentContainerStyle={styles.choiceScrollContent}
             keyboardShouldPersistTaps="handled"
           >
-            <Text style={[styles.choiceIntro, { color: colors.muted }]}>
-              {t(
-                'Wybierz zmiany, które chcesz zastosować.',
-                'Choose the changes you want to apply.',
-              )}
-            </Text>
+            <View style={{ gap: spacing.xs }}>
+              <Text style={[type.display, { fontSize: 28, lineHeight: 34, color: colors.ink }]}>
+                {t('Co zmienić?', 'What should change?')}
+              </Text>
+              <Text style={[styles.choiceIntro, { color: colors.muted }]}>
+                {t(
+                  'Nowe fragmenty są zakreślone. Dopóki nic nie wybierzesz, zostaje obecna wersja.',
+                  'New parts are highlighted. Until you pick something, the current version stays.',
+                )}
+              </Text>
+            </View>
             {proposal && proposalCurrent ? (
               <>
                 {changedFieldCount === 0 && (
@@ -960,12 +994,12 @@ export default function NoteDetailScreen() {
                 )}
                 <View style={styles.proposalSection}>
                   <Text
-                    style={[styles.choiceSectionTitle, { color: colors.ink }]}
+                    style={[styles.choiceSectionTitle, { color: colors.muted }]}
                   >
                     {t('Tytuł', 'Title')}
                   </Text>
                   <View
-                    style={[styles.choiceGroup, { borderColor: colors.line }]}
+                    style={[styles.choiceGroup, { borderColor: colors.line, backgroundColor: colors.paper }]}
                   >
                     {proposalChanges.title ? (
                       <>
@@ -987,6 +1021,7 @@ export default function NoteDetailScreen() {
                           animate={sheetMode === 'choose' && isFocused && !reducedMotion}
                           label={t('Nowy', 'New')}
                           value={proposal.generated.title}
+                          compareTo={note.title}
                           selected={selection.title}
                           disabled={discarding}
                           onPress={() => choose('title', true)}
@@ -1003,12 +1038,12 @@ export default function NoteDetailScreen() {
                 </View>
                 <View style={styles.proposalSection}>
                   <Text
-                    style={[styles.choiceSectionTitle, { color: colors.ink }]}
+                    style={[styles.choiceSectionTitle, { color: colors.muted }]}
                   >
                     {t('Podsumowanie', 'Summary')}
                   </Text>
                   <View
-                    style={[styles.choiceGroup, { borderColor: colors.line }]}
+                    style={[styles.choiceGroup, { borderColor: colors.line, backgroundColor: colors.paper }]}
                   >
                     {proposalChanges.summary ? (
                       <>
@@ -1035,6 +1070,7 @@ export default function NoteDetailScreen() {
                           value={
                             proposal.generated.summary.trim() || t('Brak podsumowania', 'No summary')
                           }
+                          compareTo={note.summary ?? ''}
                           selected={selection.summary}
                           disabled={discarding}
                           onPress={() => choose('summary', true)}
@@ -1051,12 +1087,12 @@ export default function NoteDetailScreen() {
                 </View>
                 <View style={styles.proposalSection}>
                   <Text
-                    style={[styles.choiceSectionTitle, { color: colors.ink }]}
+                    style={[styles.choiceSectionTitle, { color: colors.muted }]}
                   >
                     {t('Kategorie', 'Categories')}
                   </Text>
                   <View
-                    style={[styles.choiceGroup, { borderColor: colors.line }]}
+                    style={[styles.choiceGroup, { borderColor: colors.line, backgroundColor: colors.paper }]}
                   >
                     {proposalChanges.tags ? (
                       <>
@@ -1162,7 +1198,6 @@ export default function NoteDetailScreen() {
                   `Apply ${proposalChangeCount} ${pluralChanges(proposalChangeCount)}`,
                 )}
                 variant="primary"
-                icon="check"
                 onPress={() => void applySelected()}
                 disabled={proposalChangeCount === 0 || discarding || processing}
               />
@@ -1288,7 +1323,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
   },
-  sheetMessage: { ...type.body },
+  sheetMessage: { ...type.body, fontSize: 15, lineHeight: 22 },
+  prepareRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, minHeight: 56, paddingVertical: spacing.sm },
+  prepareDot: { width: 8, height: 8, borderRadius: 4, borderWidth: 1 },
+  offlineNote: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 12 },
   proposalSection: { gap: spacing.sm },
   choiceSectionTitle: { ...type.label },
   choice: {
@@ -1297,6 +1335,7 @@ const styles = StyleSheet.create({
     gap: spacing.md,
     minHeight: 66,
     padding: spacing.md,
+    borderLeftWidth: 3,
   },
   radio: {
     width: 22,
@@ -1308,8 +1347,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   choiceValueContent: { flex: 1, gap: spacing.xs },
-  choiceLabel: { ...type.label },
-  choiceValue: { ...type.body, fontSize: 14, lineHeight: 20 },
+  choiceLabel: { ...type.meta, fontFamily: fonts.semibold },
+  choiceValue: { ...type.body, fontSize: 15, lineHeight: 22 },
   choiceScreen: { flex: 1 },
   choiceHeader: {
     minHeight: 56,
@@ -1321,7 +1360,7 @@ const styles = StyleSheet.create({
   },
   choiceCancel: { width: 72, minHeight: 44, justifyContent: 'center' },
   headerCancelText: { ...type.label, fontFamily: fonts.medium },
-  choiceScreenTitle: { ...type.label, textAlign: 'center', flex: 1 },
+  choiceScreenTitle: { ...type.label, fontSize: 15, textAlign: 'center', flex: 1 },
   choiceScroll: { flex: 1 },
   choiceScrollContent: {
     paddingHorizontal: spacing.lg,
@@ -1329,10 +1368,10 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.xl,
     gap: spacing.lg,
   },
-  choiceIntro: { ...type.body, fontSize: 14, lineHeight: 20 },
+  choiceIntro: { ...type.body, fontSize: 15, lineHeight: 22 },
   choiceGroup: {
     borderWidth: 1,
-    borderRadius: radius.md,
+    borderRadius: radius.lg,
     overflow: 'hidden',
   },
   choiceDivider: {
