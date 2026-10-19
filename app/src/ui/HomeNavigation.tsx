@@ -94,7 +94,7 @@ export function HomeNavigation({
   onSelect: (tab: HomeTab) => void
 }) {
   const { t } = useI18n()
-  const { colors } = useTheme()
+  const { colors, isDark } = useTheme()
   const insets = useSafeAreaInsets()
   const router = useRouter()
   const [adding, setAdding] = useState(false)
@@ -130,7 +130,7 @@ export function HomeNavigation({
                 opacity: pressed ? 0.7 : 1,
               })}
             >
-              <Icon name="plus" size={28} color={colors.marker} />
+              <Icon name="plus" size={28} color={isDark ? colors.onAction : colors.marker} />
             </Pressable>
           ) : (
             <Pressable
