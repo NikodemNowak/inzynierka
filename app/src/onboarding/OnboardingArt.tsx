@@ -47,7 +47,7 @@ function Stroke({ progress, children, dark }: { progress: Animated.AnimatedInter
 }
 
 function PrivacyScene({ animate }: { animate: boolean }) {
-  const { colors, isDark } = useTheme()
+  const { colors } = useTheme()
   const { t } = useI18n()
   const clock = useLoop(animate, 3200)
   const lines = [0.9, 0.7, 0.84, 0.55, 0.78, 0.62]
@@ -71,11 +71,11 @@ function PrivacyScene({ animate }: { animate: boolean }) {
       </Card>
       <Animated.View
         style={[styles.lock, {
-          backgroundColor: colors.action,
+          backgroundColor: colors.brand,
           transform: [{ scale: clock.interpolate({ inputRange: [0, 0.55, 0.65, 0.72, 1], outputRange: [0, 0, 1.15, 1, 1], extrapolate: 'clamp' }) }],
         }]}
       >
-        <Icon name="lock" size={26} color={isDark ? colors.onAction : colors.marker} />
+        <Icon name="lock" size={26} color={colors.onBrand} />
       </Animated.View>
     </View>
   )
@@ -101,9 +101,9 @@ function SpeakScene({ animate }: { animate: boolean }) {
   return (
     <Card style={{ width: '100%', padding: 20, gap: 14 }}>
       <View style={styles.rowBetween}>
-        <View style={[styles.timer, { backgroundColor: colors.action }]}>
-          <View style={[styles.recDot, { backgroundColor: colors.marker }]} />
-          <Text style={{ fontFamily: fonts.semibold, fontSize: 13, color: colors.onAction, fontVariant: ['tabular-nums'] }}>0:12</Text>
+        <View style={[styles.timer, { backgroundColor: colors.brand }]}>
+          <View style={[styles.recDot, { backgroundColor: colors.onBrand }]} />
+          <Text style={{ fontFamily: fonts.semibold, fontSize: 13, color: colors.onBrand, fontVariant: ['tabular-nums'] }}>0:12</Text>
         </View>
         <Text style={[type.meta, { color: colors.faint }]}>{t('na telefonie', 'on this phone')}</Text>
       </View>
@@ -207,7 +207,7 @@ function AskScene({ animate }: { animate: boolean }) {
 }
 
 function TasksScene({ animate }: { animate: boolean }) {
-  const { colors, isDark } = useTheme()
+  const { colors } = useTheme()
   const { t } = useI18n()
   const clock = useLoop(animate, 3600)
   const [width, setWidth] = useState(0)
@@ -228,8 +228,8 @@ function TasksScene({ animate }: { animate: boolean }) {
           >
             <View style={[styles.check, { borderColor: colors.ink }]}>
               {index === 0 && (
-                <Animated.View style={[styles.checkFill, { backgroundColor: colors.action, transform: [{ scale: tick }] }]}>
-                  <Icon name="check" size={12} color={isDark ? colors.onAction : colors.marker} />
+                <Animated.View style={[styles.checkFill, { backgroundColor: colors.brand, transform: [{ scale: tick }] }]}>
+                  <Icon name="check" size={12} color={colors.onBrand} />
                 </Animated.View>
               )}
             </View>

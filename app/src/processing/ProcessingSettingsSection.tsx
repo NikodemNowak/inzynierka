@@ -143,8 +143,8 @@ export function ProcessingSettingsSection() {
           accessibilityLabel={t('Proponuj zadania od razu', 'Suggest tasks right away')}
           value={autoTasks}
           onValueChange={(value) => void chooseAutoTasks(value)}
-          trackColor={{ false: colors.line, true: colors.action }}
-          thumbColor={autoTasks ? colors.marker : colors.paper}
+          trackColor={{ false: colors.line, true: colors.brand }}
+          thumbColor={autoTasks ? colors.onBrand : colors.paper}
           ios_backgroundColor={colors.line}
         />
       </View>

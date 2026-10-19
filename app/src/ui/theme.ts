@@ -23,6 +23,11 @@ const lightColors = {
   markerLine: '#E8C93A',
   markerSoft: '#FFFBE8',
   onMarker: '#18181B',
+  // Signature fill: black with a yellow mark on paper, yellow with a dark mark on graphite.
+  brand: '#18181B',
+  onBrand: '#FFE066',
+  // A selected segment lifted off its track.
+  raised: '#FFFFFF',
   ember: '#D2493A',
   emberSoft: '#FBEAE6',
   danger: '#B3362B',
@@ -51,6 +56,9 @@ const darkColors: ThemeColors = {
   markerLine: '#E8C93A',
   markerSoft: '#26262A',
   onMarker: '#141416',
+  brand: '#FFE066',
+  onBrand: '#141416',
+  raised: '#3A3A40',
   ember: '#F08C7F',
   emberSoft: '#3A2522',
   danger: '#F39288',

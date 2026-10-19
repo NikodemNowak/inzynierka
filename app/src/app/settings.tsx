@@ -654,7 +654,7 @@ function Segmented<T extends string>({ label, options, value, onChange, disabled
             accessibilityState={{ checked: selected, disabled }}
             disabled={disabled}
             onPress={() => onChange(option.value)}
-            style={[styles.segmentOption, selected && { backgroundColor: colors.paper }]}
+            style={[styles.segmentOption, selected && { backgroundColor: colors.raised }]}
           >
             <Text style={{ fontFamily: fonts.semibold, fontSize: 14, color: selected ? colors.ink : colors.muted }}>{option.title}</Text>
           </Pressable>

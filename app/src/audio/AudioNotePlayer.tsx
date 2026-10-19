@@ -17,7 +17,7 @@ export const formatAudioTime = (seconds: number): string => {
   return `${Math.floor(safe / 60)}:${(safe % 60).toString().padStart(2, '0')}`
 }
 export function AudioNotePlayer({ uri, durationMs }: Props) {
-  const { colors, isDark } = useTheme()
+  const { colors } = useTheme()
   const { t } = useI18n()
   const player = useAudioPlayer({ uri }, { updateInterval: 250 })
   const status = useAudioPlayerStatus(player)
@@ -120,7 +120,7 @@ export function AudioNotePlayer({ uri, durationMs }: Props) {
             width: 44,
             height: 44,
             borderRadius: 22,
-            backgroundColor: colors.action,
+            backgroundColor: colors.brand,
             alignItems: 'center',
             justifyContent: 'center',
             transform: [{ scale: pressed ? 0.94 : 1 }],
@@ -128,7 +128,7 @@ export function AudioNotePlayer({ uri, durationMs }: Props) {
         >
           <Icon
             name={status.playing ? 'pause' : 'play'}
-            color={isDark ? colors.onAction : colors.marker}
+            color={colors.onBrand}
             size={20}
           />
         </Pressable>

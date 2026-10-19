@@ -111,7 +111,7 @@ function ProposalChoice({
   children?: ReactNode
   compareTo?: string
 }) {
-  const { colors, isDark } = useTheme()
+  const { colors } = useTheme()
   return (
     <Pressable
       onPress={onPress}
@@ -130,11 +130,11 @@ function ProposalChoice({
       <View
         style={[
           styles.radio,
-          { borderColor: selected ? colors.action : colors.faint },
-          selected && { backgroundColor: colors.action },
+          { borderColor: selected ? colors.brand : colors.faint },
+          selected && { backgroundColor: colors.brand },
         ]}
       >
-        {selected && <Icon name="check" size={14} color={isDark ? colors.onAction : colors.marker} />}
+        {selected && <Icon name="check" size={14} color={colors.onBrand} />}
       </View>
       <View style={styles.choiceValueContent}>
         <Text style={[styles.choiceLabel, { color: colors.muted }]}>{label}</Text>

@@ -325,7 +325,7 @@ export function TaskCheck({ checked, active, reducedMotion, style, size = 16, fe
   return (
     <Animated.View style={[style, { transform: [{ scale }] }]}>
       <Animated.View accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={{ opacity }}>
-        <Icon name="check" size={size} color={colors.onAction} />
+        <Icon name="check" size={size} color={colors.onBrand} />
       </Animated.View>
     </Animated.View>
   )

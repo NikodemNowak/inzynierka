@@ -527,8 +527,8 @@ export function NoteTasks({
               style={[
                 styles.checkbox,
                 {
-                  borderColor: task.done ? colors.action : colors.ink,
-                  backgroundColor: task.done ? colors.action : 'transparent',
+                  borderColor: task.done ? colors.brand : colors.ink,
+                  backgroundColor: task.done ? colors.brand : 'transparent',
                 },
               ]}
             />
@@ -618,7 +618,7 @@ export function NoteTasks({
                     checked={checked}
                     active={motionActive}
                     reducedMotion={reducedMotion}
-                    style={[styles.proposalCheckbox, { borderColor: checked ? colors.action : colors.faint, backgroundColor: checked ? colors.action : 'transparent' }]}
+                    style={[styles.proposalCheckbox, { borderColor: checked ? colors.brand : colors.faint, backgroundColor: checked ? colors.brand : 'transparent' }]}
                   /> : <View style={[styles.proposalCheckbox, { borderColor: colors.faint }]} />}
                   <View style={styles.placeholderText}>
                   {ready ? <TaskText

@@ -191,9 +191,9 @@ export default function TasksScreen() {
                   style={[
                     styles.checkbox,
                     {
-                      borderColor: item.done ? colors.action : colors.ink,
+                      borderColor: item.done ? colors.brand : colors.ink,
                       backgroundColor: item.done
-                        ? colors.action
+                        ? colors.brand
                         : 'transparent',
                     },
                   ]}

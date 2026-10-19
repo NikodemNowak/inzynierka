@@ -277,7 +277,7 @@ export default function WelcomeScreen() {
                               accessibilityRole="radio"
                               accessibilityState={{ checked: selected }}
                               onPress={() => void setNoteLanguage(option.value)}
-                              style={[styles.segmentOption, selected && { backgroundColor: colors.paper }]}
+                              style={[styles.segmentOption, selected && { backgroundColor: colors.raised }]}
                             >
                               <Text style={{ fontFamily: fonts.semibold, fontSize: 15, color: selected ? colors.ink : colors.muted }}>{option.label}</Text>
                             </Pressable>
