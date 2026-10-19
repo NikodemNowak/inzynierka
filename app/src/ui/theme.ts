@@ -102,7 +102,8 @@ export const type = {
   display: {
     fontFamily: fonts.serif,
     fontSize: 30,
-    lineHeight: 36,
+    // Literata's descenders need room below the baseline.
+    lineHeight: 40,
     letterSpacing: -0.3,
   },
   title: {
