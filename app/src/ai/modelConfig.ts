@@ -44,7 +44,7 @@ const ANDROID_MODEL: ModelConfig = {
   displayName: 'Qwen3-1.7B (Q4_K_M)',
   approxSizeMb: 1060,
   nGpuLayers: 0,
-  nCtx: 2048,
+  nCtx: 4096,
   revision: 'd7f544eead698dbd1f15126ef60b45a1e1933222',
   sizeBytes: 1107409472,
   sha256: 'b139949c5bd74937ad8ed8c8cf3d9ffb1e99c866c823204dc42c0d91fa181897',
