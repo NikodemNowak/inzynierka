@@ -95,44 +95,42 @@ export function NoteRow({
         { backgroundColor: colors.paper, borderColor: colors.line, transform: [{ scale: pressed ? 0.985 : 1 }] },
       ]}
     >
-      <View style={styles.head}>
-        <Text
-          style={{ ...type.display, fontSize: 19, lineHeight: 25, flex: 1, color: untitled || processing ? colors.faint : colors.ink }}
-          numberOfLines={1}
-        >
-          {note.title.trim() || t('Nowa notatka', 'New note')}
-        </Text>
-        <Text style={{ ...type.meta, color: colors.muted, fontVariant: ['tabular-nums'] }}>
-          {time}{note.audioUri && note.durationMs !== null ? ` · ${formatDuration(note.durationMs)}` : ''}
-        </Text>
-      </View>
+      <Text
+        style={{ ...type.display, fontSize: 19, lineHeight: 25, color: untitled || processing ? colors.faint : colors.ink }}
+        numberOfLines={2}
+      >
+        {note.title.trim() || t('Nowa notatka', 'New note')}
+      </Text>
       {processing ? (
         <ProcessingStrip noteId={note.id} />
+      ) : preview ? (
+        <Text style={{ ...type.body, fontSize: 14, lineHeight: 20, color: colors.muted }} numberOfLines={2}>
+          {preview.replace(/^[•\-–]\s*/u, '').replace(/\n+[•\-–]?\s*/gu, ' · ')}
+        </Text>
       ) : (
-        <>
-          {!!preview && (
-            <Text style={{ ...type.body, fontSize: 14, lineHeight: 20, color: colors.muted }} numberOfLines={2}>
-              {preview.replace(/^[•\-–]\s*/u, '').replace(/\n+[•\-–]?\s*/gu, ' · ')}
-            </Text>
-          )}
-          <View style={styles.chips}>
-            {!note.audioUri && (
-              <View style={[styles.chip, { backgroundColor: colors.surface }]}>
-                <Icon name="note" size={12} color={colors.muted} />
-                <Text style={[styles.chipText, { color: colors.muted }]}>{t('Tekst', 'Text')}</Text>
-              </View>
-            )}
-            {categories.slice(0, 2).map((category) => (
-              <View key={category} style={[styles.chip, { backgroundColor: colors.surface }]}>
-                <Text style={[styles.chipText, { color: colors.ink }]}>{categoryLabel(category, language)}</Text>
-              </View>
-            ))}
-            {categories.length > 2 && (
-              <Text style={[styles.chipText, { color: colors.muted }]}>+{categories.length - 2}</Text>
-            )}
-          </View>
-        </>
+        <Text style={{ ...type.body, fontSize: 14, lineHeight: 20, color: colors.faint, fontStyle: 'italic' }}>
+          {note.audioUri ? t('Nagranie bez transkrypcji', 'Recording without a transcript') : t('Pusta notatka', 'Empty note')}
+        </Text>
       )}
+      <View style={styles.meta}>
+        <View style={[styles.chip, { backgroundColor: colors.surface }]}>
+          <Icon name={note.audioUri ? 'waveform' : 'note'} size={12} color={colors.muted} />
+          <Text style={[styles.chipText, { color: colors.muted, fontVariant: ['tabular-nums'] }]}>
+            {note.audioUri
+              ? note.durationMs !== null ? formatDuration(note.durationMs) : t('Nagranie', 'Recording')
+              : t('Tekst', 'Text')}
+          </Text>
+        </View>
+        {!processing && categories.slice(0, 2).map((category) => (
+          <View key={category} style={[styles.chip, { backgroundColor: colors.surface }]}>
+            <Text style={[styles.chipText, { color: colors.ink }]}>{categoryLabel(category, language)}</Text>
+          </View>
+        ))}
+        {!processing && categories.length > 2 && (
+          <Text style={[styles.chipText, { color: colors.muted }]}>+{categories.length - 2}</Text>
+        )}
+        <Text style={{ ...type.meta, color: colors.muted, marginLeft: 'auto', fontVariant: ['tabular-nums'] }}>{time}</Text>
+      </View>
     </Pressable>
   )
 }
@@ -146,8 +144,7 @@ const styles = StyleSheet.create({
     gap: 6,
     marginBottom: 10,
   },
-  head: { flexDirection: 'row', alignItems: 'baseline', gap: 10 },
-  chips: { flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginTop: 2 },
+  meta: { flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginTop: 4 },
   chip: { flexDirection: 'row', alignItems: 'center', gap: 4, minHeight: 24, paddingHorizontal: 9, borderRadius: 12 },
   chipText: { fontFamily: fonts.semibold, fontSize: 12, lineHeight: 16 },
   labelMark: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 8, minHeight: 24, borderRadius: 12 },
