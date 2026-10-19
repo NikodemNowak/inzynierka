@@ -34,10 +34,11 @@ import { useModelStore } from '../../state/modelStore'
 import { formatNoteAsText } from '../../export/noteText'
 import { getModelMissingMessage } from '../../ai/noteProcessing'
 import { localeForLanguage, type Language } from '../../i18n/language'
-import { AudioNotePlayer } from '../../audio/AudioNotePlayer'
+import { AudioNotePlayer, type AudioMark, type AudioNotePlayerHandle } from '../../audio/AudioNotePlayer'
+import { timeForRanges } from '../../domain/audioTimeline'
 import { NoteTasks } from '../../tasks/NoteTasks'
 import { NoteTags } from '../../tags/NoteTags'
-import { parseSummaryDocument } from '../../domain/summary'
+import { parseSummaryDocument, type SummaryPoint } from '../../domain/summary'
 import { SummaryWithSources } from '../../notes/SummaryWithSources'
 import { ProcessingLive } from '../../notes/ProcessingLive'
 import { addedWords } from '../../notes/wordDiff'
@@ -275,6 +276,12 @@ export default function NoteDetailScreen() {
   const desiredPresentation = { title: note?.title ?? '', summary: note?.summary ?? null, tags: note?.tags ?? [], titleLoading, summaryLoading, processing }
   const shown = useLayoutTransition(desiredPresentation, JSON.stringify(desiredPresentation), id ?? '', isFocused, reducedMotion)
   const summaryDocument = note ? parseSummaryDocument(note.summaryDocument, note.content, note.summary) : null
+  const playerRef = useRef<AudioNotePlayerHandle>(null)
+  const audioSpans = note?.audioTimeline?.spans ?? []
+  const pointTime = useCallback((point: SummaryPoint) => timeForRanges(audioSpans, point.sources), [audioSpans])
+  const audioMarks: AudioMark[] = summaryDocument && audioSpans.length > 0
+    ? summaryDocument.points.flatMap(point => pointTime(point) ?? [])
+    : []
   const summaryRevealing = Boolean(note?.summary && (revealSummary === note.summary || summaryResultChanged))
   // Metadata may arrive without changing the text. Stage its activation as a
   // separate native layout transaction before publishing minimum44 source rows.
@@ -631,7 +638,13 @@ export default function NoteDetailScreen() {
         </LayoutEntry>
 
         {note.audioUri && (
-          <AudioNotePlayer uri={note.audioUri} durationMs={note.durationMs} />
+          <AudioNotePlayer
+            ref={playerRef}
+            uri={note.audioUri}
+            durationMs={note.durationMs}
+            timeline={note.audioTimeline}
+            marks={showSummarySources ? audioMarks : []}
+          />
         )}
 
         <View style={[styles.divider, { backgroundColor: colors.line }]} />
@@ -687,6 +700,8 @@ export default function NoteDetailScreen() {
               summary={note.summary ?? ''}
               document={note.summaryDocument}
               active={isFocused}
+              pointTime={pointTime}
+              onPlayFrom={note.audioUri && audioSpans.length > 0 ? (ms) => playerRef.current?.playFrom(ms) : undefined}
             /> : <RevealText
               active={isFocused}
               text={shown.summary?.trim() || t('Brak podsumowania', 'No summary')}

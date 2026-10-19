@@ -2,14 +2,16 @@ import { withDatabaseWrite } from '../db/writeQueue'
 import { getDatabase } from '../db/database'
 import type { Note, NoteInput } from '../domain/note'
 import { parseSummaryDocument, reconcileSummaryDocument } from '../domain/summary'
+import { parseAudioTimeline } from '../domain/audioTimeline'
 import * as FileSystem from 'expo-file-system/legacy'
 import { resolveRecordingUri, toStoredRecordingPath } from '../audio/audioPath'
 import { noteLanguageOrDefault } from '../i18n/language'
 import { translate } from '../i18n/translate'
 
 // Tags are stored as a JSON array string in the `tags` TEXT column.
-type NoteRow = Omit<Note, 'tags' | 'language' | 'transcriptionIncomplete' | 'summaryDocument'> & {
+type NoteRow = Omit<Note, 'tags' | 'language' | 'transcriptionIncomplete' | 'summaryDocument' | 'audioTimeline'> & {
   summaryDocument: string | null
+  audioTimeline?: string | null
   tags: string | null
   language?: string | null
   transcriptionIncomplete?: number
@@ -31,10 +33,11 @@ const parseTags = (raw: string | null): string[] => {
 }
 
 const toNote = (row: NoteRow): Note => {
-  const { summaryDocument, ...fields } = row
+  const { summaryDocument, audioTimeline, ...fields } = row
   return {
     ...fields,
     summaryDocument: parseSummaryDocument(summaryDocument, row.content, row.summary),
+    audioTimeline: row.audioUri && audioTimeline ? parseAudioTimeline(audioTimeline, row.content) : null,
     language: noteLanguageOrDefault(row.language),
     transcriptionIncomplete: row.transcriptionIncomplete === 1,
     tags: parseTags(row.tags),
@@ -78,6 +81,9 @@ export const createNote = async (
     input.summary,
     input.summaryDocument,
   )
+  const audioTimeline = input.audioUri && input.audioTimeline
+    ? parseAudioTimeline(input.audioTimeline, input.content)
+    : null
   const note: Note = {
     id: recoveredSessionId ?? generateId(),
     title: input.title,
@@ -90,6 +96,7 @@ export const createNote = async (
         ? resolveRecordingUri(input.audioUri, FileSystem.documentDirectory)
         : input.audioUri,
     durationMs: input.durationMs,
+    audioTimeline,
     language: noteLanguageOrDefault(input.language),
     transcriptionIncomplete: input.transcriptionIncomplete ?? false,
     createdAt: now,
@@ -97,7 +104,7 @@ export const createNote = async (
   }
   const inserted = await withDatabaseWrite(() =>
     db.runAsync(
-      `${recoveredSessionId ? 'INSERT OR IGNORE' : 'INSERT'} INTO notes (id, title, content, summary, summaryDocument, tags, audioUri, durationMs, createdAt, updatedAt, language, transcriptionIncomplete) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `${recoveredSessionId ? 'INSERT OR IGNORE' : 'INSERT'} INTO notes (id, title, content, summary, summaryDocument, tags, audioUri, durationMs, audioTimeline, createdAt, updatedAt, language, transcriptionIncomplete) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         note.id,
         note.title,
@@ -107,6 +114,7 @@ export const createNote = async (
         JSON.stringify(note.tags),
         storedAudioPath(note.audioUri),
         note.durationMs,
+        audioTimeline === null ? null : JSON.stringify(audioTimeline),
         note.createdAt,
         note.updatedAt,
         note.language ?? 'pl',
@@ -146,13 +154,15 @@ export const updateNote = async (
       previous ? toNote(previous).summaryDocument : null,
     )
     await db.runAsync(
-      'UPDATE notes SET title = ?, content = ?, summary = ?, summaryDocument = ?, tags = ?, audioUri = ?, durationMs = ?, updatedAt = ?, language = ?, transcriptionIncomplete = COALESCE(?, transcriptionIncomplete) WHERE id = ?',
+      'UPDATE notes SET title = ?, content = ?, summary = ?, summaryDocument = ?, tags = ?, audioTimeline = CASE WHEN audioUri IS ? THEN audioTimeline ELSE NULL END, audioUri = ?, durationMs = ?, updatedAt = ?, language = ?, transcriptionIncomplete = COALESCE(?, transcriptionIncomplete) WHERE id = ?',
       [
         input.title,
         input.content,
         input.summary,
         summaryDocument === null ? null : JSON.stringify(summaryDocument),
         JSON.stringify(input.tags),
+        // Levels describe one audio file; a replaced file loses them.
+        storedAudioPath(input.audioUri),
         storedAudioPath(input.audioUri),
         input.durationMs,
         now,

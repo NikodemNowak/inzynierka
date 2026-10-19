@@ -221,6 +221,7 @@ export default function RecordNoteScreen() {
           tags: [],
           audioUri: result.audioUri,
           durationMs: result.durationMs,
+          audioTimeline: result.timeline ?? null,
           transcriptionIncomplete: result.needsTranscription ?? false,
         }
         const note = result.sessionId
