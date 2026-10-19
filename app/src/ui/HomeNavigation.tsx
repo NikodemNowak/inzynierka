@@ -1,12 +1,13 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useRouter } from 'expo-router'
-import { Pressable, Text, View } from 'react-native'
+import { Animated, Easing, Pressable, Text, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useI18n } from '../i18n/useI18n'
 import { BottomSheet } from './BottomSheet'
 import { Button } from './Button'
 import { Icon, IconButton, type IconName } from './Icon'
-import { type, useTheme, fonts } from './theme'
+import { useReducedMotion } from './Motion'
+import { type, useTheme, fonts, radius } from './theme'
 
 export function HomeHeader({ title }: { title: string }) {
   const { t } = useI18n()
@@ -129,7 +130,7 @@ export function HomeNavigation({
                 opacity: pressed ? 0.7 : 1,
               })}
             >
-              <Icon name="plus" size={28} color={colors.onAction} />
+              <Icon name="plus" size={28} color={colors.marker} />
             </Pressable>
           ) : (
             <Pressable
@@ -176,47 +177,47 @@ export function HomeNavigation({
         title={t('Nowa notatka', 'New note')}
         onClose={() => setAdding(false)}
       >
-        {addOptions.map((option) => (
-          <Pressable
-            key={option.route}
-            accessibilityRole="button"
-            onPress={() => {
-              setAdding(false)
-              router.push(option.route)
-            }}
-            style={({ pressed }) => ({
-              flexDirection: 'row',
-              gap: 15,
-              alignItems: 'center',
-              padding: 16,
-              borderRadius: 12,
-              borderWidth: 1,
-              borderColor: colors.line,
-              backgroundColor: colors.paper,
-              opacity: pressed ? 0.6 : 1,
-            })}
-          >
-            <View
-              style={{
-                width: 32,
-                height: 40,
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-              <Icon name={option.icon} color={colors.accent} size={24} />
-            </View>
-            <View style={{ flex: 1, gap: 3 }}>
-              <Text style={{ ...type.title, fontSize: 17, color: colors.ink }}>
-                {t(option.title, option.titleEn)}
-              </Text>
-              <Text style={{ ...type.meta, fontSize: 13, color: colors.muted }}>
-                {t(option.description, option.descriptionEn)}
-              </Text>
-            </View>
-            <Icon name="chevron-right" color={colors.faint} size={18} />
-          </Pressable>
-        ))}
+        {addOptions.map((option, index) => {
+          const primary = index === 0
+          return (
+            <StaggerIn key={option.route} index={index} visible={adding}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`${t(option.title, option.titleEn)}. ${t(option.description, option.descriptionEn)}`}
+                onPress={() => {
+                  setAdding(false)
+                  router.push(option.route)
+                }}
+                style={({ pressed }) => ({
+                  flexDirection: 'row',
+                  gap: primary ? 16 : 14,
+                  alignItems: 'center',
+                  minHeight: primary ? 88 : 64,
+                  paddingHorizontal: primary ? 18 : 16,
+                  borderRadius: primary ? 22 : radius.lg,
+                  backgroundColor: primary ? colors.action : colors.canvas,
+                  transform: [{ scale: pressed ? 0.98 : 1 }],
+                })}
+              >
+                {primary ? (
+                  <RecordBadge />
+                ) : (
+                  <View style={{ width: 40, height: 40, borderRadius: 12, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.paper, alignItems: 'center', justifyContent: 'center' }}>
+                    <Icon name={option.icon} color={colors.ink} size={20} />
+                  </View>
+                )}
+                <View style={{ flex: 1, gap: 2 }}>
+                  <Text style={{ fontFamily: fonts.semibold, fontSize: primary ? 18 : 16, lineHeight: primary ? 24 : 22, color: primary ? colors.onAction : colors.ink }}>
+                    {t(option.title, option.titleEn)}
+                  </Text>
+                  <Text style={{ ...type.meta, fontSize: primary ? 14 : 13, color: primary ? colors.faint : colors.muted }}>
+                    {t(option.description, option.descriptionEn)}
+                  </Text>
+                </View>
+              </Pressable>
+            </StaggerIn>
+          )
+        })}
         <Button
           label={t('Anuluj', 'Cancel')}
           variant="quiet"
@@ -224,5 +225,41 @@ export function HomeNavigation({
         />
       </BottomSheet>
     </>
+  )
+}
+
+// Rows slide up one after another once the sheet opens.
+function StaggerIn({ index, visible, children }: { index: number; visible: boolean; children: ReactNode }) {
+  const reduced = useReducedMotion()
+  const progress = useRef(new Animated.Value(visible && !reduced ? 0 : 1)).current
+  useEffect(() => {
+    if (!visible || reduced) { progress.setValue(1); return }
+    progress.setValue(0)
+    Animated.timing(progress, { toValue: 1, duration: 320, delay: 90 + index * 60, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start()
+  }, [visible, reduced, index, progress])
+  return (
+    <Animated.View style={{ opacity: progress, transform: [{ translateY: progress.interpolate({ inputRange: [0, 1], outputRange: [14, 0] }) }] }}>
+      {children}
+    </Animated.View>
+  )
+}
+
+function RecordBadge() {
+  const { colors } = useTheme()
+  const reduced = useReducedMotion()
+  const pulse = useRef(new Animated.Value(0)).current
+  useEffect(() => {
+    if (reduced) return
+    const loop = Animated.loop(Animated.timing(pulse, { toValue: 1, duration: 1800, easing: Easing.out(Easing.quad), useNativeDriver: true }))
+    loop.start()
+    return () => loop.stop()
+  }, [pulse, reduced])
+  return (
+    <View style={{ width: 52, height: 52 }}>
+      <Animated.View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, borderRadius: 26, backgroundColor: colors.marker, opacity: pulse.interpolate({ inputRange: [0, 1], outputRange: [0.5, 0] }), transform: [{ scale: pulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.6] }) }] }} />
+      <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, borderRadius: 26, backgroundColor: colors.marker, alignItems: 'center', justifyContent: 'center' }}>
+        <Icon name="mic" size={22} color={colors.onMarker} />
+      </View>
+    </View>
   )
 }

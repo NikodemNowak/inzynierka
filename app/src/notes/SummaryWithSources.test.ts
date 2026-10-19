@@ -164,7 +164,7 @@ test('uses native dark tokens in the real sheet and English accessible copy', as
   expect(root().findByType(BottomSheet).props.title).toBe('Transcript excerpt')
   expect(StyleSheet.flatten(quotes()[0].props.style).color).toBe('#EDEBE6')
   const panel = root().findByProps({ accessibilityViewIsModal: true })
-  expect(StyleSheet.flatten(panel.props.style).backgroundColor).toBe('#141416')
+  expect(StyleSheet.flatten(panel.props.style).backgroundColor).toBe('#1E1E21')
   expect(StyleSheet.flatten(root().findAll(node => node.props.accessibilityLabel === 'Close panel' && typeof node.props.onPress === 'function')[0].props.style).backgroundColor).toBe('rgba(0,0,0,0.6)')
 })
 
