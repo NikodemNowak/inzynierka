@@ -13,6 +13,7 @@ import {
   NotesNoResultsState,
 } from '../../notes/NotesEmptyStates'
 import { DraftBanner } from '../../notes/DraftBanner'
+import { NextTaskBanner } from '../../notes/NextTaskBanner'
 import { groupNotesByDate, selectVisibleNotes } from '../../notes/noteListView'
 import { type, useTheme } from '../../ui/theme'
 
@@ -53,6 +54,7 @@ export default function NotesListScreen() {
         />
       )}
       {!notes.length && <ModelDownloadBanner />}
+      {notes.length > 0 && !query.trim() && <NextTaskBanner />}
       {!notes.length ? (
         <NotesEmptyState />
       ) : !visibleNotes.length ? (
@@ -79,9 +81,11 @@ export default function NotesListScreen() {
               style={{
                 ...type.label,
                 color: colors.muted,
-                fontSize: 15,
-                marginTop: 16,
-                marginBottom: 7,
+                fontSize: 13,
+                lineHeight: 18,
+                marginTop: 14,
+                marginBottom: 8,
+                marginLeft: 4,
               }}
             >
               {section.title}

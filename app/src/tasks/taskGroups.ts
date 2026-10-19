@@ -6,7 +6,7 @@ export const TASK_GROUP_ORDER: readonly TaskGroup[] = ['overdue', 'today', 'week
 const startOfDay = (date: Date): Date => new Date(date.getFullYear(), date.getMonth(), date.getDate())
 const DAY_MS = 24 * 60 * 60 * 1000
 
-export interface DatedTask<T> { readonly task: T; readonly due: Date | null }
+export interface DatedTask<T> { readonly task: T; readonly due: Date | null; readonly allDay: boolean }
 
 // A task's deadline is read relative to the note it came from, then sorted into
 // buckets relative to today.
@@ -28,7 +28,7 @@ export const groupTasksByDue = <T extends { text: string; noteId: string }>(
         : day === today ? 'today'
           : day < today + 7 * DAY_MS ? 'week'
             : 'later'
-    groups.get(group)!.push({ task, due: date })
+    groups.get(group)!.push({ task, due: date, allDay: resolved?.allDay ?? true })
   }
   for (const [group, list] of groups)
     if (group !== 'undated') list.sort((left, right) => (left.due?.getTime() ?? 0) - (right.due?.getTime() ?? 0))

@@ -43,11 +43,13 @@ export function NotesToolbar({
       <View
         style={{
           marginHorizontal: 24,
-          borderRadius: 13,
-          backgroundColor: colors.surface,
+          borderRadius: 24,
+          borderWidth: 1,
+          borderColor: colors.line,
+          backgroundColor: colors.paper,
           flexDirection: 'row',
           alignItems: 'center',
-          paddingLeft: 13,
+          paddingLeft: 16,
         }}
       >
         <Icon name="search" size={18} color={colors.muted} />
@@ -65,6 +67,7 @@ export function NotesToolbar({
             flex: 1,
             minHeight: 46,
             color: colors.ink,
+            fontFamily: fonts.regular,
             fontSize: 15,
             paddingHorizontal: 10,
             paddingVertical: 11,
