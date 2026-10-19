@@ -13,6 +13,12 @@ import { nativeCapture } from './nativeCapture'
 import { useNativeSpeechRecorder } from './useNativeSpeechRecorder'
 import { useNativeImportRecorder } from './useNativeImportRecorder'
 import { MAX_AUDIO_DURATION_MS } from '../audio/captureManifest'
+import { readWavLevels, wavPartDurationMs } from '../audio/wavLevels'
+import {
+  buildAudioSpans,
+  type AudioTimeline,
+  type RecognizedUtterance,
+} from '../domain/audioTimeline'
 
 // On-device recognizer package that exposes installed offline language models.
 const ANDROID_ONDEVICE_PACKAGE = 'com.google.android.as'
@@ -99,6 +105,8 @@ export interface RecordingResult {
   needsTranscription?: boolean
   // Verify the saved audio before AI; never treat live partials as complete.
   autoTranscribeAudio?: boolean
+  // Measured loudness and transcript timing of a microphone recording.
+  timeline?: AudioTimeline
 }
 
 export interface SpeechRecorder {
@@ -136,6 +144,11 @@ const useLegacySpeechRecorder = (
   const segmentsRef = useRef<string[]>([])
   const interimRef = useRef('')
   const audioPartsRef = useRef<string[]>([])
+  // Recognizer session that wrote each part, and the final results per session.
+  const partSessionsRef = useRef<number[]>([])
+  const utterancesRef = useRef<RecognizedUtterance[]>([])
+  const sessionRef = useRef(0)
+  const sessionStartedAtRef = useRef(0)
   const startTimeRef = useRef(0)
   const finalizedRef = useRef(true)
   const nativeActiveRef = useRef(false)
@@ -208,6 +221,7 @@ const useLegacySpeechRecorder = (
       return
     }
     setBoth('recording')
+    sessionStartedAtRef.current = Date.now()
     if (startTimeRef.current === 0) startTimeRef.current = Date.now()
     stopTimer()
     timerRef.current = setInterval(() => {
@@ -237,7 +251,21 @@ const useLegacySpeechRecorder = (
     if (!nativeActiveRef.current || finalizedRef.current) return
     const text = event.results[0]?.transcript ?? ''
     if (event.isFinal) {
-      if (text.trim().length > 0) segmentsRef.current.push(text)
+      if (text.trim().length > 0) {
+        segmentsRef.current.push(text)
+        utterancesRef.current.push({
+          session: sessionRef.current,
+          text,
+          arrivedMs:
+            sessionStartedAtRef.current > 0
+              ? Date.now() - sessionStartedAtRef.current
+              : null,
+          words: (event.results[0]?.segments ?? []).map((segment) => ({
+            text: segment.segment,
+            startMs: segment.startTimeMillis,
+          })),
+        })
+      }
       interimRef.current = ''
       // Speech came through, so any earlier failures were not a broken recognizer.
       restartsRef.current = 0
@@ -255,11 +283,16 @@ const useLegacySpeechRecorder = (
     if (sourceRef.current !== undefined) return
     // Each session writes its own file; a resumed recording therefore produces
     // several parts, joined into one on completion.
-    if (event.uri) audioPartsRef.current.push(event.uri)
+    if (event.uri) {
+      audioPartsRef.current.push(event.uri)
+      partSessionsRef.current.push(sessionRef.current)
+    }
   })
 
   const startSession = (source?: AudioFileSource): void => {
     nativeActiveRef.current = true
+    sessionRef.current += 1
+    sessionStartedAtRef.current = 0
     ExpoSpeechRecognitionModule.start({
       lang: localeForLanguage(languageRef.current),
       interimResults: true,
@@ -297,11 +330,39 @@ const useLegacySpeechRecorder = (
     })
   }
 
+  // Waveform and timing are extras: a failure here never costs the recording.
+  const measureTimeline = async (
+    uri: string,
+  ): Promise<AudioTimeline | undefined> => {
+    try {
+      const { levelMs, levels } = await readWavLevels(uri)
+      if (levels.length === 0) return undefined
+      const parts = audioPartsRef.current.map((part, index) => ({
+        session: partSessionsRef.current[index] ?? -1,
+        durationMs: wavPartDurationMs(part),
+      }))
+      const tail = interimRef.current.trim()
+      const utterances = tail
+        ? [
+            ...utterancesRef.current,
+            { session: sessionRef.current, text: tail, arrivedMs: null, words: [] },
+          ]
+        : utterancesRef.current
+      const built = buildAudioSpans(utterances, parts)
+      const source = composeTranscript()
+      const spans = built.transcript === source ? built.spans : []
+      return { version: 1, levelMs, levels, source, timing: built.timing, spans }
+    } catch {
+      return undefined
+    }
+  }
+
   // Ignore zero-frame sessions and join the parts that actually contain audio.
   // A missing or invalid recording must not be attached to an otherwise valid note.
   const resolveAudio = async (): Promise<{
     audioUri: string | null
     durationMs: number
+    timeline?: AudioTimeline
   }> => {
     if (sourceRef.current)
       return {
@@ -317,7 +378,11 @@ const useLegacySpeechRecorder = (
         parts,
         target,
       )
-      return { audioUri: uri, durationMs: recordedDuration }
+      return {
+        audioUri: uri,
+        durationMs: recordedDuration,
+        timeline: await measureTimeline(uri),
+      }
     } catch {
       noticeRef.current = translate(
         'Zachowano tekst, ale nie udało się przygotować pliku nagrania.',
@@ -486,6 +551,10 @@ const useLegacySpeechRecorder = (
     segmentsRef.current = []
     interimRef.current = ''
     audioPartsRef.current = []
+    partSessionsRef.current = []
+    utterancesRef.current = []
+    sessionRef.current = 0
+    sessionStartedAtRef.current = 0
     startTimeRef.current = 0
     elapsedRef.current = 0
     setTranscript('')

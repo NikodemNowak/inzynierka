@@ -91,7 +91,7 @@ export interface ConcatResult {
   durationMs: number
 }
 
-const readWavDataInfo = (file: File): { offset: number; size: number } => {
+export const readWavDataInfo = (file: File): { offset: number; size: number } => {
   const handle = file.open(FileMode.ReadOnly)
   try {
     const header = handle.readBytes(Math.min(file.size ?? 0, 64 * 1024))

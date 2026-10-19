@@ -104,8 +104,9 @@ test('migrates an old database without changing notes, audio paths or tasks', as
   const tasksBefore = connection.prepare('SELECT * FROM tasks').all()
   await modules.database.getDatabase()
   const after = connection.prepare('SELECT * FROM notes').all() as Record<string, unknown>[]
-  expect(after.map(({ summaryDocument, ...row }) => row)).toEqual(notesBefore)
+  expect(after.map(({ summaryDocument, audioTimeline, ...row }) => row)).toEqual(notesBefore)
   expect(after[0].summaryDocument).toBeNull()
+  expect(after[0].audioTimeline).toBeNull()
   expect(connection.prepare('SELECT * FROM tasks').all()).toEqual(tasksBefore)
   expect(connection.prepare('PRAGMA table_info(notes)').all()).toContainEqual(
     expect.objectContaining({ name: 'summaryDocument', type: 'TEXT', notnull: 0, dflt_value: null }),
@@ -113,7 +114,7 @@ test('migrates an old database without changing notes, audio paths or tasks', as
   expect(await modules.repository.getNote('old')).toEqual({
     id: 'old', title: 'Old', content: 'Original', summary: 'Old summary',
     summaryDocument: null, tags: ['old'], audioUri: 'file:///documents/recordings/a.wav',
-    durationMs: 21000, language: 'pl', transcriptionIncomplete: false, createdAt: 1, updatedAt: 2,
+    durationMs: 21000, audioTimeline: null, language: 'pl', transcriptionIncomplete: false, createdAt: 1, updatedAt: 2,
   })
   expect(await modules.repository.listNotes()).toEqual([await modules.repository.getNote('old')])
   // Reinitializing after module reload must also tolerate an already migrated DB.
@@ -292,4 +293,30 @@ test('reopens a unique file-backed synthetic DB and retains exact source citatio
     fileConnection.close()
     rmSync(directory, { recursive: true, force: true })
   }
+})
+
+const timeline = {
+  version: 1 as const, levelMs: 100, levels: [3, 60, 100, 20], source, timing: 'words' as const,
+  spans: [{ start: 0, end: 23, startMs: 0, endMs: 900 }, { start: 25, end: 44, startMs: 1100, endMs: 2000 }],
+}
+
+test('stores the recording timeline once and keeps it across edits of the same audio', async () => {
+  const created = await modules.repository.createNote({ ...input, audioTimeline: timeline })
+  expect(created.audioTimeline).toEqual(timeline)
+  expect(await modules.repository.getNote(created.id)).toEqual(created)
+  const renamed = await modules.repository.updateNote(created.id, { ...input, title: 'Renamed' })
+  expect(renamed.audioTimeline).toEqual(timeline)
+  const edited = await modules.repository.updateNote(created.id, { ...input, content: 'Rewritten by hand.', summaryDocument: null })
+  expect(edited.audioTimeline?.levels).toEqual(timeline.levels)
+  expect(edited.audioTimeline?.spans).toEqual([])
+})
+
+test('drops the timeline when the audio file is replaced or missing', async () => {
+  const created = await modules.repository.createNote({ ...input, audioTimeline: timeline })
+  const replaced = await modules.repository.updateNote(created.id, {
+    ...input, audioUri: 'file:///documents/recordings/other.wav',
+  })
+  expect(replaced.audioTimeline).toBeNull()
+  const silent = await modules.repository.createNote({ ...input, audioUri: null, audioTimeline: timeline })
+  expect(silent.audioTimeline).toBeNull()
 })

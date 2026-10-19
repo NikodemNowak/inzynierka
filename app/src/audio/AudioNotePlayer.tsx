@@ -1,5 +1,5 @@
 import { useI18n } from '../i18n/useI18n'
-import { useState } from 'react'
+import { useImperativeHandle, useState, type Ref } from 'react'
 import { Platform, Pressable, Text, View } from 'react-native'
 import {
   setAudioModeAsync,
@@ -9,14 +9,35 @@ import {
 import { Icon } from '../ui/Icon'
 import { useTheme, fonts } from '../ui/theme'
 import { nextPlaybackRate, type PlaybackRate } from './playbackRate'
+import { formatAudioTime } from './audioTime'
 import { nativeCapture } from '../stt/nativeCapture'
+import {
+  barsFromLevels,
+  relativeBarHeights,
+  type AudioTimeline,
+} from '../domain/audioTimeline'
 
-type Props = { uri: string; durationMs: number | null }
-export const formatAudioTime = (seconds: number): string => {
-  const safe = Number.isFinite(seconds) ? Math.max(0, Math.floor(seconds)) : 0
-  return `${Math.floor(safe / 60)}:${(safe % 60).toString().padStart(2, '0')}`
+export interface AudioMark {
+  readonly startMs: number
+  readonly endMs: number
 }
-export function AudioNotePlayer({ uri, durationMs }: Props) {
+export interface AudioNotePlayerHandle {
+  playFrom: (ms: number) => void
+}
+type Props = {
+  uri: string
+  durationMs: number | null
+  // Measured levels; without them progress stays a highlighter stroke.
+  timeline?: AudioTimeline | null
+  // Audio windows that summary points were drawn from.
+  marks?: readonly AudioMark[]
+  ref?: Ref<AudioNotePlayerHandle>
+}
+
+const BAR_WIDTH = 3
+const BAR_GAP = 2
+const BARS_HEIGHT = 32
+export function AudioNotePlayer({ uri, durationMs, timeline, marks = [], ref }: Props) {
   const { colors } = useTheme()
   const { t } = useI18n()
   const player = useAudioPlayer({ uri }, { updateInterval: 250 })
@@ -35,14 +56,16 @@ export function AudioNotePlayer({ uri, durationMs }: Props) {
       ? Math.min(1, Math.max(0, currentSeconds / durationSeconds))
       : 0
   const activeRate = selectedRate
+  const totalMs = durationSeconds * 1000
+  const barCount = Math.floor((scrubberWidth + BAR_GAP) / (BAR_WIDTH + BAR_GAP))
+  const heights =
+    timeline && barCount > 0
+      ? relativeBarHeights(barsFromLevels(timeline.levels, barCount))
+      : []
   const handleError = (error: unknown) =>
     setPlaybackError(error instanceof Error ? error.message : String(error))
-  const togglePlayback = async () => {
+  const startPlayback = async (fromSeconds?: number) => {
     try {
-      if (status.playing) {
-        player.pause()
-        return
-      }
       setPlaybackError(null)
       const capture = await nativeCapture?.getSnapshot()
       if (capture?.manifest.state === 'recording') {
@@ -60,13 +83,28 @@ export function AudioNotePlayer({ uri, durationMs }: Props) {
           allowsRecording: false,
           playsInSilentMode: true,
         })
-      if (status.didJustFinish) await player.seekTo(0)
+      if (fromSeconds !== undefined) await player.seekTo(Math.max(0, fromSeconds))
+      else if (status.didJustFinish) await player.seekTo(0)
       player.setPlaybackRate(selectedRate)
       player.play()
     } catch (error) {
       handleError(error)
     }
   }
+  const togglePlayback = async () => {
+    if (status.playing) {
+      try {
+        player.pause()
+      } catch (error) {
+        handleError(error)
+      }
+      return
+    }
+    await startPlayback()
+  }
+  useImperativeHandle(ref, () => ({
+    playFrom: (ms: number) => void startPlayback(ms / 1000),
+  }))
   const seek = async (seconds: number) => {
     if (durationSeconds <= 0) return
     try {
@@ -168,18 +206,52 @@ export function AudioNotePlayer({ uri, durationMs }: Props) {
           }}
           style={{ flex: 1, minHeight: 44, justifyContent: 'center' }}
         >
-          {/* Played time is a highlighter stroke across the recording. */}
-          <View style={{ height: 12, borderRadius: 3, backgroundColor: colors.surface, overflow: 'hidden' }}>
-            <View
-              style={{
-                width: `${progress * 100}%`,
-                height: 12,
-                backgroundColor: colors.marker,
-                borderTopRightRadius: 6,
-                borderBottomRightRadius: 2,
-              }}
-            />
-          </View>
+          {heights.length > 0 ? (
+            <View style={{ height: BARS_HEIGHT, justifyContent: 'center' }}>
+              {/* Summary sources are highlighter strokes behind the bars. */}
+              {totalMs > 0 && marks.map((mark) => (
+                <View
+                  key={`${mark.startMs}:${mark.endMs}`}
+                  testID="audio-source-mark"
+                  style={{
+                    position: 'absolute',
+                    left: (Math.max(0, mark.startMs) / totalMs) * scrubberWidth,
+                    width: Math.max(4, ((Math.min(totalMs, mark.endMs) - Math.max(0, mark.startMs)) / totalMs) * scrubberWidth),
+                    top: 2,
+                    bottom: 2,
+                    borderRadius: 4,
+                    backgroundColor: colors.marker,
+                  }}
+                />
+              ))}
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                {heights.map((height, index) => (
+                  <View
+                    key={index}
+                    style={{
+                      width: BAR_WIDTH,
+                      height: 3 + (BARS_HEIGHT - 9) * height,
+                      borderRadius: BAR_WIDTH / 2,
+                      backgroundColor: (index + 0.5) / heights.length <= progress ? colors.ink : colors.faint,
+                    }}
+                  />
+                ))}
+              </View>
+            </View>
+          ) : (
+            // Played time is a highlighter stroke across the recording.
+            <View style={{ height: 12, borderRadius: 3, backgroundColor: colors.surface, overflow: 'hidden' }}>
+              <View
+                style={{
+                  width: `${progress * 100}%`,
+                  height: 12,
+                  backgroundColor: colors.marker,
+                  borderTopRightRadius: 6,
+                  borderBottomRightRadius: 2,
+                }}
+              />
+            </View>
+          )}
           <View
             style={{
               position: 'absolute',

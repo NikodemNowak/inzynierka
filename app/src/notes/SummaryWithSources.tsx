@@ -3,6 +3,8 @@ import { Pressable, StyleSheet, Text, View } from 'react-native'
 import { parseSummaryDocument, type SummaryDocument, type SummaryPoint } from '../domain/summary'
 import { useI18n } from '../i18n/useI18n'
 import { BottomSheet } from '../ui/BottomSheet'
+import { Button } from '../ui/Button'
+import { formatAudioTime } from '../audio/audioTime'
 import { type, useTheme } from '../ui/theme'
 
 export interface SummaryWithSourcesProps {
@@ -12,6 +14,9 @@ export interface SummaryWithSourcesProps {
   readonly summary: string
   readonly document: SummaryDocument | null | undefined
   readonly active: boolean
+  // Where a point was spoken, when the recording measured it.
+  readonly pointTime?: (point: SummaryPoint) => { readonly startMs: number } | null
+  readonly onPlayFrom?: (ms: number) => void
 }
 
 interface SourceSelection {
@@ -24,7 +29,7 @@ interface SourceSelection {
   readonly pointIndex: number
 }
 
-export function SummaryWithSources({ noteId, revision, content, summary, document, active }: SummaryWithSourcesProps): React.JSX.Element {
+export function SummaryWithSources({ noteId, revision, content, summary, document, active, pointTime, onPlayFrom }: SummaryWithSourcesProps): React.JSX.Element {
   const { colors } = useTheme()
   const { t } = useI18n()
   const [selection, setSelection] = useState<SourceSelection | null>(null)
@@ -35,6 +40,7 @@ export function SummaryWithSources({ noteId, revision, content, summary, documen
     && selection.revision === revision && selection.content === content && selection.summary === summary
     && selection.document === document && selection.documentSignature === documentSignature ? selection : null
   const selectedPoint = currentSelection ? parsed?.points[currentSelection.pointIndex] : undefined
+  const selectedTime = selectedPoint && onPlayFrom ? pointTime?.(selectedPoint) ?? null : null
   useEffect(() => {
     if (selection && !currentSelection) setSelection(null)
   }, [selection, currentSelection])
@@ -83,6 +89,12 @@ export function SummaryWithSources({ noteId, revision, content, summary, documen
       onClose={() => setSelection(null)}>
       {selectedPoint?.sources.map(range => <Text key={`${range.start}:${range.end}`} testID="summary-source-quote"
         style={[styles.body, { color: colors.ink }]}>{content.slice(range.start, range.end)}</Text>)}
+      {selectedTime && onPlayFrom && <Button variant="primary" icon="play"
+        label={t(`Odtwórz od ${formatAudioTime(selectedTime.startMs / 1000)}`, `Play from ${formatAudioTime(selectedTime.startMs / 1000)}`)}
+        onPress={() => {
+          setSelection(null)
+          onPlayFrom(selectedTime.startMs)
+        }} />}
     </BottomSheet>
   </>
 }
