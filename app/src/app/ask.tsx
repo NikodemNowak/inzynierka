@@ -26,70 +26,56 @@ import { useNotesStore } from '../state/notesStore'
 import { useTasksStore } from '../state/tasksStore'
 import { Icon, IconButton } from '../ui/Icon'
 import { useReducedMotion } from '../ui/Motion'
-import { radius, spacing, type, useTheme, type ThemeColors, fonts } from '../ui/theme'
+import { radius, spacing, type, useTheme, type ThemeColors } from '../ui/theme'
 
 const EXAMPLES = {
   pl: ['Co mam dzisiaj do zrobienia?', 'Co mam w tym tygodniu?', 'Kiedy mam następną wizytę?'],
   en: ['What do I have to do today?', 'What is on this week?', 'When is my next appointment?'],
 } as const
 
-// "[2] Odebrać paczkę" lines become list rows; citations move to the row's end.
-const LINE_CITE = /^\s*(?:[-•*]\s*)?((?:\[\d+\]\s*)+)(.*)$/u
-
-function CiteChip({ number, source, onOpen, colors }: { number: string; source: AskSource | undefined; onOpen: (source: AskSource) => void; colors: ThemeColors }) {
-  if (!source) return null
-  return (
-    <>
-    {' '}
-    <Text
-      accessibilityRole="link"
-      accessibilityLabel={source.title}
-      onPress={() => onOpen(source)}
-      style={{ color: colors.onMarker, backgroundColor: colors.marker, fontFamily: fonts.bold, fontSize: 12 }}
-    >
-      {` ${number} `}
-    </Text>
-    </>
-  )
-}
-
-function InlineAnswer({ text, message, colors, onOpen }: { text: string; message: AskMessage; colors: ThemeColors; onOpen: (source: AskSource) => void }) {
-  return (
-    <>
-      {text.split(/(\[\d+\])/u).map((part, index) => {
-        const number = /^\[(\d+)\]$/u.exec(part)?.[1]
-        if (!number) return part
-        return <CiteChip key={index} number={number} source={message.sources.find((item) => item.number === Number(number))} onOpen={onOpen} colors={colors} />
-      })}
-    </>
-  )
-}
+// Citations stay out of the prose: list rows carry their note underneath, the
+// rest of the answer reads clean and the cited notes follow as a card.
+const LINE_CITE = /^\s*(?:[-•*]\s*)?((?:\[\d+\]\s*)*)(.*?)\s*((?:\[\d+\]\s*)*)$/u
+const LIST_LINE = /^\s*(?:[-•*]\s*|\[\d+\])/u
+const stripCitations = (text: string): string => text.replace(/\s*\[\d+\]/gu, '').trim()
 
 function AnswerText({ message, colors, onOpen, streaming }: { message: AskMessage; colors: ThemeColors; onOpen: (source: AskSource) => void; streaming: boolean }) {
+  const { t } = useI18n()
   const lines = message.answer.trim().split(/\n+/u)
+  const several = new Set(message.cited.map((source) => source.title)).size > 1
   return (
-    <View style={{ gap: 6 }}>
+    <View style={{ gap: 8 }}>
       {lines.map((line, index) => {
         const last = index === lines.length - 1
         const caret = streaming && last ? <Text style={{ color: colors.markerLine }}>{' ▍'}</Text> : null
-        const match = LINE_CITE.exec(line)
-        if (!match) return (
+        if (!LIST_LINE.test(line)) return (
           <Text key={index} selectable style={[styles.answer, { color: colors.ink }]}>
-            <InlineAnswer text={line} message={message} colors={colors} onOpen={onOpen} />{caret}
+            {stripCitations(line)}{caret}
           </Text>
         )
-        const numbers = match[1].match(/\d+/gu) ?? []
+        const match = LINE_CITE.exec(line)
+        const numbers = `${match?.[1] ?? ''}${match?.[3] ?? ''}`.match(/\d+/gu) ?? []
+        const source = message.sources.find((item) => item.number === Number(numbers[0]))
+        const body = stripCitations(match?.[2] ?? line)
         return (
-          <View key={index} style={styles.answerRow}>
+          <Pressable
+            key={index}
+            disabled={!source}
+            accessibilityRole={source ? 'button' : undefined}
+            accessibilityHint={source ? t(`Otwiera notatkę ${source.title}`, `Opens the note ${source.title}`) : undefined}
+            onPress={() => source && onOpen(source)}
+            style={({ pressed }) => [styles.answerRow, { opacity: pressed ? 0.7 : 1 }]}
+          >
             <View style={[styles.answerDot, { backgroundColor: colors.marker, borderColor: colors.markerLine }]} />
-            <Text selectable style={[styles.answer, { color: colors.ink, flex: 1 }]}>
-              <InlineAnswer text={match[2]} message={message} colors={colors} onOpen={onOpen} />
-              {numbers.map((number) => (
-                <CiteChip key={number} number={number} source={message.sources.find((item) => item.number === Number(number))} onOpen={onOpen} colors={colors} />
-              ))}
-              {caret}
-            </Text>
-          </View>
+            <View style={{ flex: 1, gap: 2 }}>
+              <Text selectable style={[styles.answer, { color: colors.ink }]}>{body}{caret}</Text>
+              {source && several ? (
+                <Text numberOfLines={1} style={[type.meta, { color: colors.muted }]}>
+                  {t(`z notatki „${source.title}”`, `from “${source.title}”`)}
+                </Text>
+              ) : null}
+            </View>
+          </Pressable>
         )
       })}
     </View>
@@ -186,18 +172,21 @@ function Message({ message, onOpen, titles }: { message: AskMessage; onOpen: (so
         </Text>
       ) : null}
       {message.status === 'done' && message.cited.length ? (
+        <Text style={[type.label, { fontSize: 13, color: colors.muted, marginBottom: -4 }]}>
+          {message.cited.length > 1 ? t('Z notatek', 'From notes') : t('Z notatki', 'From the note')}
+        </Text>
+      ) : null}
+      {message.status === 'done' && message.cited.length ? (
         <View style={[styles.sources, { backgroundColor: colors.paper, borderColor: colors.line }]}>
           {message.cited.map((source, index) => (
             <Pressable
               key={source.noteId}
               accessibilityRole="button"
-              accessibilityLabel={t(`Otwórz źródło ${source.number}: ${source.title}`, `Open source ${source.number}: ${source.title}`)}
+              accessibilityLabel={t(`Otwórz notatkę: ${source.title}`, `Open note: ${source.title}`)}
               onPress={() => onOpen(source)}
               style={({ pressed }) => [styles.source, index > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line }, { opacity: pressed ? 0.7 : 1 }]}
             >
-              <View style={[styles.sourceNumber, { backgroundColor: colors.marker }]}>
-                <Text style={{ fontFamily: fonts.bold, fontSize: 12, color: colors.onMarker }}>{source.number}</Text>
-              </View>
+              <View style={[styles.answerDot, { marginTop: 0, backgroundColor: colors.marker, borderColor: colors.markerLine }]} />
               <Text numberOfLines={1} style={[type.label, { color: colors.ink, flex: 1 }]}>
                 {source.title}
               </Text>
@@ -393,7 +382,6 @@ const styles = StyleSheet.create({
   stage: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   sources: { borderWidth: 1, borderRadius: radius.lg, paddingHorizontal: 14 },
   source: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 48 },
-  sourceNumber: { width: 22, height: 22, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
   deck: { height: 58, justifyContent: 'flex-start' },
   deckCard: { position: 'absolute', left: 0, right: 0, top: 0, height: 44, borderRadius: 14, borderWidth: 1, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14 },
   deckBack1: { left: 6, right: 6, top: 7, opacity: 0.9 },
