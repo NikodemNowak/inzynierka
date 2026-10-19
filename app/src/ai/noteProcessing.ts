@@ -56,12 +56,25 @@ export type ProcessingPhase =
   | "fragment"
   | "reduction";
 
+// Points the summary model has written so far, before the checks rewrite them.
+export interface LiveSummaryDraft {
+  readonly text: string;
+  readonly sourceIds: readonly number[];
+}
+
+export interface LiveSummaryProgress {
+  // Sentence spans of the note, in order; drafts cite them by id.
+  readonly units: readonly { readonly id: number; readonly start: number; readonly end: number }[];
+  readonly drafts: readonly LiveSummaryDraft[];
+}
+
 export interface ProcessingProgress {
   phase: ProcessingPhase;
   detail?: "structure";
   percent?: number;
   completed?: number;
   total?: number;
+  live?: LiveSummaryProgress;
 }
 
 export interface NoteProcessingResult {

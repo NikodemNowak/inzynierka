@@ -1,5 +1,6 @@
 import type { SummaryDocument } from '../domain/summary';
 import type { Language } from '../i18n/language';
+import type { LiveSummaryDraft, LiveSummaryProgress } from './noteProcessing';
 import { recordGeneration } from './generationMetrics';
 import { generate } from './llm';
 import { numberWordValue, pointNumbers, promptView, spokenClockForPrompt, statedNumbers, wordsToDigits } from './polishNumbers';
@@ -1776,7 +1777,11 @@ const documentFor = (content: string, points: readonly SummaryPoint[], units: re
 export const generatePointSummaryDetailed = async (
   units: readonly SummarySourceUnit[], content: string, language: Language, execution?: ProcessingExecutionContext,
   options: PointSummaryOptions = DEFAULT_POINT_SUMMARY_OPTIONS,
+  onLive?: (live: LiveSummaryProgress) => void,
 ): Promise<PointSummaryDetail> => {
+  const liveUnits = units.map(unit => ({ id: unit.id, start: unit.start, end: unit.end }));
+  const draftsOf = (points: readonly SummaryPoint[]): LiveSummaryDraft[] =>
+    points.map(point => ({ text: capitalize(convert(point.text, language)), sourceIds: point.sourceIds }));
   const warnings: string[] = [];
   const calls: PointSummaryCall[] = [];
   const rawPoints: SummaryPoint[] = [];
@@ -1806,7 +1811,21 @@ export const generatePointSummaryDetailed = async (
       const nPredict = outputTokensFor(maxPoints);
       const shown = chunk.map(unit => ({ ...unit, text: language === 'pl' ? promptView(unit.text) : englishPromptView(unit.text) }));
       const prompt = sourceFirstPrompt(renderSummarySources(shown), pointSummaryInstructions(language, maxPoints, options.promptVariant));
-      const result = await generate(prompt, () => undefined, {
+      const allowed = new Set(chunk.map(unit => unit.id));
+      let streamed = '';
+      let reported = 0;
+      onLive?.({ units: liveUnits, drafts: draftsOf(rawPoints) });
+      // Report each finished "- text [ids]" line as it streams in.
+      const onToken = (token: string): void => {
+        if (!onLive) return;
+        streamed += token;
+        const done = streamed.slice(0, streamed.lastIndexOf('\n') + 1);
+        const drafts = done ? parsePoints(done, allowed) : [];
+        if (drafts.length === reported) return;
+        reported = drafts.length;
+        onLive({ units: liveUnits, drafts: draftsOf([...rawPoints, ...drafts]) });
+      };
+      const result = await generate(prompt, onToken, {
         system, nPredict, temperature: 0.1, topP: 0.8, topK: 20, minP: 0, ...(execution?.signal ? { signal: execution.signal } : {}),
       });
       recordGeneration('summary-points', prompt.length, result, chunk.reduce((sum, unit) => sum + unit.text.length, 0));
@@ -1843,7 +1862,9 @@ export const generatePointSummaryDetailed = async (
 
 export const generatePointSummary = async (
   units: readonly SummarySourceUnit[], content: string, language: Language, execution?: ProcessingExecutionContext,
+  onLive?: (live: LiveSummaryProgress) => void,
 ): Promise<PointSummaryResult> => {
-  const { points, document, warnings, literalFallbackCount } = await generatePointSummaryDetailed(units, content, language, execution);
+  const { points, document, warnings, literalFallbackCount } = await generatePointSummaryDetailed(
+    units, content, language, execution, DEFAULT_POINT_SUMMARY_OPTIONS, onLive);
   return { points, document, warnings, literalFallbackCount };
 };

@@ -153,6 +153,15 @@ const hasCurrentSummaryDocument = (result: NoteProcessingResult, content: string
   result.summaryDocument == null ||
   parseSummaryDocument(result.summaryDocument, content, result.summary) !== null
 
+// Title and category calls follow the summary; its live drafts stay on screen until the result.
+export const keepLiveDrafts = (
+  previous: ProcessingProgress | undefined,
+  next: ProcessingProgress,
+): ProcessingProgress =>
+  next.live || !previous?.live || (next.phase !== 'title' && next.phase !== 'tags')
+    ? next
+    : { ...next, live: previous.live }
+
 export const useNotesStore = create<NotesState>((set, get) => ({
   notes: [],
   loaded: false,
@@ -397,7 +406,7 @@ export const useNotesStore = create<NotesState>((set, get) => ({
 
     const setProgress = (progress: ProcessingProgress) => {
       if (activeRuns.get(id) !== runId || revision !== revisionFor(id)) return
-      set((state) => ({ processing: { ...state.processing, [id]: progress } }))
+      set((state) => ({ processing: { ...state.processing, [id]: keepLiveDrafts(state.processing[id], progress) } }))
       if (progress.phase !== 'queued')
         reportImportAiProgress(
           continuation,
@@ -591,7 +600,7 @@ export const useNotesStore = create<NotesState>((set, get) => ({
     runKinds.set(runId, 'proposal')
     const setProgress = (progress: ProcessingProgress) => {
       if (activeRuns.get(id) !== runId || revision !== revisionFor(id)) return
-      set((state) => ({ processing: { ...state.processing, [id]: progress } }))
+      set((state) => ({ processing: { ...state.processing, [id]: keepLiveDrafts(state.processing[id], progress) } }))
     }
     const clear = () => {
       runKinds.delete(runId)

@@ -37,6 +37,7 @@ import { NoteTasks } from '../../tasks/NoteTasks'
 import { NoteTags } from '../../tags/NoteTags'
 import { parseSummaryDocument } from '../../domain/summary'
 import { SummaryWithSources } from '../../notes/SummaryWithSources'
+import { ProcessingLive } from '../../notes/ProcessingLive'
 import {
   getEffectiveNoteProposalSelection,
   getNoteProposalChanges,
@@ -687,7 +688,11 @@ export default function NoteDetailScreen() {
                   {t('Nowa propozycja', 'New proposal')}
                 </Text>
               )}
-              <SkeletonText lines={shown.summary?.trim() ? 2 : 3} animate={!preparingModel} active={isFocused} />
+              {processingProgress?.live ? (
+                <ProcessingLive content={note.content} live={processingProgress.live} reducedMotion={reducedMotion} />
+              ) : (
+                <SkeletonText lines={shown.summary?.trim() ? 2 : 3} animate={!preparingModel} active={isFocused} />
+              )}
             </View>
           )}
           {processError && !processing && (

@@ -38,7 +38,8 @@ export const processNoteQuality = async (
   const failedFields: NonNullable<NoteProcessingResult["failedFields"]> = [];
 
   onProgress({ phase: "summary" });
-  const summary = await generatePointSummary(units, content, language, execution);
+  const summary = await generatePointSummary(units, content, language, execution,
+    (live) => onProgress({ phase: "summary", live }));
   throwIfProcessingAborted(execution);
   warnings.push(...summary.warnings);
   const points = summary.points.map((point) => point.text);
