@@ -5,7 +5,7 @@ import type { Language } from '../i18n/language'
 import { localeForLanguage } from '../i18n/language'
 import { resolveDue, splitTaskText } from '../tasks/taskDue'
 import { plain } from './askText'
-import { isTaskQuestion } from './askRetrieval'
+import { isTaskQuestion, questionDays } from './askRetrieval'
 import type { AskChunk, AskIndex, AskNote } from './askIndex'
 import type { RetrievedNote } from './askRetrieval'
 
@@ -26,6 +26,15 @@ export interface AskAnswer {
   cited: AskSource[]
   // The first answer was "not found" and a second look at the best note answered.
   retried?: boolean
+  // Model calls behind this answer, for the measurement suite.
+  generations?: AskGeneration[]
+}
+
+export interface AskGeneration {
+  promptTokens: number
+  predictedTokens: number
+  promptMs: number
+  predictedMs: number
 }
 
 const YES_NO_QUESTION = /^(?:czy|should|do|does|did|is|are|can|will|must|have)\b/iu
@@ -92,7 +101,8 @@ const withNeighbours = (note: RetrievedNote, index: AskIndex): AskChunk[] => {
   return [...context, ...others]
 }
 
-export const buildAskContext = (retrieved: readonly RetrievedNote[], index: AskIndex, language: Language, now: Date): { context: string; sources: AskSource[] } => {
+// A day question picks its passages by date; their neighbours only lengthen the prompt.
+export const buildAskContext = (retrieved: readonly RetrievedNote[], index: AskIndex, language: Language, now: Date, neighbours = true): { context: string; sources: AskSource[] } => {
   const sources: AskSource[] = []
   const blocks = retrieved.map((note, position) => {
     const info = index.notes.get(note.noteId)
@@ -101,7 +111,7 @@ export const buildAskContext = (retrieved: readonly RetrievedNote[], index: AskI
     sources.push({ number, noteId: note.noteId, title })
     const recorded = info ? formatDay(info.createdAt, language) : ''
     const header = language === 'pl' ? `[${number}] Notatka „${title}”, nagrana ${recorded}:` : `[${number}] Note "${title}", recorded ${recorded}:`
-    const lines = withNeighbours(note, index).map((chunk) => `- ${passageLine(chunk, index, language, now)}`)
+    const lines = (neighbours ? withNeighbours(note, index) : note.passages).map((chunk) => `- ${passageLine(chunk, index, language, now)}`)
     return [header, ...lines].join('\n')
   })
   return { context: blocks.join('\n\n'), sources }
@@ -182,10 +192,12 @@ export const answerQuestion = async (
   language: Language,
   options: { now: Date; history?: readonly { question: string; answer: string }[]; onToken?: (token: string) => void; signal?: AbortSignal },
 ): Promise<AskAnswer> => {
-  const { context, sources } = buildAskContext(retrieved, index, language, options.now)
+  const dayList = isTaskQuestion(question) && questionDays(question, options.now) !== null
+  const { context, sources } = buildAskContext(retrieved, index, language, options.now, !dayList)
   const prompt = askPrompt(question, context, options.history ?? [], language, options.now)
-  const run = (temperature: number, onToken: (token: string) => void, text = prompt) =>
-    generate(text, onToken, {
+  const generations: AskGeneration[] = []
+  const run = async (temperature: number, onToken: (token: string) => void, text = prompt) => {
+    const result = await generate(text, onToken, {
       system: askSystem(language),
       nPredict: ASK_OUTPUT_TOKENS,
       temperature,
@@ -194,17 +206,21 @@ export const answerQuestion = async (
       minP: 0,
       ...(options.signal ? { signal: options.signal } : {}),
     })
+    generations.push({ promptTokens: result.promptTokens ?? 0, predictedTokens: result.predictedTokens ?? 0, promptMs: result.promptMs ?? 0, predictedMs: result.predictedMs ?? 0 })
+    return result
+  }
+  const stats = (answer: AskAnswer): AskAnswer => ({ ...answer, generations })
   const first = parseAnswer((await run(0.2, options.onToken ?? (() => undefined))).text, sources)
   // The small model sometimes repeats the question instead of answering; one warmer retry fixes it.
   const bare = (text: string): string => plain(text.replace(/\[\d+\]/gu, '')).replace(/[^\p{L}\p{N}]+/gu, ' ').trim()
-  if (bare(first.text) === bare(question)) return parseAnswer((await run(0.6, () => undefined)).text, sources)
+  if (bare(first.text) === bare(question)) return stats(parseAnswer((await run(0.6, () => undefined)).text, sources))
   // "Nie, czekaj [1]." copies the speaker's filler; a bare "Nie." gives no reason.
   if (YES_NO_QUESTION.test(question.trim()) && sources.length && bare(first.text.replace(/^(nie|no)[,\s]+(?:czekaj|wait)\b/iu, '$1')).split(' ').filter(Boolean).length <= 3) {
     const hint = language === 'pl'
       ? '\n\nOdpowiedz „Tak” albo „Nie”, a potem w tym samym zdaniu podaj, co dokładnie mówi notatka i dlaczego.'
       : '\n\nAnswer "Yes" or "No", then in the same sentence say what exactly the note says and why.'
     const fuller = parseAnswer((await run(0.2, () => undefined, prompt.replace(/\n\n(?:ODPOWIEDŹ|ANSWER):$/u, `${hint}$&`))).text, sources)
-    if (bare(fuller.text).split(' ').length > 3 && !NOT_FOUND.test(fuller.text)) return fuller
+    if (bare(fuller.text).split(' ').length > 3 && !NOT_FOUND.test(fuller.text)) return stats(fuller)
   }
   // A recognizer that dropped a word ("Prague") makes the model refuse a note
   // that does answer; one second look at the best note, told so, recovers it.
@@ -213,7 +229,7 @@ export const answerQuestion = async (
       ? `\n\nUWAGA: Notatka [1] prawdopodobnie dotyczy tej sprawy, choć zapis mowy mógł przekręcić lub pominąć niektóre słowa. Jeśli tak, odpowiedz na jej podstawie i dopisz, czego w niej brakuje. Jeśli naprawdę nie dotyczy, napisz: „Nie znalazłem tego w notatkach.”`
       : `\n\nNOTE: Note [1] is probably about this matter, though the transcript may have garbled or dropped some words. If so, answer from it and say what is missing. If it really is not about it, write: "I couldn't find that in your notes."`
     const second = parseAnswer((await run(0.2, () => undefined, prompt.replace(/\n\n(?:ODPOWIEDŹ|ANSWER):$/u, `${hint}$&`))).text, sources)
-    if (!NOT_FOUND.test(second.text)) return { ...second, retried: true }
+    if (!NOT_FOUND.test(second.text)) return stats({ ...second, retried: true })
   }
-  return first
+  return stats(first)
 }
