@@ -1,0 +1,981 @@
+{
+ "version": 1,
+ "evalNow": "2026-10-20T08:00:00+02:00",
+ "recordings": [
+  {
+   "id": "pl-plan",
+   "language": "pl",
+   "reference": "Dobra, nagrywam plan na najbliższe dni, bo inaczej o czymś zapomnę. W czwartek o siedemnastej piętnaście oddaję hulajnogę elektryczną do naprawy, pęknięty błotnik. W piątek muszę oddać projekt z robotyki, termin jest do dwudziestej. Zakupy na weekend: jabłka, ser i makaron, ale masła nie kupuję, bo mam w zamrażarce. Trening siatkówki miał być w środę o dziewiętnastej, nie, czekaj, przenieśli go na czwartek na dwudziestą. Muszę jeszcze zadzwonić do Bartka w sprawie festiwalu jazzowego, bo do niedzieli trzeba kupić bilety po sto osiemdziesiąt złotych. Abonament za telefon, sześćdziesiąt pięć złotych, zapłacić do dwudziestego piątego. A, i nie zapomnieć oddać Zuzi pendrive'a."
+  },
+  {
+   "id": "pl-dziennik",
+   "language": "pl",
+   "reference": "Dzisiaj był dość męczący dzień w pracy, od rana telefony jeden za drugim. Klient z Katowic zmienił zakres i projekt Kometa opóźnia się o tydzień. Kierowniczka powiedziała, że hackathon dla nowych pracowników jest w piątek o trzynastej i to ja go prowadzę, więc w czwartek wieczorem muszę przygotować harmonogram. Na lunch wziąłem burrito z nowego food trucka, kosztowało dwadzieścia siedem złotych, bardzo dobre. Wieczorem dzwoniła Lena, że w niedzielę się przeprowadza, i prosiła, żebym pomógł jej nosić kartony o dziesiątej. Powiedziałem, że tak. Jutro rano joga, a po pracy odebrać buty od szewca."
+  },
+  {
+   "id": "en-trip",
+   "language": "en",
+   "reference": "Quick note about the trip to Prague. The train is on December third at six forty five in the morning from Krakow. I still need to book a hostel near the old town square, the budget is about forty euros per night. Nina said she can lend us a big backpack, so no need to buy one. I must renew my driving licence before the trip, the appointment is next Wednesday at ten. Also buy a power bank and pack warm gloves. Don't buy a new jacket, the old one is fine. Email Peter on Thursday about the museum tickets."
+  }
+ ],
+ "notes": [
+  {
+   "id": "01-promotor-rozdzial",
+   "language": "pl",
+   "createdAt": "2026-10-15T15:40:00+02:00",
+   "title": "Spotkanie z promotorem",
+   "content": "No więc byłem dzisiaj u promotora, u doktora Zielińskiego, tramwaj się spóźnił dziesięć minut, ale znaczy ogólnie było okej, bibliografia jest w porządku. Rozdział drugi mam poprawić do piątku, dwudziestego trzeciego. Aha i jeszcze ankietę mam wysłać do dwudziestu osób, nie, czekaj, do trzydziestu. Kolejne spotkanie we wtorek o czternastej. A kawa w automacie na trzecim piętrze znowu nie działała, masakra.\n",
+   "summary": "• Spotkanie u doktora Zielińskiego – bibliografia w porządku\n• Poprawić rozdział drugi do piątku 23\n• Wysłać ankietę do 30 osób\n• Kolejne spotkanie we wtorek o 14:00",
+   "tasks": [
+    "Poprawić rozdział drugi — piątek 23",
+    "Wysłać ankiety 30",
+    "Spotkanie z promotorem — wtorek 14:00"
+   ]
+  },
+  {
+   "id": "02-zakupy-dom",
+   "language": "pl",
+   "createdAt": "2026-10-12T18:30:00+02:00",
+   "title": "Lista zakupów i hydraulik",
+   "content": "Dobra, lista na zakupy, bo znowu zapomnę. Chleb, najlepiej razowy z piekarni na rogu, masło, jajka dziesięć, nie, czekaj, trzydzieści, bo w sobotę pieczemy sernik. Mleka nie kupuj, znaczy nie kupuję, mamy jeszcze dwa kartony w lodówce. Proszek do prania tylko jak będzie promocja, bo ostatnio kosztował chyba czterdzieści złotych, to jest jakiś żart. Aha i jeszcze sprawy domowe. Hydraulik miał przyjść w środę, ale dzwonił, że jednak w czwartek o ósmej rano, więc muszę być w domu. Paczkę z paczkomatu odbierze Kasia, nie ja, ona ma kod. No i zapłacić rachunek za prąd, dwieście dwanaście złotych, do dwudziestego. A, i kupić żarówkę do łazienki, taką ciepłą, nie te zimne białe, bo wygląda jak w szpitalu. Chyba tyle, zobaczymy.\n",
+   "summary": "• Lista zakupów: chleb, masło, jajka, proszek do prania\n• Hydraulik przyjedzie w czwartek o 8:00 rano\n• Paczkę z paczkomatu odbierze Kasia\n• Zapłacić rachunek za prąd 212 zł do dwudziestego\n• Kupić żarówkę do łazienki ciepłą",
+   "tasks": [
+    "Kupić: chleb, masło, 30 jajek",
+    "Wizyta u hydraulika — czwartek 8:00",
+    "Zapłacić rachunek za prąd 212 zł — do 20",
+    "Kupić żarówkę do łazienki"
+   ]
+  },
+  {
+   "id": "03-szkolenie-pierwsza-pomoc",
+   "language": "pl",
+   "createdAt": "2026-10-06T16:45:00+02:00",
+   "title": "Szkolenie z pierwszej pomocy",
+   "content": "Notatka ze szkolenia z pierwszej pomocy, bo potem nie będę pamiętać. No więc prowadzący, taki ratownik, pan Marek, mówił że najpierw zawsze bezpieczeństwo, znaczy sprawdzasz czy tobie nic nie grozi, dopiero potem podchodzisz. Potem sprawdzasz przytomność i oddech, dziesięć sekund, nie dłużej. Jak osoba oddycha normalnie, to nie robimy uciśnięć, tylko pozycja bezpieczna, boczna, i dzwonimy sto dwanaście. Jak nie oddycha, to trzydzieści uciśnięć i dwa oddechy, głębokość pięć do sześciu centymetrów u dorosłego. Tempo on najpierw powiedział osiemdziesiąt na minutę, a potem się poprawił, że nie, sto do stu dwudziestu. Można sobie nucić Stayin Alive, serio tak mówił, cała sala się śmiała. U dzieci jest inaczej, zaczyna się od pięciu oddechów ratowniczych, ale dzieci będą dokładnie dopiero na drugiej części szkolenia, w listopadzie, więc na razie tylko tyle zanotowałam. Aha i jeszcze AED, defibrylator, trzeba go użyć jak najszybciej, on sam mówi co robić, nie trzeba się bać, bo nie wyładuje jeśli nie ma takiej potrzeby, sam analizuje rytm serca. Opowiadał też długą historię jak reanimował kogoś na weselu w Zakopanem, ale to już mniej ważne. Zadanie jest jedno, test online do certyfikatu, trzeba zrobić do końca miesiąca, link przyjdzie mailem. Sala była strasznie zimna, nie wiem kto tam ustawiał klimatyzację.\n",
+   "summary": "• Szkolenie z pierwszej pomocy: najpierw bezpieczeństwo, potem przytomność i oddech\n• Procedura oddechów: 10 sekund, jeśli nie oddycha – 30 uciśnięć i dwa oddechy\n• Tempo uciśnięć: 100 do 120 na minutę\n• U dzieci: pięć oddechów ratowniczych, ale tylko na 2:00 części szkolenia\n• AED, defibrylator, trzeba go użyć jak najszybciej, on sam mówi co robić, nie trzeba się bać, sam analizuje rytm serca\n• Test online do certyfikatu: do końca miesiąca, link mailem",
+   "tasks": [
+    "Test online do certyfikatu — do końca miesiąca"
+   ]
+  },
+  {
+   "id": "04-pomysly-aplikacja-rachunki",
+   "language": "pl",
+   "createdAt": "2026-10-03T22:40:00+02:00",
+   "title": "Apka do dzielenia rachunków",
+   "content": "Dobra, takie luźne pomysły na projekt, nic pilnego, po prostu żeby mi nie uciekło. No więc myślę o apce do dzielenia rachunków w mieszkaniu, bo u nas jest wieczny chaos, kto płacił za internet, kto za papier toaletowy, wiadomo. Pierwszy pomysł, że każdy wrzuca paragon, robi zdjęcie, i apka sama odczytuje kwotę, znaczy jakiś OCR. Drugi, że jest saldo, kto komu ile wisi, i na koniec miesiąca jedno kliknięcie i się wyrównuje. Myślałem też o blockchainie, ale nie, to bez sensu, odpada, to by było przekombinowane. Logowanie przez Facebooka, nie, czekaj, jednak nie, nikt już nie ma Facebooka, raczej po prostu numer telefonu albo link zaproszenia. Aha i jeszcze fajna rzecz, przypomnienia, że za trzy dni trzeba zapłacić za prąd, ale bez spamowania, maksymalnie jedno powiadomienie dziennie. Bartek kiedyś mówił o grafiku sprzątania, żeby to też tam było, to jego pomysł, ale w sumie mi się podoba, może jako drugi etap. Technologia, pewnie React Native, bo już go znam, a backend, nie wiem, może Firebase, może coś własnego, jeszcze się nie zdecydowałem, to otwarta sprawa. Nazwa, myślałem o Rachunek albo Kwita, Kwita brzmi lepiej chyba. Kolor zielony, bo kojarzy się z pieniędzmi, chociaż to w sumie drugorzędne, jak zawsze siedzę nad kolorami godzinę, a potem i tak zmieniam. Jeszcze jedna myśl, eksport do pliku na koniec roku, gdyby ktoś się wyprowadzał i chciał mieć rozliczenie, ale to raczej na później, nie na start. Najważniejsze żeby było proste, maksymalnie trzy ekrany na start, lista wydatków, saldo i dodawanie wydatku. Reszta później. A no i rzecz którą warto zrobić, to zapytać chłopaków z mieszkania, czy w ogóle by z tego korzystali, bo może tylko mi się wydaje, że to jest problem. Przypomniało mi się, że jest taka apka Splitwise, trzeba by zobaczyć co oni robią, żeby nie robić dokładnie tego samego. Kurczę, robi się późno, dobra, na razie tyle.\n",
+   "summary": "• Projekt apki do dzielenia rachunków w mieszkaniu\n• Apka odczytuje kwoty z paragonów i wyrównuje saldo\n• Przypomnienia o zapłacie za prąd\n• Użyć React Native i Firebase lub coś własnego\n• Nazwa apki: Kwita\n• Kolor zielony, trzy ekrany na start\n• Zapytać mieszkanców, czy\n• Zobaczyć apkę Splitwise",
+   "tasks": [
+    "Zapytać chłopaków z mieszkania",
+    "Zobaczyć co robi apka Splitwise"
+   ]
+  },
+  {
+   "id": "05-dzien-w-pracy",
+   "language": "pl",
+   "createdAt": "2026-10-08T17:30:00+02:00",
+   "title": "Umowy i spotkanie z Termexem",
+   "content": "Okej, podsumowanie dnia w pracy, bo jutro rano i tak nic nie będę pamiętał. No więc o dziewiątej było daily, nic specjalnego, Tomek znowu się spóźnił, standard. Potem o dziesiątej spotkanie z klientem, z firmą Termex, w sprawie nowego panelu do zamówień. Klient chce żeby panel był gotowy do końca listopada, znaczy oni najpierw mówili piętnasty grudnia, ale potem jednak się poprawili, że koniec listopada, bo mają audyt. Budżet, mówili dwanaście tysięcy, nie, czekaj, jednak po dyskusji wyszło czternaście i pół tysiąca netto, bo dochodzi moduł raportów. Moduł raportów to był ich pomysł, nie nasz. Aha i ważne, oferty jeszcze nie wysyłamy, dopóki prawnicy nie przejrzą umowy, Kowalska z prawnego ma to zrobić do środy. Jak prawny zatwierdzi do środy, to ja w czwartek wysyłam ofertę, a jak nie, to dzwonię do klienta i przesuwamy. Na lunch poszliśmy do tej nowej knajpy z ramenem na rogu, było przeciętnie, za drogo jak na to co dają, trzydzieści osiem złotych za miskę, a jak byliśmy w tej poprzedniej, tajskiej, to za tyle samo było jeszcze z napojem i deserem, no ale tamtą zamknęli w wakacje, szkoda. Ania z marketingu mówiła, że w piątki dają tam zniżkę dla firm z biurowca, ale nie wiem czy to prawda. Po lunchu spotkanie wewnętrzne o trzynastej trzydzieści, o zespole. Ustaliliśmy, że Ola przejmuje testy, to jest jej zadanie, ja się tym nie zajmuję. Ja mam przygotować estymację godzin dla modułu raportów do piątku, i to musi być rozbite na zadania, szef prosił. Szef jeszcze wspominał coś o wyjeździe integracyjnym w Bieszczady, ale to dopiero na wiosnę, nic konkretnego. Koszty, aha, jeszcze koszty. Licencja na narzędzie do testów kosztuje dziewięćset złotych miesięcznie, szef powiedział że na razie nie kupujemy, poczekamy do stycznia. Serwer testowy, sto osiemdziesiąt złotych miesięcznie, to zostaje. Co jeszcze. Spotkanie z Termexem w przyszłym tygodniu miało być w poniedziałek, ale przesunęli na wtorek na jedenastą, mam to wpisać do kalendarza. No i muszę odpisać Markowi z księgowości w sprawie faktury za wrzesień, bo pisał już dwa razy i trochę mi głupio. Klimatyzacja w biurze znowu wariowała, było z dwadzieścia osiem stopni, ktoś w końcu zgłosił do administracji. Kawa się skończyła o czternastej, dramat. A, i jeszcze jedno, Tomek pytał czy mogę go zastąpić na dyżurze w sobotę, powiedziałem że nie, bo mam wesele kuzynki. Dobra, to chyba tyle, idę do domu.\n",
+   "summary": "• Podsumowanie dnia w pracy\n• Spotkanie z klientem z Termex o 10:00\n• Klient chce panel gotowy do końca listopada\n• Oferty nie wysyłamy dopóki prawnicy nie przejrzą umowy\n• Ola przejmuje testy\n• Przygotować estymację godzin dla modułu raportów do piątku, rozbite na zadania\n• Licencja na narzędzie do testów kosztuje 900 zł miesięcznie, nie kupujemy\n• Serwer testowy kosztuje 180 zł miesięcznie\n• Spotkanie z Termexem w przyszłym tygodniu na wtorek o 11:00\n• Odpisać Markowi z księgowości w sprawie faktury za wrzesień",
+   "tasks": [
+    "Spotkanie z Termexem — wtorek 10:00",
+    "Wysłać ofertę — czwartek",
+    "Zadzwonić do klienta i przesuwamy, jeśli prawny nie zatwierdzi do środy",
+    "Spotkanie z zespołem — 13:30",
+    "Przygotować estymację godzin — piątek",
+    "Odpisać Markowi"
+   ]
+  },
+  {
+   "id": "06-urlop-portugalia",
+   "language": "pl",
+   "createdAt": "2026-10-05T21:00:00+02:00",
+   "title": "Plan urlopu do Portugalii",
+   "content": "No dobra, plan urlopu, żeby to wszystko było w jednym miejscu, bo mam już to porozrzucane po mailach i esemesach. Lecimy z Anią do Portugalii. Wylot miał być trzeciego listopada, ale znaczy przebukowałem, bo był tańszy lot, więc jednak piątego listopada, w czwartek, o szóstej czterdzieści z Modlina. Nie, czekaj, z Modlina był ten pierwszy, ten nowy jest z Okęcia, o siódmej dziesięć. Tak, Okęcie, siódma dziesięć, sprawdzałem rano. Powrót dwunastego listopada wieczorem. Bilety kosztowały w sumie tysiąc czterysta za dwie osoby w obie strony, z bagażem podręcznym, bez rejestrowanego, więc trzeba się spakować w małe walizki, Ania już marudzi. Pierwsze cztery noce Lizbona. Hotel, ten pierwszy, przy Alfamie, odwołałem, bo w opiniach ludzie pisali o pluskwach, fuj, więc wziąłem apartament w Baixa, czterysta euro za cztery noce, z bezpłatną anulacją do trzydziestego października. Potem trzy noce na Algarve, w Lagos, tam jeszcze nic nie mam zarezerwowanego, muszę to zrobić w tym tygodniu, najlepiej do piątku, bo ceny rosną. Auto bierzemy dopiero na Algarve, w Lizbonie nie, bo tam nie ma gdzie parkować i są te tramwaje, wypożyczenie z Faro albo z Lagos, jeszcze sprawdzę. Pociąg z Lizbony do Faro, jakieś trzy godziny, bilety można kupić na miejscu, nie trzeba wcześniej. Aha i jeszcze, jak będzie ładna pogoda, to jeden dzień jedziemy do Sintry, a jak będzie padać, to zostajemy w Lizbonie i idziemy do oceanarium. Ania ma zarezerwować kolację na rocznicę, siódmego, w tej restauracji z fado, to jej działka, ja się nie wtrącam. Dokumenty, wystarczy dowód osobisty, paszport niepotrzebny, to Unia, ale trzeba sprawdzić czy mój dowód nie traci ważności, bo coś mi się wydaje że w przyszłym roku. Ubezpieczenie, mam w karcie kredytowej, ale tylko do dziesięciu tysięcy euro kosztów leczenia, więc chyba lepiej dokupić normalne, jakieś pięćdziesiąt złotych. Kartę EKUZ też trzeba wyrobić, to jest za darmo przez internet. Kota zostawiamy u mamy, trzeba jej go zawieźć czwartego wieczorem, razem z karmą i tym jego kocykiem, bo inaczej nie śpi. Pamiętam jak ostatnio w Chorwacji zgubiliśmy ładowarkę pierwszego dnia i biegaliśmy po całym Splicie szukając, więc tym razem biorę dwie. Budżet na wszystko, liczyłem tak na szybko, z dziewięć tysięcy złotych, może dziesięć, zależy od auta. Pogoda w listopadzie tam podobno jakieś osiemnaście, dwadzieścia stopni, czyli lepiej niż tutaj, gdzie jest szaro i leje od tygodnia. Ania chce koniecznie spróbować tych ciastek, pastel de nata, i mówi, że jest jakaś cukiernia w Belem, gdzie stoi się w kolejce godzinę, no to postoimy, trudno, w końcu urlop. Ja bym chciał jeszcze pojechać na ten najbardziej wysunięty na zachód punkt Europy, Cabo da Roca, ale to zobaczymy, może przy okazji Sintry, bo to podobno blisko, i tak nie wiem czy się zmieścimy ze wszystkim w czterech dniach. Wymienić trochę euro, tak ze dwieście na drobne, reszta kartą. No i ostatnia rzecz, poprosić szefa o potwierdzenie urlopu na piśmie, bo na razie było tylko ustnie na korytarzu. Dobra, chyba tyle, jakby coś mi się przypomniało, to dopiszę.\n",
+   "summary": "• Plan urlopu: Portugalia, czwartek 5 listopada o 7:10 z Okęcia, powrót 12 listopada\n• Bilety: 1400 zł za 2 osoby w obie strony z bagażem, trzeba spakować w małe walizki\n• Hotel: apartament w Baixa, 400 € za 4 noce z bezpłatną anulacją do 30 października\n• Potem 3 noce na Algarve, w Lagos, tam jeszcze nic nie mam zarezerwowanego, zrobić to w tym tygodniu, najlepiej do piątku\n• Transport: auto na Algarve, pociąg do Faro, bilety na miejscu\n• Plan wizyty: jeśli pada – oceanarium, inaczej Sintry\n• Dokumenty: dowód osobisty wystarczy, sprawdzić ważność dowodu\n• Ubezpieczenie: 10 tys. euro, lepiej kupić normalne (chyba)\n• Kota zostawiamy u mamy, trzeba jej go zawieźć czwartego wieczorem, razem z karmą i tym jego kocykiem\n• Wymienić euro na drobne, reszta kartą\n• Poprosić szefa o potwierdzenie urlopu na piśmie",
+   "tasks": [
+    "Spakować się w małe walizki",
+    "Zarezerwować hotel w Lagos — do piątku",
+    "Wypożyczyć auto z Faro albo Lagos",
+    "Sprawdzić ważność dowodu osobistego",
+    "Dokupić ubezpieczenie — do 50 złotych",
+    "Wyrobić kartę EKUZ",
+    "Zawieźć kotę u mamy — czwartego wieczorem",
+    "Wymienić euro 200",
+    "Poprosić szefa o potwierdzenie urlopu na piśmie"
+   ]
+  },
+  {
+   "id": "07-zdrowie-zatoki-leki",
+   "language": "pl",
+   "createdAt": "2026-10-12T14:10:00+02:00",
+   "title": "Wizyta u doktor Nowickiej",
+   "content": "Dobra, nagrywam to, bo z tymi lekami to się zaraz pogubię. No więc byłam dzisiaj u lekarki, u doktor Nowickiej w przychodni na Lipowej. Kolejka była jak zwykle straszna, mimo że byłam umówiona na dziesiątą, weszłam za dwadzieścia jedenasta, a obok siedział taki starszy pan i przez cały czas opowiadał mi o swoim kolanie, o tym jak mu je operowali w dwa tysiące dziewiętnastym, i że od tamtej pory pogodę przewiduje lepiej niż telewizja. Miły był w sumie. No ale do rzeczy. Lekarka powiedziała, że to zapalenie zatok, bakteryjne, bo już trwa ponad dziesięć dni i gorączka wróciła. Dostałam antybiotyk, amoksycylinę z kwasem klawulanowym, dwa razy dziennie co dwanaście godzin, czyli rano o ósmej i wieczorem o dwudziestej, najlepiej na początku posiłku. Najpierw powiedziała przez siedem dni, a potem jeszcze raz spojrzała w kartę i powiedziała, że nie, jednak dziesięć dni, i że mam nie przerywać nawet jak poczuję się lepiej, to bardzo podkreślała. Do tego probiotyk, ale nie razem z antybiotykiem, tylko dwie godziny po. I ważne, nie brać ibuprofenu, bo mówiłam jej o tym żołądku i że ostatnio miałam zgagę, więc żadnego ibuprofenu ani tych tabletek musujących na przeziębienie, które w sumie też mają w środku ibuprofen. Jak będzie gorączka albo ból głowy, to paracetamol, maksymalnie cztery gramy na dobę, czyli osiem tabletek po pięćset, ale lepiej mniej. Aha i jeszcze, jeśli gorączka powyżej trzydziestu ośmiu i pół utrzyma się dłużej niż trzy dni od startu antybiotyku, to mam zadzwonić do przychodni, a nie czekać do kontroli. Jeśli nie, to normalnie kontrola. Kontrola jest dwudziestego siódmego października, we wtorek, o szesnastej piętnaście, znaczy chyba szesnastej piętnaście, tak, zapisała mi na kartce, szesnasta piętnaście. Przed kontrolą mam zrobić morfologię i CRP, skierowanie dostałam, na czczo, najlepiej w poniedziałek dwudziestego szóstego rano, żeby wyniki były na wtorek. Witaminę D mogę dalej brać, to nie przeszkadza, ale magnez mam odstawić na czas antybiotyku, bo podobno może osłabiać wchłanianie, chyba tak to szło. Zwolnienie dostałam do piątku włącznie, już jest w systemie, więc w pracy nic nie muszę zanosić, ale napiszę szefowej maila, że jestem na L4, żeby wiedziała i żeby ktoś przejął moje spotkania. Wesele kuzynki w sobotę, no i lekarka powiedziała wprost, że na antybiotyku alkoholu nie, więc będę piła sok jak dziecko, trudno, ciocia na pewno będzie komentować. A w ogóle to po drodze wstąpiłam do apteki, tej przy rondzie, bo tamta druga była zamknięta, i farmaceutka była bardzo miła, powiedziała mi, że probiotyk najlepiej taki z tymi specjalnymi szczepami odpornymi na antybiotyk, kupiłam, czterdzieści dwa złote, drogo jak diabli. Antybiotyk też kupiłam, więc to już mam. Dentysta, aha, dentysta. Miałam w czwartek o dziewiątej trzydzieści, ale z tym zapaleniem zatok to bez sensu, więc odwołałam przez telefon i przełożyli mi na trzeciego listopada, też na dziewiątą trzydzieści, to jest wtorek. Mamie mam wykupić leki na ciśnienie, receptę wysłała mi esemesem, kod jest w wiadomości z wczoraj, to trzeba zrobić do końca tygodnia, bo jej się kończą. Ona sama ma iść do kardiologa w przyszłym miesiącu, ale to już jej sprawa, sama się zapisała, ja tylko ewentualnie ją podwiozę, jak będzie chciała, nic nie ustalałyśmy. Przypomniało mi się, że kiedyś, jeszcze na studiach, miałam podobne zatoki i wtedy leczyłam się jakimiś inhalacjami z rumianku przez dwa tygodnie i nic nie pomogło, aż w końcu też skończyło się antybiotykiem, więc tym razem nie kombinuję. Lekarka mówiła, że inhalacje z soli fizjologicznej mogę robić, to nie zaszkodzi, i płukanie nosa, ale to tak dodatkowo, nie zamiast. Spać mam dużo, pić dużo wody, minimum dwa litry dziennie. Na parkingu pod przychodnią ktoś mi zastawił auto, czekałam dziesięć minut, zanim przyszedł facet z bułką w ręce i jeszcze miał pretensje, że trąbię. Normalnie ręce opadają. W domu jeszcze zrobiłam sobie rosół z kostki, bo na prawdziwy nie miałam siły, i oglądałam jakiś program o remontach, gdzie ludzie burzą ścianę w bloku i potem się dziwią, że administracja przychodzi, w ogóle nie wiem po co ja to oglądam. Jeszcze w drodze do domu dzwoniła Agata, czy idę w niedzielę na ten spacer z kijkami, ale powiedziałam że nie, odpuszczam, nie w tym stanie. Dobra, ustawiam sobie budziki na ósmą i na dwudziestą, żeby nie zapomnieć o antybiotyku, i idę się położyć.\n",
+   "summary": "• Wizyta u lekarki u doktor Nowickiej w przychodni na Lipowej\n• Lekarka powiedziała, że to zapalenie zatok, bakteryjne, bo już trwa ponad 10 dni i gorączka wróciła\n• Przepis: antybiotyk 2 razy dziennie, nie przerywać, nie brać ibuprofenu\n• Przepis: paracetamol przy gorączce, maksymalnie cztery gramy na dobę\n• Jeśli gorączka powyżej 38,5°C i 3 dni – zadzwonić do przychodni\n• Kontrola we wtorek 27 października o 16:15 (chyba)\n• Przed kontrolą: morfologia i CRP 26\n• Witamina D dalej, magnez odstawić na czas antybiotyku\n• Zwolnienie do piątku włącznie, mail do szefowej o L4\n• Wesele kuzynki w sobotę, nie pić alkoholu, pić sok\n• Ale z tym zapaleniem zatok to bez sensu, więc odwołałam przez telefon i przełożyli mi na 3 listopada\n• Recepta na leki na ciśnienie, do końca tygodnia\n• Płukanie nosa, inhalacje z soli fizjologicznej, spać dużo, pić wody",
+   "tasks": [
+    "Brać antybiotyk amoksycylinę z kwasem klawulanowym 2 razy dziennie co 12 godzin",
+    "W przypadku gorączki albo bólu głowy brać paracetamol 4 gramy na dobę",
+    "W przypadku gorączki powyżej 38,5°C utrzymującej się dłużej niż 3 dni",
+    "Wizyta u lekarki — 16:15 27 października",
+    "Zrobić morfologię i CRP — poniedziałek 26",
+    "Odstawić na czas antybiotyku",
+    "Wizyta u dentysty",
+    "Wykupić leki na ciśnienie — do końca tygodnia",
+    "Zrobić inhalacje z soli fizjologicznej",
+    "Spać dużo, pić dużo wody minimum 2 litry dziennie",
+    "Ustawić budziki na 8 i 20"
+   ]
+  },
+  {
+   "id": "08-telefon-urodziny-taty",
+   "language": "pl",
+   "createdAt": "2026-10-11T20:15:00+02:00",
+   "title": "Urodziny taty i impreza",
+   "content": "No dobra, to nagrywam, bo właśnie skończyłem gadać z Magdą przez telefon i ustaliliśmy milion rzeczy, a ja mam pamięć jak sito. Znaczy, tak naprawdę rozmawialiśmy dwa razy, bo ona potem oddzwoniła po godzinie i część rzeczy się pozmieniała, więc spróbuję to ułożyć po kolei, żeby była ta ostateczna wersja. No więc chodzi o siedemdziesiąte urodziny taty. Tata ma urodziny dwudziestego listopada, to jest piątek, ale wiadomo, że impreza raczej w weekend. Pierwsza wersja była taka, że robimy w sobotę dwudziestego pierwszego w Zajeździe pod Lipami, tam gdzie było wesele Pawła, i Magda mówiła, że zadzwoni i zapyta czy sala jest wolna. No i w drugiej rozmowie powiedziała, że dzwoniła i dwudziestego pierwszego sala jest zajęta, jakaś komunia czy coś, nie, w listopadzie nie ma komunii, chyba osiemnastka, nieważne. W każdym razie zajęta. Więc ustaliliśmy, że robimy tydzień później, w sobotę dwudziestego ósmego listopada, o szesnastej, i wtedy jest wolne, Magda wstępnie zarezerwowała, ale trzeba wpłacić zaliczkę pięćset złotych do końca października, inaczej rezerwacja przepada. I tą zaliczkę wpłacam ja, bo Magda teraz jest po remoncie i nie ma kasy, potem się rozliczymy. Liczba gości, na początku mówiliśmy dwadzieścia cztery osoby, ale potem Magda zaczęła wyliczać, ciocia Halina z mężem, kuzyni z Radomia, sąsiedzi taty, panowie z działek, no i wyszło trzydzieści. Trzydzieści osób, tak przyjmujemy. Menu za osobę w Zajeździe sto czterdzieści złotych, nie, czekaj, sto czterdzieści to było bez napojów, z napojami sto sześćdziesiąt pięć, i bierzemy z napojami, bo inaczej będzie liczenie każdej coli osobno. Czyli tak na szybko wychodzi prawie pięć tysięcy, cztery tysiące dziewięćset pięćdziesiąt. Dzielimy się po połowie, ja i Magda, Paweł się nie dokłada do sali, bo on płaci za prezent, tak ustaliliśmy jeszcze w zeszłym tygodniu. Prezent. Na początku miał być tablet, żeby tata mógł oglądać zdjęcia wnuków, ale Magda mówi, że tata i tak nie będzie z tego korzystał, bo on nawet smartfona używa tylko do dzwonienia, więc tablet odpada. Paweł ma kupić rower elektryczny, tata od dawna o tym mówi, że pod górkę na działkę już nie daje rady. To jest zadanie Pawła, nie moje, ja mam tylko do niego zadzwonić i mu przekazać, że tablet odpada, bo on jeszcze nie wie, i najlepiej zrobić to dzisiaj albo jutro, zanim kupi ten tablet, bo on jest w gorącej wodzie kąpany. Tort, w pierwszej rozmowie miała zamówić Magda, w tej cukierni Kremówka, ale w drugiej rozmowie się okazało, że ona w listopadzie ma delegację w Gdańsku, więc tort zamawiam ja. Tort na trzydzieści osób, z napisem Sto lat tato, bez orzechów, bo ciocia Halina ma alergię, to bardzo ważne, żadnych orzechów, nawet posypki. Zamówić trzeba najpóźniej dwa tygodnie wcześniej, czyli do czternastego listopada. Zaproszenia, Magda zrobi w Canvie i roześle esemesem, ja tylko mam jej podesłać numery do kuzynów z Radomia, bo ona ich nie ma, do piątku. Aha i jeszcze muzyka, Magda chciała zespół, ale to jest dodatkowe tysiąc dwieście złotych, więc stanęło na tym, że bez zespołu, puścimy muzykę z głośnika, a ja zrobię playlistę, takie stare przeboje, Krawczyk, Rodowicz, Czerwone Gitary, wiadomo. Playlista na kiedy, to w sumie nie pali się, ale nie później niż tydzień przed imprezą. Niespodzianka, tata ma nie wiedzieć. Mama wie, mama ma go przywieźć pod pretekstem obiadu, to jej rola. Ja mam zadzwonić do mamy w ten weekend i potwierdzić z nią godzinę, żeby byli o szesnastej trzydzieści, pół godziny po gościach. Magda jeszcze mówiła o tym, że może by zrobić prezentację ze starymi zdjęciami taty, z wojska, z wesela, z tych wyjazdów pod namiot nad Wigry, i że to by było super wzruszające, ale jeszcze nie wiadomo kto by to robił i czy w Zajeździe jest rzutnik, więc to jest na razie tylko pomysł, nic nie ustalone. Ogólnie rozmowa trwała chyba czterdzieści minut, bo Magda w międzyczasie opowiadała o remoncie, że kafelki przyszły w złym kolorze, takie łososiowe zamiast szarych, i że fachowiec zniknął na tydzień i nie odbiera, i że jej mały znowu ma katar i nie chodzi do przedszkola, i coś o kotach sąsiadki, które wchodzą jej na balkon, nawet już nie pamiętam o co chodziło. W ogóle śmieszne, bo pamiętam jak na sześćdziesiątkę taty robiliśmy grilla na działce i spadł deszcz i wszyscy się wcisnęli do tej małej altanki, dwadzieścia osób w altance na dziesięć, i tata mówił, że to były najlepsze urodziny w jego życiu. Może i teraz byłoby fajniej na działce, ale w listopadzie to nie ma opcji, chyba że ktoś chce zamarznąć. Tata zresztą w ogóle nie lubi być w centrum uwagi, na sześćdziesiątce jak ktoś zaczął śpiewać sto lat, to poszedł niby po węgiel do grilla i wrócił po dziesięciu minutach, więc trochę się boję, jak zareaguje na trzydzieści osób naraz, ale Magda mówi, że da radę, że w głębi duszy się ucieszy. Mama też tak uważa, więc dobra, nie będę panikował. Swoją drogą muszę kiedyś pomóc tacie z tą altanką, bo dach przecieka, ale to wiosną, teraz nie ma sensu. Dobra, czyli podsumowując, ja: zaliczka, tort, numery do kuzynów, telefon do Pawła, telefon do mamy, playlista. Magda: zaproszenia, kontakt z Zajazdem w sprawie menu. Paweł: rower. Mama: przywieźć tatę. I to chyba wszystko. A, nie, jeszcze jedno, Magda prosiła, żebym jej przelał sto złotych za zakupy na prezent dla mamy na imieniny, bo jej wiszę od września, to trzeba w końcu oddać, wstyd, zrobię to od razu jak wpłacę zaliczkę, wszystko za jednym razem.\n",
+   "summary": "• Tata ma urodziny 20 listopada, to jest piątek, ale wiadomo, że impreza raczej w weekend\n• Zaliczka 500 zł do końca października\n• Magda nie ma kasy, zaliczkę wpłacam ja\n• 30 osób na imprezę\n• Menu za osobę 165 zł z napojami\n• Dzielimy się po połowie, ja i Magda, Paweł się nie dokłada do sali\n• Tablet odpada, Paweł kupi rower elektryczny\n• Tort na 30 osób z napisem „100 lat tato” bez orzechów\n• Zamówić najpóźniej do 14 listopada\n• Zaproszenia do piątku – numery do kuzynów z Radomia\n• Muzyka – playlista z przebojów, bez zespołu\n• Tata ma nie wiedzieć, mama go przywiezie\n• Zadzwonić do mamy w weekend, godzina o 16:30\n• Magda chce prezentację z zdjęć taty, ale nie ustalone\n• Zaliczka, tort, numery do kuzynów, telefon do Pawła i mamy\n• Magda prosiła, żebym jej przelał 100 zł za zakupy na prezent dla mamy na imieniny, to trzeba w końcu oddać",
+   "tasks": [
+    "Wpłacić zaliczkę 500 zł — do końca października",
+    "Zadzwonić do Pawła — dzisiaj albo jutro",
+    "Zamówić tort",
+    "Wysłać numery do kuzynów — do piątku",
+    "Utworzyć playlistę",
+    "Zadzwonić do mamy — w ten weekend",
+    "Przelać 100 zł"
+   ]
+  },
+  {
+   "id": "09-dziennik-wieczor",
+   "language": "pl",
+   "createdAt": "2026-10-13T23:30:00+02:00",
+   "title": "Dziennik: pożegnanie i plany",
+   "content": "Dobra, to taki wieczorny zapis, bardziej dla siebie niż do czegokolwiek, bo psycholożka mówiła, że warto, żeby wyrzucić wszystko z głowy przed snem. No więc dzisiaj był dziwny dzień. Taki niby normalny, a jednak coś było nie tak od rana. Obudziłem się o szóstej, przed budzikiem, i nie mogłem już zasnąć, leżałem i gapiłem się w sufit, i myślałem o wszystkim i o niczym, o tym, że w sumie jest już połowa października, a ja mam wrażenie, że wakacje skończyły się wczoraj. Za oknem mgła taka, że nie było widać bloku naprzeciwko, tylko te pomarańczowe latarnie, jak w jakimś filmie. Zrobiłem sobie kawę, tą z nowego młynka, co go kupiłem w zeszłym miesiącu, i powiem szczerze, że nie wiem czy czuję różnicę, ale wmawiam sobie, że tak, bo kosztował trzysta złotych. Swoją drogą ten młynek trzeba będzie kiedyś wyczyścić, bo coś zaczyna skrzypieć, ale to nie teraz. W pracy, no, w pracy jak w pracy. Znowu to samo, te same maile, te same spotkania, które mogłyby być mailem, znaczy klasyka. Na spotkaniu o jedenastej omawialiśmy przez godzinę kolor przycisku w raporcie, który i tak ogląda pięć osób, i nikt nie miał odwagi powiedzieć, że to strata czasu, ja też nie, więc siedziałem i rysowałem kwadraty w notesie. Coraz częściej łapię się na tym, że myślę, czy nie zmienić pracy. Ale nie, czekaj, nie chcę tego tak rzucać, bo to nie jest tak, że jest źle, po prostu jest nudno, i ludzie są w porządku, i szef jest w porządku. I postanowiłem dzisiaj, tak serio postanowiłem, że przynajmniej do nowego roku nie składam wypowiedzenia, daję sobie czas, zobaczę po świętach. To chyba jest jedyna naprawdę konkretna decyzja z dzisiaj. Na lunch zjadłem tą sałatkę z automatu, co była okropna, nie wiem po co ja to kupuję, za każdym razem obiecuję sobie, że już nie, i za każdym razem to samo. Potem po pracy spotkałem się z Kubą, na piwo, w tym pubie na Piotrkowskiej, tym z ciemnymi stołami, gdzie zawsze jest za głośno i trzeba krzyczeć. I Kuba mi powiedział, że się przeprowadza do Wrocławia, w grudniu, dostał tam pracę, jakąś dużą firmę, nie pamiętam nazwy, coś z logistyką. I trochę mnie to ruszyło, bo znamy się od podstawówki, od trzeciej klasy, kiedy on mi pożyczył gumkę na dyktandzie i potem przez całą lekcję się śmialiśmy, a pani Jadwiga nas rozsadziła i jeszcze wpisała uwagę. Matko, ile to lat. I tak sobie pomyślałem, że ludzie się rozjeżdżają i nic się z tym nie zrobi, tak już jest po trzydziestce. Ale cieszę się jego szczęściem, serio, bo on tu się męczył w tej swojej firmie od lat. Umówiliśmy się, że zrobimy jakieś porządne pożegnanie przed jego wyjazdem, w listopadzie, i to ja mam to zorganizować, bo on mówi, że nie będzie sam sobie robił imprezy pożegnalnej, co w sumie ma sens. Jeszcze nie wiem gdzie, może u mnie, może gdzieś na mieście, zobaczymy, pomyślę. Wracałem potem pieszo, bo był ładny wieczór, mgła zeszła, i przechodziłem koło tej starej kamienicy, gdzie kiedyś mieszkała babcia, i przypomniało mi się, że muszę do babci zadzwonić, bo nie dzwoniłem już chyba trzy tygodnie i mi głupio. W niedzielę zadzwonię, tak, w niedzielę, bo w niedzielę ona zawsze jest w domu po kościele. Babcia zawsze robiła takie pierogi z kaszą i twarogiem, i u niej w kuchni było zawsze ciepło, i radio grało, i pachniało tym ciastem drożdżowym. Dziadek jeszcze wtedy żył i zawsze siedział przy oknie z krzyżówką i pytał mnie o jakieś rzeki w Afryce, a ja nic nie wiedziałem, i on się śmiał, że czego ich teraz w tych szkołach uczą. Czasem mam wrażenie, że to było w innym życiu. W domu wziąłem się za czytanie, bo mam tą książkę z biblioteki, ten kryminał skandynawski, i jestem w połowie, i właśnie sobie uświadomiłem, że termin zwrotu jest dwudziestego października, czyli za tydzień, więc albo doczytam, albo przedłużę przez internet, bo kary już raz płaciłem i to było głupie. Chyba przedłużę, bo nie ma szans, żebym doczytał, tam jest jeszcze z trzysta stron. Myślałem też, że mógłbym zacząć się uczyć włoskiego, bo zawsze chciałem, i nawet oglądałem kursy w szkole językowej, ale nie, to nie jest dobry moment, za dużo na głowie, może wiosną. Tak samo z bieganiem, wszyscy biegają, Kuba biega, kolega z pracy biega maratony, a ja nie, i chyba jednak nie zacznę, bo kolano mi się odzywa przy schodach. Zamiast tego może basen, ale to też tylko taka luźna myśl, nic nie postanawiam. W ogóle zauważyłem, że jak wieczorem siedzę w telefonie, to potem gorzej śpię, więc postanawiam od dzisiaj, że telefon odkładam o dwudziestej drugiej trzydzieści, tak na próbę, przez tydzień, zobaczymy czy coś to zmieni. Mama dzwoniła w trakcie, pytała czy przyjadę na Wszystkich Świętych, i powiedziałem że tak, przyjadę, pierwszego listopada, ale jeszcze nie wiem czy pociągiem czy autem, bo auto znowu coś stuka z przodu. A propos auta, muszę w końcu zawieźć to auto do mechanika, ale to nie jest tak, że koniecznie w tym tygodniu, tylko przed tym wyjazdem do mamy na pewno, bo nie chcę stanąć na autostradzie. Pamiętam jak kiedyś, to było chyba trzy lata temu, stanąłem pod Strykowem i czekałem na lawetę trzy godziny, w deszczu, i od tamtej pory mam trochę traumę, każdy dziwny dźwięk i od razu mam czarne myśli. Sąsiad z góry znowu wiercił do dwudziestej pierwszej, nie wiem co on tam robi, chyba buduje statek. Przez chwilę myślałem, żeby pójść i zapukać, ale nie, nie chcę robić afery, niech wierci, kiedyś skończy. Oglądałem jeszcze potem jakiś dokument o ośmiornicach, że one mają trzy serca i niebieską krew, i że każde ramię ma trochę jakby własny mózg, i to mnie jakoś strasznie zafascynowało, siedziałem z otwartą buzią jak dziecko. Potem jeszcze przez pół godziny czytałem w internecie, czy ośmiornice śnią, i podobno zmieniają kolory przez sen, co jest absolutnie niesamowite, i wysłałem to Kubie, a on odpisał tylko trzy emotki, typowe. Dziwne, jak takie rzeczy potrafią poprawić humor. Jutro podobno ma być słońce, ale w to już nie wierzę, prognozy w tym roku są jak horoskopy. No i co jeszcze. Chyba nic. Generalnie czuję się trochę zmęczony, ale nie jakoś źle, raczej taki melancholijny. Psycholożka by pewnie powiedziała, że to normalne o tej porze roku, mało słońca i tak dalej. Następna wizyta u niej jest za dwa tygodnie, w czwartek, dwudziestego dziewiątego, o osiemnastej, to sobie zanotuję, żeby nie zapomnieć, bo ostatnio prawie zapomniałem i wpadłem spóźniony dziesięć minut. Dobra, kończę, jest już późno, prawie wpół do dwunastej, czyli moje postanowienie z telefonem już dzisiaj nie wyszło, ha ha. Od jutra.\n",
+   "summary": "• Decyzja: do nowego roku nie składać wypowiedzenia\n• Kuba się przeprowadza do Wrocławia w grudniu\n• Zorganizować pożegnanie przed jego wyjazdem\n• Stare kamienice przypomniły, że muszę zadzwonić\n• Zadzwonić do babci w niedzielę\n• Czytać książkę skandynawską, termin zwrotu 20 października\n• Przedłużyć czytanie, 300 stron do przeczytania\n• Odkładać telefon o 22:30 przez tydzień\n• Przyjechać na Wszystkich Świętych 1 listopada\n• Zawieźć auto do mechanika przed wizytą u mamy\n• Wizyta u lekarza 29 o 18:00",
+   "tasks": [
+    "Zorganizować pożegnanie przed wyjazdem Kubę",
+    "Zadzwonić do babci — niedziela",
+    "Przedłużyć książkę",
+    "Przyjać się na Wszystkich Świętych — 1 listopada",
+    "Zawieźć auto do mechanika przed wyjazdem do mamy",
+    "Wizyta u psycholożki — czwartek 18:00"
+   ]
+  },
+  {
+   "id": "10-plan-tygodnia",
+   "language": "pl",
+   "createdAt": "2026-10-18T20:30:00+02:00",
+   "title": "Plan tygodnia",
+   "content": "Okej, robię sobie plan na przyszły tydzień, bo jak tego nie nagram, to w poniedziałek rano będę siedział i panikował, a wiadomo jak to się kończy. Tydzień od poniedziałku dziewiętnastego do niedzieli dwudziestego piątego października. No więc po kolei, albo nie po kolei, jak mi przyjdzie do głowy, potem się to jakoś poukłada. Zacznę od pracy, bo to najbardziej mnie stresuje. W środę dwudziestego pierwszego o jedenastej mam prezentację dla zarządu, wyniki projektu za trzeci kwartał. Slajdy muszą być gotowe do wtorku wieczorem, bo w środę rano Anka chce je jeszcze przejrzeć, ona jest moją przełożoną i jak coś jej się nie spodoba, to i tak będę przerabiał. Dane do slajdów, znaczy liczby sprzedaży, ma mi podesłać Robert z analityki, obiecał na poniedziałek, to jest jego działka, ale jak nie podeśle do poniedziałku do południa, to piszę do niego jeszcze raz, a jak dalej nic, to eskaluję do Anki. Swoją drogą Robert zawsze tak ma, w zeszłym kwartale też czekaliśmy na niego do ostatniej chwili, a potem się okazało, że miał źle zsumowane kolumny i wszystko przerabialiśmy w nocy, przy pizzy, o drugiej w nocy. Nie chcę tego powtarzać. Anka wtedy powiedziała, że to ostatni raz, ale minęły trzy miesiące i wszyscy już zapomnieli, łącznie z nią, więc wiadomo jak to jest z tymi postanowieniami w firmie. Dalej, delegacja do Poznania. Miała być w czwartek, cały dzień, wyjazd pociągiem o szóstej rano. Ale w czwartek są urodziny Kasi, więc poprosiłem i Anka się zgodziła, żeby zamiast wyjazdu zrobić spotkanie online z oddziałem, w piątek o dziesiątej. Czyli do Poznania nie jadę, bilet trzeba zwrócić, kupiłem go już, sto dwadzieścia dziewięć złotych, zwrot przez aplikację, najlepiej od razu w poniedziałek, bo im bliżej, tym większe potrącenie. Szkoda trochę, bo w Poznaniu jest ta knajpa z pyrami przy Starym Rynku, gdzie zawsze chodzę po spotkaniach, i ten oddział jest naprawdę fajny, ludzie sympatyczni, ale trudno, urodziny są ważniejsze, Kasia by mi nie wybaczyła, i słusznie. Aha i jeszcze rozliczenie delegacji z września, z tego wyjazdu do Gdańska, muszę w końcu wysłać do kadr, oni mi już przypominali dwa razy, termin mają do poniedziałku, więc w poniedziałek rano to pierwsza rzecz. Marta prosiła o code review jej zmian, nic dużego, zrobię w poniedziałek po południu, albo, nie, czekaj, w poniedziałek po południu jest planowanie sprintu, to we wtorek rano. Teraz dom. Pralka cieknie od tygodnia, pod spodem jest kałuża, kładziemy ręcznik i tak żyjemy, jak w akademiku. Serwisant przychodzi we wtorek dwudziestego, między dziesiątą a czternastą, ale Kasia ma wtedy wolne, więc ona go wpuści, ja nie muszę brać urlopu, super. Pralka ma w ogóle dopiero dwa lata, kupiliśmy ją jak się wprowadzaliśmy, i już się psuje, kiedyś to sprzęty działały po trzydzieści lat, babcia ma jeszcze Franię, serio, i ona działa. Ja tylko mam znaleźć tą kartę gwarancyjną, bo pralka ma jeszcze gwarancję do grudnia, i to trzeba zrobić przed wtorkiem, jest gdzieś w tej szufladzie z papierami, w której jest wszystko i nic, instrukcje od czajnika, którego już nie mamy, jakieś stare rachunki, ulotki z pizzerii. Opony zimowe, mam umówioną wymianę w wulkanizacji na sobotę dwudziestego czwartego, miało być na dziewiątą, ale dzwonili, że przesunęli na dziesiątą, więc dziesiąta. Opony są w piwnicy, trzeba je w piątek wieczorem wnieść do bagażnika, bo w sobotę rano nie będzie mi się chciało. Swoją drogą w zeszłym roku zmieniałem opony dopiero w grudniu, jak już spadł śnieg, i stałem w kolejce cztery godziny, więc tym razem jestem mądrzejszy, przynajmniej tak mi się wydaje. Stara szafka z przedpokoju, chciałem ją wystawić na gabaryty, ale sprawdziłem i gabaryty są dopiero w listopadzie, więc w tym tygodniu nic z tym nie robię, niech stoi. Filtr w okapie trzeba wymienić, kupiłem już, leży, to jest robota na dziesięć minut, może w niedzielę. Urodziny Kasi, czwartek dwudziestego drugiego. Chcę ją zabrać na kolację do Bistro Nova, tam gdzie byliśmy na pierwszej randce, cztery lata temu, jak ona się spóźniła pół godziny, a ja myślałem, że mnie wystawiła. Muszę zadzwonić i zarezerwować stolik na dziewiętnastą, najlepiej jutro, bo podobno ciężko o miejsca. Jak nie będzie miejsc, to robię kolację w domu, risotto z grzybami, to jest plan B. Kwiaty kupić w czwartek po drodze z pracy, nie wcześniej, bo zwiędną. Prezent już mam, kolczyki, srebrne, z takim małym zielonym kamieniem, sprzedawczyni mówiła, że to jakiś chryzopraz czy coś, nie zapamiętałem, leżą schowane w szafie za swetrami, więc to załatwione. Pamiętam jak na zeszłe urodziny zapomniałem kupić świeczki na tort i wsadziliśmy w tort takie zwykłe podgrzewacze, Kasia płakała ze śmiechu. W tym roku tortu nie robimy, bo Kasia jest na diecie, wyraźnie mówiła, że żadnego tortu, więc nie kupuję, mimo że kusi. Finanse. Wypłata przychodzi w piątek, dwudziestego trzeciego, i od razu wtedy przelewam tysiąc złotych na konto oszczędnościowe, nie, czekaj, w tym miesiącu tysiąc dwieście, bo w zeszłym miesiącu dałem mniej i chcę nadrobić. Rata za laptopa, trzysta osiemdziesiąt dziewięć złotych, do dwudziestego drugiego, to jest akurat przed wypłatą, ale na koncie powinno wystarczyć. W ogóle muszę kiedyś usiąść i zrobić porządny budżet domowy w arkuszu, bo od pół roku sobie to obiecuję, ale to nie w tym tygodniu, nie ma szans, może w listopadzie, jak będzie spokojniej. Czynsz idzie stałym zleceniem, dwa tysiące trzysta pięćdziesiąt, więc tu nic nie robię, tylko żeby nie zapomnieć, że zejdzie dwudziestego piątego. Piotrek ma mi oddać dwieście pięćdziesiąt złotych za bilety na koncert, obiecał do końca tygodnia, ale to jego sprawa, ja się nie będę upominał przed piątkiem. Subskrypcje, płacę za trzy platformy streamingowe, i to jest bez sensu, bo oglądam jedną. Anuluję Maxa i tą drugą, z tymi dokumentami, a Netflixa zostawiam, bo Kasia ogląda tam ten serial koreański, ten o szpitalu, ma jeszcze chyba dwa sezony. Ubezpieczenie OC na auto kończy się trzydziestego pierwszego października. Obecny ubezpieczyciel przysłał propozycję, tysiąc dwieście czterdzieści, nie, sprawdziłem jeszcze raz w mailu, tysiąc czterysta dwadzieścia złotych, czyli drożej niż w zeszłym roku o prawie trzysta. Więc w tym tygodniu porównuję oferty w porównywarce i jeśli znajdę coś poniżej tysiąca dwustu, to zmieniam, a jak nie, to zostaję u obecnych. Decyzja najpóźniej w czwartek, żeby był zapas. Sprawy urzędowe. Nowy dowód osobisty jest do odbioru, dostałem esemesa, w urzędzie dzielnicy. Urząd w środę jest czynny do osiemnastej, więc w środę po pracy, po tej prezentacji, pójdę. Trzeba wziąć stary dowód, bo go unieważniają. Zmianę adresu w banku już zrobiłem w zeszłym tygodniu przez aplikację, więc to jest odhaczone, nic nie trzeba. Aha i jeszcze przychodnia, muszę się zapisać na szczepienie na grypę, w tym roku chcę zdążyć przed sezonem, dzwonić od ósmej rano, to może w poniedziałek z pracy, między jednym a drugim. Siłownia, normalnie chodzę w poniedziałek, środę i piątek. W tym tygodniu w środę odpada przez prezentację i urząd, w piątek wieczorem są opony do wnoszenia, więc może tylko poniedziałek i sobota po wulkanizacji. Zobaczymy, nie robię sobie presji. Trener mówił, że lepiej dwa razy porządnie niż trzy razy byle jak, więc może to nawet lepiej, ale on mówi tak chyba każdemu, żeby nie zrezygnował z karnetu. W ogóle za oknem leje od trzech dni i liście są wszędzie, sąsiad z dołu codziennie zamiata chodnik, jakby miał to w umowie, a i tak po godzinie jest to samo. Dobrze, że kupiłem w końcu te kalosze, bo w starych butach przemakały mi skarpety codziennie, i chodziłem w pracy z mokrymi nogami, co jest najgorszym uczuciem na świecie. Przypomniało mi się, że muszę oddać Tomkowi wiertarkę, pożyczyłem we wrześniu i dalej stoi u mnie w przedpokoju, wstyd, oddam w weekend, jak będzie po drodze. A, i rodzice zapraszali na obiad w niedzielę, ale nie wiem jeszcze czy pojedziemy, to zależy od Kasi, bo ona ma w niedzielę coś z siostrą, więc na razie to wisi, nie obiecuję. Dobra, chyba tyle, jak mi się coś przypomni, to dogram.\n",
+   "summary": "• Plan na przyszły tydzień\n• Prezentacja dla zarządu w środę 21 o 11\n• Bilet do Poznania zwrot w poniedziałek\n• Rozliczenie delegacji z września do poniedziałku\n• Serwisant pralki we wtorek 20\n• Znaleźć kartę gwarancyjną\n• Wymiana opon na sobotę 24\n• Opony w piwnicy – wnieść do bagażnika w piątek wieczorem\n• Gabaryty szafy dopiero w listopadzie – nie robić w tym tygodniu\n• Wymienić filtr w okapie w niedzielę\n• Zarezerwować stolik na 19:00 na jutro\n• Rata za laptopa, 389 zł, do 22\n• Usiąść i zrobić porządny budżet domowy w arkuszu, ale to nie w tym tygodniu, nie ma szans, może w listopadzie\n• Urząd w środę jest czynny do 18:00, więc w środę po pracy, po tej prezentacji, pójdę\n• Szczepienie na grypę – zapisać się w poniedziałek\n• Oddać Tomkowi wiertarkę w weekend",
+   "tasks": [
+    "Prezentacja dla zarządu — środa 21, 11:00",
+    "Gotować slajdy — do wtorku wieczorem",
+    "Podesłać dane do Roberta — do poniedziałku do południa",
+    "Spotkanie online z oddziałem — piątek 10:00",
+    "Zwrócić bilet do Poznania 129 zł — w poniedziałek",
+    "Wysłać rozliczenie delegacji — w poniedziałek rano",
+    "Zadzwonić do Marta — wtorek rano",
+    "Znaleźć kartę gwarancyjną — przed wtorkiem",
+    "Wymienić opony — sobota 10:00",
+    "Wnieść opony do bagażnika — w piątek wieczorem",
+    "Zarezerwować stolik — jutro",
+    "Kupić kwiaty — czwartek",
+    "Przelać pieniądze na konto oszczędnościowe 1200 zł — piątek 23",
+    "Zapłacić ratę za laptop 389 zł",
+    "Anulować Maxa i drugą subskrypcję",
+    "Wziąć stary dowód",
+    "Oddać Tomkowi wiertarkę — weekend"
+   ]
+  },
+  {
+   "id": "11-przypomnienie-opony",
+   "language": "pl",
+   "createdAt": "2026-10-19T21:10:00+02:00",
+   "title": "Oddzwonienie do warsztatu",
+   "content": "Aha, przypomnij mi, żebym jutro przed dziewiątą oddzwonił do pana z warsztatu w sprawie opon, bo mówił, że do piątku trzyma dla mnie rezerwację, a potem już nie. Numer mam w telefonie, w ostatnich.\n",
+   "summary": "• Jutro przed dziewiątą oddzwonić do pana z warsztatu w sprawie opon – do piątku trzyma rezerwację, a potem już nie.",
+   "tasks": [
+    "Oddzwonić do pana z warsztatu w sprawie opon — jutro przed 9:00"
+   ]
+  },
+  {
+   "id": "12-zakupy-jutro-po-pracy",
+   "language": "pl",
+   "createdAt": "2026-10-19T17:50:00+02:00",
+   "title": "Lista zakupów i apteka",
+   "content": "Dobra, lista na jutro po pracy. Pomidory, kilo, nie, czekaj, pół kilo, bo i tak nikt ich nie je. Makaron penne, dwie paczki, ser feta, jakiś jogurt grecki, ale nie ten waniliowy, bo mama kupiła ostatnio i nikt nie chciał. Papier toaletowy, bo został jeden. Aha i jeszcze w drodze wstąpić do apteki po plastry, takie wodoodporne, i do pralni odebrać kurtkę, mają czynne do osiemnastej, więc muszę zdążyć przed. Kawy nie trzeba, Marek przywiózł dwie paczki.\n",
+   "summary": "• Lista zakupów na jutro po pracy\n• Pomidory pół kilo, makaron penne dwie paczki, ser feta, jogurt grecki (bez waniliowy)\n• Przejść do apteki po plastry wodoodporne i do pralni odebrać kurtkę (czynne do 18:00)\n• Kawy nie trzeba, Marek przywiózł dwie paczki",
+   "tasks": [
+    "Kupić: pomidory, pół kilo, makaron penne, 2 paczki, ser feta, jogurt grecki (nie waniliowy), papier toaletowy — jutro",
+    "Wstąpić do apteki po plastry",
+    "Odebrać kurtkę"
+   ]
+  },
+  {
+   "id": "13-spotkanie-panel-klienta",
+   "language": "pl",
+   "createdAt": "2026-10-14T16:00:00+02:00",
+   "title": "Spotkanie projektowe panelu klienta",
+   "content": "No więc, spotkanie projektowe w sprawie nowej wersji panelu klienta, było nas pięcioro, trwało dobrą godzinę, więc spisuję dla siebie, zanim mi umknie. Po pierwsze, premiera wersji beta przesunięta z dwudziestego na dwudziestego siódmego października, bo testy płatności wyszły na razie kiepsko. Agnieszka powiedziała wprost, że dwudziesty siódmy to termin ostateczny i dalej już nie przesuwamy. Po drugie, testy płatności robi Tomek, ma je skończyć do przyszłej środy. Znaczy nie, czekaj, do przyszłego czwartku, bo w środę ma urlop. Po trzecie, ja mam przygotować listę błędów z ostatniego tygodnia i wysłać ją Tomkowi w piątek rano, żeby miał czas przed testami. Po czwarte, Paweł ma zamówić dodatkowy serwer testowy, mówił, że zapyta w dziale IT i da znać do poniedziałku. Koszt miał być jakieś dwieście złotych miesięcznie, ale to jeszcze niepewne, nikt tego nie potwierdził. Po piąte, i to jest ważne, rezygnujemy z modułu raportów w pierwszej wersji. Wszyscy się zgodzili, że to zbyt duże ryzyko przy takim terminie, wrócimy do tego po premierze. Czyli raportów w becie nie będzie, koniec tematu. Była jeszcze długa dyskusja o logo na ekranie logowania, pani Renata z marketingu chciała nowe, ale uznaliśmy, że to nie teraz, zostaje stare. Aha i jeszcze, spotkanie było w sali na drugim piętrze, klimatyzacja nie działała i było strasznie duszno, ktoś przyniósł drożdżówki, z czego połowa zniknęła w pięć minut. Przy okazji, Tomek opowiadał przydługą historię o tym, jak poprzednia wersja panelu padła w piątek wieczorem i wszyscy siedzieli do północy, i że on już nigdy więcej nie chce wdrożenia w piątek, co wszyscy skwitowali śmiechem. Renata zapytała jeszcze, czy kolory przycisków zostają niebieskie, i okazało się, że tak, bez zmian, po czym przeszliśmy dalej. Kawa w sali była zimna, więc część osób poszła po swoją do kuchni, co opóźniło start o kilka minut. Dalej, Agnieszka zadzwoni do klienta, do pana Nowickiego, i powie mu o przesunięciu premiery, zrobi to jeszcze dzisiaj. Ja mam zaktualizować dokumentację dla klienta, ale dopiero jak Tomek skończy testy, więc na pewno nie przed czwartkiem. Kolejne spotkanie za tydzień we wtorek o dziesiątej, tam mam krótko zreferować stan listy błędów. No i to chyba tyle, jeszcze Paweł coś mówił o szkoleniu dla supportu, ale bez konkretów, więc to na razie wisi w powietrzu.\n",
+   "summary": "• Premiera wersji beta przesunięta z dwudziestego na 27 października\n• Testy płatności do przyszłego czwartku\n• Lista błędów do Tomkowi w piątek rano\n• Dodatkowy serwer testowy do poniedziałku\n• Rezygnujemy z modułu raportów w pierwszej wersji\n• Spotkanie w sali na drugim piętrze\n• Tomek nie chce wdrożeń w piątek\n• Dokumentacja dla klienta po testach\n• Kolejne spotkanie za tydzień we wtorek o 10:00, tam mam krótko zreferować stan listy błędów",
+   "tasks": [
+    "Wysłać listę błędów Tomkowi — piątek rano",
+    "Przygotować listę błędów z ostatniego tygodnia — piątek rano",
+    "Rezygnować z modułu raportów",
+    "Zaktualizować dokumentację dla klienta",
+    "Zreferować stan listy błędów — wtorek o 10:00"
+   ]
+  },
+  {
+   "id": "14-dziennik-karnet-kurs",
+   "language": "pl",
+   "createdAt": "2026-10-19T22:00:00+02:00",
+   "title": "Notatka: dziennik",
+   "content": "Dobra, nagrywam, bo głowa mi się dzisiaj nie mieści w jednym kawałku i muszę to gdzieś zostawić. No więc wróciłem z pracy koło osiemnastej, na klatce spotkałem sąsiadkę z psem, takim małym, kudłatym, który szczeka na wszystko, nawet na własny cień, i ona mi opowiadała dwadzieścia minut, że pies jest na diecie, bo weterynarz powiedział, że za gruby, a on i tak wyżebrał kawałek kiełbasy od jej męża. Znaczy sympatyczna kobieta, ale nie miałem siły. Wszedłem do domu, rzuciłem plecak i okazało się, że parasol, ten granatowy, który dostałem od Wojtka dwa lata temu, złamał się w połowie, bo dzisiaj wiało jak szalone. Pomyślałem, że kupię nowy, ale w sumie nie teraz, jak będzie jakaś przecena, bo nie chce mi się po tym łazić po sklepach. Zrobiłem sobie kanapki z serem i ogórkiem, nic wielkiego, i włączyłem telewizor, a tam akurat leciał jakiś stary film, chyba z lat osiemdziesiątych, o facecie, który budował łódź w piwnicy i potem nie mógł jej wynieść. Obejrzałem połowę i wiesz co, to było tak głupie, że aż dobre. Przypomniało mi się, że wujek Heniek też kiedyś zbudował szopę, która była większa od drzwi do ogrodu, i cała rodzina się z tego śmiała przez lata. No ale do rzeczy, bo miałem o czymś ważnym powiedzieć. Zdecydowałem w drodze z pracy, że nie przedłużam karnetu na siłownię. Chodzę dwa razy w miesiącu, a płacę sto dziewięćdziesiąt dziewięć złotych, no więc to jest bez sensu, szkoda gadać. Karnet kończy się z końcem miesiąca, ale rezygnację trzeba złożyć na piśmie, do dwudziestego piątego, więc muszę wydrukować formularz i zanieść do recepcji. Chyba że da się mailem, nie wiem, sprawdzę na stronie. Mówiłem sobie, że od poniedziałku zacznę biegać, ale nie, nie będę kłamać, nie zacznę, jak mi się zachce, to pójdę na spacer. No i potem zadzwonił Wojtek, ten od parasola, i gadaliśmy chyba czterdzieści minut, głównie o meczu, który ma być w sobotę wieczorem. Ja tego nie oglądam, nigdy nie oglądałem, ale on się tak nakręca, że nie dało się wtrącić słowa. Ważne jest tylko to, że pożyczył mi dwa tygodnie temu wiertarkę i chce ją z powrotem, bo w sobotę rano jedzie do rodziców i chce ją wziąć ze sobą. Więc w sobotę rano mam mu ją oddać, jeszcze przed dziesiątą, bo potem go nie będzie. Wiertarka leży w szafie w przedpokoju, na górnej półce, za kartonem po butach. Potem ugotowałem zupę pomidorową, z makaronem, trochę przesoliłem, ale da się zjeść, a w ogóle to pachniało w mieszkaniu jak u babci, co mnie wzruszyło, szczerze mówiąc. Jesień jest dziwna, od razu człowiek robi się sentymentalny. Przypomniałem sobie też, jak w podstawówce jesienią zbieraliśmy kasztany i robiliśmy z nich ludziki na zapałkach, a pani od przyrody dawała za to plusy, i ja miałem najwięcej, bo mój ludzik miał nawet kapelusz z żołędzia. Śmieszne, co człowiek pamięta. Zastanawiałem się, czy kasztany jeszcze gdzieś leżą, bo przy naszym bloku jest jeden kasztanowiec, ale pewnie wszystkie już zmiotli. Potem przez chwilę przeglądałem w telefonie zdjęcia z lata, głównie góry i jedno z jeziorem, na którym wyglądam strasznie, bo mrużę oczy przez słońce, i nie wiem, po co je w ogóle trzymam. Poszedłem też zrobić herbatę i okazało się, że skończył się cukier, ale piję i tak, bez, nie jest źle. Gdzieś w tle leciało radio, jakaś audycja o śniadaniach w różnych krajach, i prowadzący opowiadał, że w Japonii zupa na śniadanie to norma, co mnie zaciekawiło, bo ja bym tak nie umiał, rano mi wystarcza chleb z masłem, a jak trafi się bułka z serem, to jest święto. Wyjrzałem przez okno, siąpi deszcz, latarnie się odbijają w kałużach, ktoś na dole klął na samochód, który nie chciał odpalić. A, i jeszcze internet mi dzisiaj zwalniał, wieczorem strona ładowała się całą wieczność, pewnie coś u dostawcy, ale nie będę dzwonić, bo i tak nic nie pomoże. Zastanawiałem się też nad nowym laptopem, bo ten mój ma pięć lat i wentylator wyje jak odkurzacz, ale nie, na pewno nie teraz, ewentualnie po nowym roku, zobaczymy, nie ma co się spieszyć. Teraz kurs fotografii. Od dawna chodzi mi po głowie, a dzisiaj w pracy koleżanka pokazywała zdjęcia z wakacji i pomyślałem, że ja też bym tak chciał. Znalazłem szkołę, zapisy są do końca tego tygodnia, kurs kosztuje czterysta osiemdziesiąt złotych, osiem spotkań. Są dwie grupy, wieczorna we wtorki i weekendowa w soboty. Weekendowa odpada, bo soboty mam zajęte, więc zapiszę się na wieczorną, jeszcze w tym tygodniu, żeby nie przegapić. Jeszcze jedno, okulary, zakład optyczny dzwonił wczoraj, że są gotowe, więc jutro po pracy muszę po nie wstąpić, czynne mają do osiemnastej, więc trzeba wyjść z biura punktualnie. Ostatnio zapominałem o takich rzeczach, więc tym razem nagrywam. Co jeszcze, może wspomnę, że przypomniał mi się kolega z liceum, Darek, który zawsze mówił, że kiedyś otworzy bar na wyspie, nie wiem czemu mi to teraz przyszło do głowy, pewnie przez ten film z łodzią. Ciekawe, co u niego, pewnie siedzi w jakiejś korporacji jak my wszyscy. No dobra, chyba na dzisiaj tyle, idę umyć naczynia i spać, bo jutro zaczynam wcześnie.\n",
+   "summary": "• Kupić nowy nie teraz, jak będzie przecena\n• Nie przedłużam karnetu na siłownię\n• Rezygnację z karnetu trzeba złożyć na piśmie do 25\n• Wiertarkę oddać Wojtkowi w sobotę rano przed 10\n• Zapisy na kurs fotografii do końca tego tygodnia\n• Są dwie grupy, wieczorna we wtorki i weekendowa w soboty\n• Okulary zapatrywać się w optyczny na jutro o 18:00",
+   "tasks": [
+    "Kupić nowy parasol",
+    "Złożyć rezygnację z karnetu — do 25",
+    "Oddać wiertarkę — sobota rano",
+    "Zapisać się na kurs fotografii 480 zł — do końca tygodnia",
+    "Wizyta u zakładu optycznego — jutro"
+   ]
+  },
+  {
+   "id": "15-sesja-egzaminy",
+   "language": "pl",
+   "createdAt": "2026-10-15T20:00:00+02:00",
+   "title": "Kolokwium i analiza",
+   "content": "No dobra, muszę sobie poukładać sesję, bo mi się wszystko miesza. Analiza matematyczna, egzamin pierwszego terminu mam dwudziestego dziewiątego stycznia, a poprawkowy dwunastego lutego. Fizyka, tu jest łatwiej, bo kolokwium w przyszły piątek o ósmej piętnaście, ale tylko pierwsza część materiału, do dynamiki bryły sztywnej włącznie, znaczy nie włącznie, czekaj, do dynamiki bez bryły sztywnej, bo to jest na następne kolokwium. Dobra, czyli do dynamiki punktu materialnego. Sprawozdanie z laboratorium z elektrotechniki muszę oddać we wtorek do czternastej w pokoju asystenta, bo inaczej nie zaliczę, a to byłaby głupia wpadka, bo ćwiczenia zrobiłem. No i konsultacje u doktora Maja mam w środę o szesnastej, tam chcę zapytać o zadania z szeregów, bo tego kompletnie nie czuję. Teraz plan warunkowy. Jeśli zdam analizę w pierwszym terminie, to w lutym jadę z Olkiem na narty, on już pytał o tydzień po dwunastym, ale jeszcze nic nie rezerwujemy. A jeśli nie zdam, to siedzę i uczę się do poprawki dwunastego lutego i narty odpadają, trudno. Jeśli kolokwium z fizyki wyjdzie poniżej połowy punktów, to idę na dodatkowe zajęcia z asystentką, ona prowadzi takie w czwartki. Jeśli wyjdzie dobrze, to odpuszczam i uczę się więcej analizy. Zeszyt z analizy pożyczył mi Bartek i muszę mu go oddać, ale dopiero po egzaminie, nie wcześniej, bo jest mi potrzebny. Aha, i nie kupuję tego podręcznika do fizyki za dziewięćdziesiąt pięć złotych, w bibliotece jest dostępny, wystarczy zarezerwować. No i jeszcze jedna rzecz, na uczelni w stołówce zmienili menu i teraz jest tylko jedna zupa, więc trzeba będzie jeść na mieście, ale to taka uwaga na marginesie. Chyba tyle, ogólnie jest ciężko, ale do ogarnięcia.\n",
+   "summary": "• Plan sesji: analiza matematyczna, poprawka 12 lutego\n• Fizyka: kolokwium do dynamiki punktu materialnego\n• Sprawozdanie z elektrotechniki do wtorku o 14:00\n• Konsultacje u doktora Maja w środę o 16:00\n• Jeśli zdam analizę, jadę z Olkiem na narty 12 lutego\n• Jeśli nie zdam, siedzę i uczę się do poprawki 12 lutego\n• Nie kupuję podręcznika do fizyki, w bibliotece jest dostępny",
+   "tasks": [
+    "Oddać sprawozdanie — wtorek do 14:00",
+    "Wizyta u doktora Maja — środa 16:00",
+    "Iść na dodatkowe zajęcia z asystentką, jeśli kolokwium z fizyki wyjdzie poniżej — czwartek",
+    "Oddać zeszyt z analizy"
+   ]
+  },
+  {
+   "id": "16-remont-lazienki-oferty",
+   "language": "pl",
+   "createdAt": "2026-10-07T21:00:00+02:00",
+   "title": "Remont łazienki i oferty",
+   "content": "Dobra, muszę to wreszcie spisać, bo z Martą rozmawiamy o tym od tygodnia i się kręcimy w kółko. Remont łazienki. Mamy trzy oferty. Pierwsza, pan Zbigniew, ten polecony przez sąsiadów, bierze czternaście tysięcy osiemset za samą robociznę, a materiały osobno, wychodzi z grubsza sześć tysięcy, więc razem jakieś dwadzieścia tysięcy osiemset. Druga, firma Budrem, dziewiętnaście tysięcy pięćset z materiałami, wszystko w pakiecie, ale chcą pięćdziesiąt procent zaliczki z góry i mogą zacząć dopiero w grudniu. Trzecia, kuzyn Darka, dwanaście tysięcy, najtaniej, tylko że termin dopiero w styczniu i nie ma firmy ani faktury, więc Marta od razu powiedziała, że nie. No i ja też nie, bez faktury nie ma gwarancji. Czyli zostają dwie. Pan Zbigniew wychodzi drożej o jakieś tysiąc trzysta złotych niż Budrem, ale zaczyna w listopadzie, ma bardzo dobre opinie i zaliczka to tylko dwadzieścia procent. Zdecydowaliśmy, że bierzemy pana Zbigniewa. Tak, to jest decyzja. Jutro, znaczy w czwartek, nie, czekaj, dzisiaj jest środa, więc do piątku mam do niego zadzwonić i potwierdzić, i poprosić o umowę na piśmie z terminem i ceną. Prace mają trwać około dwóch tygodni, od listopada, ale dokładnej daty jeszcze nie ma, ustalimy przy telefonie. Teraz rzeczy, których nie robimy. Po pierwsze, nie płacimy zaliczki większej niż dwadzieścia procent, czyli około trzech tysięcy, a reszta po odbiorze. Po drugie, nie kupujemy płytek przez internet, bo reklamacje to koszmar i raz już się na tym przejechaliśmy z szafką, kupimy w sklepie stacjonarnym, Marta już widziała fajne za osiemdziesiąt pięć złotych za metr. Po trzecie, nie bierzemy kredytu ani rat, płacimy z oszczędności, mamy odłożone około dwudziestu pięciu tysięcy, więc wystarczy z zapasem. Po czwarte, kuchni w tym roku nie ruszamy, choć Marta by chciała, bo po łazience nie będzie na to pieniędzy i energii. Do przemyślenia na później zostaje jeszcze, czy zmieniać okno w łazience, ale to wyjdzie w trakcie, pan Zbigniew obejrzy i powie. Płytki mamy wybrać do końca przyszłego tygodnia, żeby zdążyć z zamówieniem przed startem. Wiem, że to ja mam pojechać do sklepu, bo Marta ma zmiany, więc w sobotę pojadę z miarą i ze zdjęciami łazienki z telefonu. Aha, i pamiętać, żeby zapytać pana Zbigniewa, ile metrów kwadratowych on liczy na płytki, bo ja liczyłem dwanaście, a Marta mówiła piętnaście. Dla porządku, Marta miała jeszcze pomysł z kolorem płytek, najpierw chciała zielone, potem szare, a skończyło się na tym, że oglądamy beżowe z lekkim połyskiem, ale to się jeszcze może zmienić, bo ona zmienia zdanie co dwa dni. Sąsiad z dołu opowiadał, że jak oni robili łazienkę, to ekipa zalała im strop i musieli się potem tłumaczyć, ale podobno wszystko skończyło się dobrze. Nasza obecna wanna ma ponad trzydzieści lat i jest żółta od kamienia, mieszkanie jest na trzecim piętrze, więc noszenie płytek po schodach to osobna przyjemność, ale to już problem ekipy. A tak z innej beczki, hydraulik od sąsiadów podobno bierze za godzinę sto dwadzieścia złotych, ale to niepotrzebne, bo pan Zbigniew ma własnego. Dobra, i jeszcze telewizor w sypialni, Marta chce przestawić, ale to później. Chyba tyle, jakby co, wrócę do tej notatki.\n",
+   "summary": "• Remont łazienki: trzy oferty\n• Oferta pana Zbigniewa: 20 800 zł, zaczyna w listopadzie\n• Oferta Budrem: 19 500 zł z 50% zaliczki, zaczyna w grudniu\n• Kuzyn Darka: 12 000 zł, termin w styczniu, bez faktury\n• Zadzwonić do pana Zbigniewa do piątku, potwierdzić umowę\n• Prace trwają około 2 tygodni, od listopada\n• Nie płacimy zaliczki większej niż 20 procent, czyli około 3000\n• Nie kupujemy płytek przez internet, kupimy w sklepie stacjonarnym, Marta widziała fajne za 85 zł za metr\n• Nie bierzemy kredytu ani rat, płacimy z oszczędności, mamy odłożone około 25000\n• Kuchni w tym roku nie ruszamy, choć Marta by chciała, bo po łazience nie będzie na to pieniędzy i energii\n• Płytki mamy wybrać do końca przyszłego tygodnia, żeby zdążyć z zamówieniem przed startem\n• Pojechać do sklepu, bo Marta ma zmiany, więc w sobotę pojadę z miarą i ze zdjęciami łazienki z telefonu",
+   "tasks": [
+    "Zapytać pana Zbigniewa ile metrów kwadratowych — do piątku",
+    "Poprosić o umowę na piśmie z terminem — piątek",
+    "Wybrać płytki — do piątku przyszłego tygodnia",
+    "Pojechać do sklepu — sobota"
+   ]
+  },
+  {
+   "id": "17-stas-ucho-logistyka",
+   "language": "pl",
+   "createdAt": "2026-10-06T19:00:00+02:00",
+   "title": "Staś z zapaleniem ucha",
+   "content": "Dobra, notatka o Stasiu, bo Ola dzwoniła i muszę to ogarnąć logistycznie. Staś, mój siostrzeniec, ma pięć lat, od niedzieli marudził, że boli go ucho, dzisiaj byli u pediatry i wyszło zapalenie ucha środkowego. Lekarka przepisała antybiotyk, amoksycylinę, pięć mililitrów dwa razy dziennie, rano i wieczorem, przez siedem dni. Ola już wykupiła, więc tego nie muszę załatwiać. Ważne, że to ma być po jedzeniu, a nie na pusty żołądek, i Ola ma pilnować, żeby nie przerywać, nawet jak mu się poprawi po dwóch dniach. Na gorączkę, jak będzie powyżej trzydziestu ośmiu i pół, paracetamol, dziesięć mililitrów, ale nie częściej niż co sześć godzin. Ibuprofenu lekarka kazała nie dawać, bo Staś miał kiedyś po nim wysypkę, znaczy to nie była potwierdzona alergia, tylko podejrzenie, ale lepiej dmuchać na zimne. Syropu na kaszel też nie, bo kaszlu nie ma, więc niepotrzebnie. Przedszkole odpada do końca tygodnia, a Ola ma w czwartek i piątek zmianę do siedemnastej i nie ma jak go zostawić. Więc ja biorę Stasia w czwartek i w piątek, mam go odebrać od Oli z samego rana, o ósmej, i zostać z nim do jej powrotu. Pracuję zdalnie, więc da się to pogodzić, ale muszę przesunąć dwa spotkania w czwartek, to jeszcze ogarnę. W sobotę Stasia bierze mama, to już ustalone, więc tego nie muszę ruszać. Dalej, wizyta kontrolna u pediatry w poniedziałek o szesnastej trzydzieści, Ola już zapisała, więc tylko jej przypomnieć, żeby nie zapomniała, bo ostatnio zapomniała o szczepieniu. Na tę wizytę ma też zabrać książeczkę zdrowia. Poza tym kupić Stasiowi jakiś probiotyk, bo przy antybiotyku wskazany, tylko nie ten w kroplach, bo on nie znosi, wolę w saszetkach, i wziąć go ze sobą jutro. Dodatkowo, ja sam od jakiegoś czasu biorę witaminę D, dwa tysiące jednostek dziennie, i nie biorę już magnezu, bo lekarz powiedział, że niepotrzebny, ale to taka dygresja. Aha, i nie zapomnieć, że mama prosiła, żebym nie opowiadał Stasiowi o dentyście, bo ma wizytę w przyszłym miesiącu i się boi. Jeszcze Ola mówiła, że Staś chciał oglądać bajki cały dzień, ale ograniczamy do dwóch godzin, takie jej zasady. Staś jest w ogóle słodki, jak chory, bo robi się cichy, a normalnie to jest wulkan, ostatnio rozwalił nam doniczkę w salonie piłką i potem przez godzinę tłumaczył, że to nie on, tylko kot. Ola mówi, że kot ma alibi, bo siedział na szafie. Wczoraj wieczorem rozmawialiśmy też o tym, że Ola chciałaby zmienić pracę na bardziej stacjonarną, ale na razie to wszystko w sferze marzeń, więc nie wnikam. Zjadłem po drodze pączka z różą, jedyny w tej piekarni, który jest dobry. Chyba wszystko, jutro rano jeszcze do niej zadzwonię przed wyjazdem.\n",
+   "summary": "• Stasia ma zapalenie ucha środkowego\n• Lekarz przepisała amoksycylinę pięć mililitrów 2 razy dziennie\n• Na gorączkę, jak będzie powyżej 38,5, paracetamol, 10 mililitrów, ale nie częściej niż co 6 godzin\n• Przedszkole odpada do końca tygodnia, a Ola ma w czwartek i piątek zmianę do 17:00 i nie ma jak go zostawić\n• Ja biorę Stasia w czwartek i w piątek, odebrać go od Oli z samego rana, o 8:00, i zostać z nim do jej powrotu\n• Pracuję zdalnie, więc przesunę dwa spotkania w czwartek\n• Mama bierze Stasia w sobotę\n• Wizyta kontrolna u pediatry w poniedziałek o 16:30\n• Kupić Stasiowi probiotyk w saszetkach, jutro\n• Jutro rano jeszcze do niej zadzwonię przed wyjazdem",
+   "tasks": [
+    "Brać paracetamol 10 ml co 6 godzin",
+    "Odebrać Stasia w czwartek i w piątek — 8:00",
+    "Przesunąć 2 spotkania w czwartek",
+    "Wizyta u pediatry — poniedziałek 16:30",
+    "Kupić probiotyk — jutro"
+   ]
+  },
+  {
+   "id": "18-bez-interpunkcji-mix",
+   "language": "pl",
+   "createdAt": "2026-10-15T19:00:00+02:00",
+   "title": "Faktura Kowalskiego i karmienie Burka",
+   "content": "no więc zbieram myśli na koniec tygodnia bo mam kilka rzeczy w głowie po pierwsze przegląd auta mam do końca miesiąca więc muszę się umówić na stacji diagnostycznej najlepiej na jakiś poranek bo po południu są kolejki ostatnio stałem czterdzieści minut po drugie faktura dla pana Kowalskiego za projekt logo wysłać ją do jutra bo obiecałem a kwota to tysiąc dwieście złotych i nie brutto tylko netto muszę pamiętać żeby to napisać po trzecie karma dla Burka kupić w sobotę bo została na dwa dni ta sama co zawsze nie ta nowa z kurczakiem bo mu szkodzi miał biegunkę no i weterynarz mówił żeby nie zmieniać nagle a propos weterynarza szczepienie Burka jest w grudniu więc na razie nic nie robię okej dalej książka którą pożyczyłem od Julii dawno temu trzeba jej oddać spotkamy się w poniedziałek na kawie koło szesnastej w tej kawiarni przy rynku więc wziąć ją do plecaka żeby nie zapomnieć jeszcze miałem iść na kurs hiszpańskiego ale nie jednak nie idę bo i tak nie mam czasu zrezygnowałem już wczoraj więc to temat zamknięty a ostatnio oglądałem film dokumentalny o pszczołach i pomyślałem że fajnie by było mieć kiedyś ul na działce u cioci ale to takie marzenie na przyszłość nic konkretnego poza tym pogoda jest okropna cały tydzień leje i buty mi przemokły muszę kupić nowe albo przynajmniej zaimpregnować ale to nie priorytet zobaczymy co dalej mama pytała czy przyjadę na obiad w niedzielę i powiedziałem że tak więc w niedzielę obiad u mamy o trzynastej nic nie przywożę bo ona mówi że wszystko ma jeszcze ciasto upiecze sama a ja mam tylko przyjechać głodny ha ha no i chyba to wszystko aha zapomniałem jeszcze o bilecie miesięcznym kończy mi się w przyszłym tygodniu we wtorek więc doładować go najlepiej w poniedziałek żeby nie stać w kolejce we wtorek rano dobra to by było na tyle idę coś zjeść\n",
+   "summary": "• Przegląd auta do końca miesiąca – umówić się na stacji diagnostycznej na poranek\n• Wysłać fakturę Kowalskiego za projekt logo do jutra netto 1200 zł\n• Karma dla Burka kupić w sobotę – biegunka, nie zmieniać nagle\n• Burka jest w grudniu więc na razie nic nie robię\n• Spotkanie z Julią w poniedziałek o 16:00 na kawę\n• Wziąć ul do plecaka\n• Kurs hiszpańskiego anulowany\n• Ul na działce – marzenie\n• Nowe buty lub zaimpregnowanie\n• Odpowiedź na pytanie mamy o obiad\n• Ciasto u mamy w niedzielę\n• Bilet miesięcznym doładować we wtorek",
+   "tasks": [
+    "Umówić się na przegląd auta — do końca miesiąca",
+    "Umówić się na stację diagnostyczną",
+    "Wysłać fakturę pana Kowalskiego",
+    "Kupić karmę dla Burka — sobota",
+    "Oddać książkę Julii — poniedziałek koło 16:00",
+    "Wziąć książkę do plecaka",
+    "Kupić nowe buty albo zaimpregnować",
+    "Doładować bilecie miesięczne — poniedziałek"
+   ]
+  },
+  {
+   "id": "e1-advisor-chapter",
+   "language": "en",
+   "createdAt": "2026-10-12T12:00:00+02:00",
+   "title": "Thesis advisor meeting",
+   "content": "Quick note after my meeting with the thesis advisor. We met on Monday at ten thirty in his office. He liked the recording screen, but he wants the second chapter shorter, around fifteen pages instead of twenty five. I need to send him the revised chapter by Friday. Actually no, wait, he said Thursday evening, because he is travelling on Friday. He also asked me to add a section about on-device speech recognition and why the model runs locally. Anna from my group will send me her survey results, that's her job, not mine. I should book a slot in the lab for the user tests, probably next Wednesday. We are not doing the online survey anymore, he said it adds nothing. Next meeting is on the twenty second of November at two pm.",
+   "summary": "• Meeting with thesis advisor on Monday at 10:30\n• Revised chapter due by Thursday evening\n• Add section on on-device speech recognition\n• Anna will send survey results\n• Book a slot in the lab for the user tests, probably next Wednesday\n• Next meeting on 22nd November at 14:00",
+   "tasks": [
+    "Send the revised chapter — Thursday evening",
+    "Book a slot in the lab — next Wednesday",
+    "Meeting with the thesis advisor — 22nd of November at 14:00"
+   ]
+  },
+  {
+   "id": "e2-groceries-home",
+   "language": "en",
+   "createdAt": "2026-10-13T09:00:00+02:00",
+   "title": "Plumbing and shopping",
+   "content": "Groceries and house stuff for this week. The plumber is coming on Wednesday, no sorry, on Thursday at eight in the morning, so I have to be home. I need to pay the electricity bill, two hundred and twelve dollars, by the twentieth. For shopping: bread, butter and ten eggs, actually make it thirty eggs, I'm baking a cheesecake on Saturday. Don't buy milk, we still have two cartons. Laundry detergent only if it's on sale. And a warm light bulb for the bathroom, the cold white one looks like a hospital. Kate is picking up the parcel from the locker, I don't need to do that.",
+   "summary": "• Plumber coming on Thursday at 8\n• Pay electricity bill by 20th, $212\n• Shopping: bread, butter, 30 eggs\n• Don't buy milk, still have 2 cartons\n• Warm light bulb for bathroom",
+   "tasks": [
+    "Be home — Thursday 08:00",
+    "Pay the electricity bill 212 dollars — by the 20th",
+    "Buy bread, butter, and 30 eggs — Saturday"
+   ]
+  },
+  {
+   "id": "e3-doctor-sinus",
+   "language": "en",
+   "createdAt": "2026-10-20T08:50:00+02:00",
+   "title": "Sinus treatment and follow-up",
+   "content": "Back from the doctor about my sinuses. She prescribed an antibiotic, amoxicillin, twice a day for seven days, after meals. If the fever stays above thirty eight point five for more than three days after starting the antibiotic, I have to call the clinic and not wait for the follow-up. The follow-up visit is on the fourth of November at nine fifteen. I should drink a lot of water and sleep more. No gym until the treatment is over. I also need to buy a nasal spray, the saline one, not the decongestant, she said the decongestant is fine for three days max but better to avoid it. Pharmacy closes at eight today.",
+   "summary": "• Antibiotic prescribed: amoxicillin, twice a day for seven days, after meals\n• If fever above 38.5 for more than three days after antibiotic - call clinic\n• Follow-up visit on 4th November at 9:15\n• Buy saline nasal spray, not decongestant\n• Pharmacy closes at 8 today",
+   "tasks": [
+    "Call the clinic — if the fever stays above 38.5 for more than three days after starting the antibiotic",
+    "Follow-up visit — 4th of November at 9:15",
+    "Buy a nasal spray, the saline one"
+   ]
+  },
+  {
+   "id": "e4-trip-lisbon",
+   "language": "en",
+   "createdAt": "2026-10-06T19:30:00+02:00",
+   "title": "Lisbon trip planning",
+   "content": "Planning the Lisbon trip. Flights on the fifth of November at seven ten from the main airport, fourteen hundred dollars for two people with luggage. Hotel in Baixa, four hundred euros for four nights, free cancellation until the thirtieth of October. After that three nights in Lagos, I haven't booked anything there yet, I have to do it this week, ideally by Friday. We're taking the train to Faro and renting a car there. If it rains we go to the oceanarium, otherwise Sintra. Passport not needed, the ID card is enough, but I need to check if mine is still valid. Mark will water the plants while we're away. We decided not to buy the expensive travel insurance, the basic one is fine.",
+   "summary": "• Lisbon trip planned: flights on 5th November at 7:10, $1400 for two with luggage\n• Hotel in Baixa for four nights, €400, free cancellation until 30th October\n• After that three nights in Lagos, nothing booked yet, do it this week, ideally by Friday\n• Train to Faro, rent car there\n• If it rains, go to oceanarium, else Sintra",
+   "tasks": [
+    "Book accommodation in Lagos — by Friday",
+    "Check if passport ID card is still valid"
+   ]
+  },
+  {
+   "id": "e5-work-day",
+   "language": "en",
+   "createdAt": "2026-10-19T17:45:00+02:00",
+   "title": "Client call and release delay",
+   "content": "Work day recap. The release is moved from Tuesday to Thursday because QA found a bug in the export. I have to fix the export bug by Wednesday noon. Tom will review my pull request, so I don't need to wait for the lead. The client call is tomorrow at eleven, I need to prepare three slides with the new dashboard. We are not presenting the old roadmap anymore. Lunch with the team on Friday, I already booked the table. Remember to update the ticket estimates before the call, they are all wrong. Also I spent two hours today in meetings, which was too much.",
+   "summary": "• Release moved from Tuesday to Thursday due to QA finding a bug in the export\n• Fix export bug by Wednesday noon\n• Client call tomorrow at 11, prepare three slides with new dashboard\n• Team lunch on Friday, table booked\n• Update ticket estimates before the call, they are all wrong",
+   "tasks": [
+    "Fix the export bug — Wednesday noon",
+    "Prepare three slides with the new dashboard — tomorrow 11:00"
+   ]
+  },
+  {
+   "id": "e6-diary-evening",
+   "language": "en",
+   "createdAt": "2026-10-16T22:00:00+02:00",
+   "title": "Goodbye dinner with Chris",
+   "content": "Evening, just thinking out loud. Today was strange, the weather was grey all day and I felt tired since the morning. I met Chris for coffee, he's moving to Berlin in December, I didn't expect that. We should organise a goodbye dinner before he leaves, maybe I'll talk to Sam about it. Work was fine, nothing special. I keep thinking I should start running again, but honestly I said that a hundred times. Mum called, she wants me to visit on Sunday, I said yes. I need to remember to bring her the charger she left here. Anyway, I'm going to sleep early today.",
+   "summary": "• Feel tired since morning, weather grey all day\n• Chris moving to Berlin in December, plan a goodbye dinner\n• Mum wants visit on Sunday, will bring charger",
+   "tasks": [
+    "Organise a goodbye dinner before he leaves",
+    "Visit to Mum — Sunday",
+    "Bring the charger"
+   ]
+  },
+  {
+   "id": "e7-unpunctuated-mix",
+   "language": "en",
+   "createdAt": "2026-10-16T17:00:00+02:00",
+   "title": "Dog vaccination and car inspection",
+   "content": "okay so the car needs an inspection by the end of the month I have to book the diagnostic station preferably in the morning and send the invoice to Mr Collins for the logo project by tomorrow the amount is twelve hundred net not gross I need to write that clearly the dog has an upset stomach so buy the sensitive food on Saturday and don't change it suddenly the vet said the vaccination is only in December so nothing to do now I'm meeting Julia on Monday at four for coffee and I dropped the Spanish course that's closed my monthly ticket ends next week top it up on Tuesday",
+   "summary": "• Car inspection by end of month\n• Book diagnostic station morning, send invoice to Mr Collins by tomorrow for 1200 net\n• Dog has upset stomach, buy sensitive food Saturday, don't change suddenly\n• Meet Julia Monday 4 for coffee, top monthly ticket Tuesday",
+   "tasks": [
+    "Car inspection — by the end of the month",
+    "Book the diagnostic station in the morning",
+    "Send the invoice to Mr Collins — by tomorrow",
+    "Buy the sensitive food — on Saturday",
+    "Meeting with Julia — Monday at 4"
+   ]
+  },
+  {
+   "id": "e8-week-plan",
+   "language": "en",
+   "createdAt": "2026-10-18T19:00:00+02:00",
+   "title": "Week plan",
+   "content": "Plan for the week, a long one. Monday: in the morning I send the repository link to my advisor and then I work on the presentation. I need two more slides, the data flow diagram and the measurement results, the results I have to export from the phone. Tuesday: I fix the unit tests and clean up the repository, and in the afternoon I go to the dentist at four thirty, it was moved from Wednesday. Wednesday: classes all day and physiotherapy in the evening, after that I write the chapter about limitations. Thursday is busy: meeting with Olivia about chapter two at five pm in the library, not in the cafe, and the technician comes to fix the dishwasher between twelve and two. Don't order a new dishwasher until he looks at it. Friday: no classes, so I stay longer at the university and finish the presentation. Rent for November is eleven hundred fifty dollars, due on the tenth. I also have to put five hundred into savings at the beginning of the month. Saturday morning I take the nine forty train to my parents, I come back on Sunday evening. Mum asked me to bring the external drive with the films. Dad wants help with his new router, it should take an hour at most. Olivia will send her comments on chapter two by Friday. The conference registration is a hundred and twenty dollars, the deadline is the end of November, I should register this week. I owe Jake a book about machine learning, I have to return it by the end of the month. The library fine is two dollars, I'll pay it when I return the other book.",
+   "summary": "• Monday: send repository link to advisor, work on presentation, need two more slides\n• Tuesday: fix unit tests, clean repo, dentist at 4:30\n• Wednesday: classes all day, physiotherapy, write chapter on limitations\n• Thursday: meeting with Olivia at 5 pm in library, technician fixes dishwasher 12-2 pm\n• Friday: finish presentation, pay November rent by 10th, put 500 in savings\n• Saturday: train to parents at 9:40, return Sunday evening\n• Olivia sends comments on chapter two by Friday\n• Conference registration 120 dollars by end of November",
+   "tasks": [
+    "Send the repository link to my advisor — Monday morning",
+    "Work on the presentation — Monday",
+    "Get the data flow diagram and the measurement results",
+    "Fix the unit tests — Tuesday",
+    "Clean up the repository — Tuesday",
+    "Go to the dentist — Thursday 14:30",
+    "Write the chapter about limitations — Wednesday evening",
+    "Meeting with Olivia about chapter two — Thursday 17:00 in the library",
+    "Technician comes to fix the dishwasher — Thursday 12:00–14:00",
+    "Finish the presentation — Friday",
+    "Put 500 dollars into savings — beginning of the month",
+    "Take the 9:40 train to my parents — Saturday morning",
+    "Come back from my parents — Sunday evening",
+    "Help with the new router",
+    "Register for the conference — by the end of the week",
+    "Return the book about machine learning — end of the month"
+   ]
+  },
+  {
+   "id": "v1-krotka",
+   "language": "pl",
+   "createdAt": "2026-10-11T21:40:00+02:00",
+   "title": "Wysłanie aplikacji i sprawdzenie rozdziału",
+   "content": "Krótka notatka na poniedziałek rano pokazuje promotorowi najnowszą wersję aplikacji nagrywanie lokalna transkrypcja i podsumowanie bez Internetu po spotkaniu muszę poprawić jeszcze ekran eksportu i wysłać mu link do repozytorium Ola sprawdzi rozdział drugi do czwartku kupiłem bilet na pociąg w sobotę za 58 zł w piątek nie mam zajęć więc zostaję dłużej na uczelni",
+   "summary": "• Promotorowi wysłać najnowszą wersję aplikacji\n• Poprawić ekran eksportu i wysłać link do repozytorium\n• Ola sprawdzi rozdział drugi do czwartku\n• W piątek nie mam zajęć więc zostaję dłużej na uczelni",
+   "tasks": [
+    "Poprawić ekran eksportu",
+    "Wysłać link do repozytorium"
+   ]
+  },
+  {
+   "id": "v2-srednia",
+   "language": "pl",
+   "createdAt": "2026-10-12T22:40:00+02:00",
+   "title": "Zadania i spotkanie z promotorem",
+   "content": "Notatka po spotkaniu z promotorem i sprawy z tego tygodnia w poniedziałek o 10:30 spotkałem się z promotorem w jego gabinecie omówiliśmy stan pracy inżynierskiej aplikacji do notatek głosowych zostało mi dokończyć ekran nagrywania poprawić eksport notatek i przygotować prezentację na poniedziałek Promotor powiedział że najważniejsze jest żeby aplikacja działała na prawdziwym telefonie a nie tylko w symulatorze poprosił też żebym opisał w pracy jak działa lokalne przetwarzanie mowy i model językowy do następnego spotkania mam wysłać mu krótkie podsumowanie postępów najlepiej do środy wieczorem Później byłem na uczelni i załatwiłem sprawę w dziekanacie musiałem złożyć podanie o przedłużenie terminu oddania pracy pani w dziekanacie powiedziała że decyzja będzie w ciągu dwóch tygodni a termin składania podań mija 8 listopada zapłaciłem też 300 zł za druk plakatu na konferencję Poprawka nie 300 tylko 350 zł bo doszła opłata za format A1 paragon zostawiłem Szufladzie biurka wróciłem do domu około siedemnastej odebrałem paczkę z nowym dyskiem zewnętrznym dwa Terabajt kosztował 490 zł muszę jeszcze skopiować na niego wszystkie nagrania testowe uwaga nie instaluj nowego systemu na tym dysku bo ma zostać sformatowany kopie zapasowe w sobotę jadę do rodziców wrócę w niedzielę wieczorem muszę pamiętać o kilku rzeczach na przyszły tydzień w poniedziałek rano wysłać promotorowi link do repozytorium we wtorek poprawić testy jednostkowe w czwartek spotkanie z Oliwią w sprawie rozdziału drugiego ona przygotuje listę uwag do piątku Kuba pożyczył mi książkę o uczeniu maszynowym i muszę ją oddać do końca miesiąca Zamówiłem kawę dla zespołu przyjdzie w czwartek jeszcze jedna rzecz z wieczoru siedziałem do dwudziestej 2 nad testami aplikacji udało się naprawić błąd który pojawił się przy odtwarzaniu nagrania po nagrywaniu muszę jeszcze sprawdzić ten przypadek na telefonie bo na komputerze wszystko przechodzi jutro rano zrobię kopię repozytorium i wypchnęła A wieczorem zadzwoniła Ola i ustaliliśmy że spotkamy się w czwartek o siedemnastej w bibliotece a nie w kawiarni bo będzie ciszej zapisałem to w kalendarzu na koniec najważniejsze w piątek nie mam zajęć więc mogę zostać dłużej na uczelni i dokończyć prezentację",
+   "summary": "• Spotkanie z promotorem w poniedziałek o 10:30\n• Wysłać krótkie podsumowanie postępów do środy wieczorem\n• Złożyć podanie o przedłużenie terminu oddania pracy, decyzja w ciągu 2 tygodni\n• Termin składania podań mija 8 listopada\n• Zapłacić 350 zł za druk plakatu\n• W poniedziałek rano wysłać link do repozytorium\n• Poprawić testy jednostkowe, spotkanie z Oliwią w czwartek\n• Kuba pożyczył książkę, trzeba ją oddać do końca miesiąca\n• Sprawdzić przypadek na telefonie\n• W czwartek o siedemnastej w bibliotece spotkamy się\n• W piątek nie mam zajęć więc mogę zostać dłużej na uczelni i dokończyć prezentację",
+   "tasks": [
+    "Dokończyć ekran nagrywania",
+    "Poprawić eksport notatek",
+    "Przygotować prezentację — poniedziałek",
+    "Opisać w pracy jak działa lokalne przetwarzanie mowy i model językowy — do środy wieczorem",
+    "Skopiować wszystkie nagrania testowe",
+    "Wizyta u rodziców — niedziela wieczorem",
+    "Wysłać link do repozytorium — poniedziałek rano",
+    "Poprawić testy jednostkowe — wtorek",
+    "Spotkanie z Oliwią — czwartek",
+    "Oddać książkę — do końca miesiąca",
+    "Sprawdzić ten przypadek",
+    "Skopiować repozytorium — jutro rano",
+    "Wypchnąć — jutro rano"
+   ]
+  },
+  {
+   "id": "v3-psycholog",
+   "language": "pl",
+   "createdAt": "2026-10-13T20:00:00+02:00",
+   "title": "Zajęcia jakości i wizyta u psychologa",
+   "content": "Jutro mam na godzinę ósmą chyba 30 zajęcia Jakość jakąś tam oprogramowania z panem mgr trzeba pokazać plany testów jest to w miarę przygotowane ale muszę jeszcze to dzisiaj przejrzeć i dopracować i skonsultować z kolegą z zespołu Poza tym O osiemnastej jutro jadę do psychologa pracuję sobie dalej nad tą aplikacją mimo że to nie jest związane z tym jutrzejszym spotkaniem",
+   "summary": "• Zajęcia Jakość o ok. 8:30 jutro – plany testów w miarę przygotowane\n• Skonsultować plany testów z kolegą z zespołu jutro\n• Wizyta u psychologa o 18:00 jutro",
+   "tasks": [
+    "Pokazać plany testów — jutro 8:30",
+    "Skonsultować z kolegą z zespołu — dzisiaj",
+    "Przejrzeć plany testów — dzisiaj",
+    "Dopracować plany testów — dzisiaj",
+    "Wizyta u psychologa — 18:00 jutro"
+   ]
+  },
+  {
+   "id": "v4-kalkulacja",
+   "language": "pl",
+   "createdAt": "2026-10-09T15:00:00+02:00",
+   "title": "Kalkulacja licencji i podwyżki",
+   "content": "Dobrze to tak Kalkulacją przy stałych 25% czyli ich licencja kosztuje 3 000 zł A 25% razy 12 000 zł wychodzi 3 000 zł czyli rachunek spada do zera gdy polecone firmy płacą łącznie 12 000 zł rocznie I powyżej tej kwoty pojawia się podwyżka do wypłaty czyli w momencie mamy 12 025% dla nich to wyjdzie 3 000 a ja dostaję 12 z tego Gdy polecone firmy płacą 16 025% dla nich to 4 000 czyli 1000 zł do wypłaty nadwyżki No i tak Wcześniej pomysł na 50% w pierwszym roku i w następnych latach 20% ale podobno przy stałych 25% wychodzi bardzo podobnie więc nie ma sensu chyba robić czegoś takiego i żeby od początku było że będzie wypłata za nowych Za polecone firmy nie za nowe Trzeba się dowiedzieć na pewno ile kosztuje na jedno stanowisko na rok i ile chcą za każde kolejne mówimy o kwotach Netto bo nie wystawiam faktury z VAT I tak",
+   "summary": "• Kalkulacja 25% dla licencji to 3 000 zł przy 12 000 zł rocznie\n• Ja dostaję 12 z tego; Gdy polecone firmy płacą 16 000, 25% dla nich to 4 000 czyli 1000 zł do wypłaty nadwyżki\n• Wcześniej pomysł na 50% w pierwszym roku i w następnych latach 20%, ale podobno przy stałych 25% wychodzi bardzo podobnie\n• Nie ma sensu chyba robić czegoś takiego i żeby od początku było że będzie wypłata za nowych Za polecone firmy nie za nowe\n• Ustalić koszt na stanowisko i cenę za kolejne\n• Netto, bez VAT, bez faktury",
+   "tasks": [
+    "Dowiedzieć się ile kosztuje na 1 stanowisko na rok"
+   ]
+  },
+  {
+   "id": "en1-gym-psychologist",
+   "language": "en",
+   "createdAt": "2026-10-20T08:45:00+02:00",
+   "title": "Gym and psychologist",
+   "content": "So I'm planning to leave to the gym right now and at 8 PM sorry 6 PM today I have appointment to my psychologist And then I am going home to chill. I don't know what I'm going to do it but I don't know I'm going to go by car sorry I'm going to go by tram there And then I'm going home. Sorry I'm going to the shop because I have to buy milk.",
+   "summary": "• Go to gym now\n• 6 PM psychologist appointment\n• Buy milk at the shop",
+   "tasks": [
+    "Go to the gym",
+    "Psychologist appointment — today 18:00",
+    "Buy milk"
+   ]
+  }
+ ],
+ "questions": [
+  {
+   "id": "q01",
+   "language": "pl",
+   "question": "Ile mam do zapłacenia za prąd?",
+   "type": "fact",
+   "answer": "212 zł, do 20 października.",
+   "mustInclude": [
+    "212"
+   ],
+   "mustNotInclude": [],
+   "sourceNotes": [
+    "02-zakupy-dom",
+    "e2-groceries-home"
+   ],
+   "followUpOf": null
+  },
+  {
+   "id": "q02",
+   "language": "pl",
+   "question": "Ile chce firma Budrem za remont łazienki?",
+   "type": "fact",
+   "answer": "19500 zł z materiałami (pakiet), 50% zaliczki z góry, start dopiero w grudniu.",
+   "mustInclude": [
+    "19500"
+   ],
+   "mustNotInclude": [
+    "14800",
+    "12000"
+   ],
+   "sourceNotes": [
+    "16-remont-lazienki-oferty"
+   ],
+   "followUpOf": null
+  },
+  {
+   "id": "q07",
+   "language": "pl",
+   "question": "Za ile kupiłem ten nowy twardy dysk, który przyszedł paczką?",
+   "type": "paraphrase",
+   "answer": "490 zł (dysk zewnętrzny 2 TB).",
+   "mustInclude": [
+    "490"
+   ],
+   "mustNotInclude": [
+    "350"
+   ],
+   "sourceNotes": [
+    "v2-srednia"
+   ],
+   "followUpOf": null
+  },
+  {
+   "id": "q08",
+   "language": "pl",
+   "question": "Ile wydałem na obiad w nowej knajpie z ramenem?",
+   "type": "paraphrase",
+   "answer": "38 zł za miskę.",
+   "mustInclude": [
+    "38"
+   ],
+   "mustNotInclude": [],
+   "sourceNotes": [
+    "05-dzien-w-pracy"
+   ],
+   "followUpOf": null
+  },
+  {
+   "id": "q10",
+   "language": "pl",
+   "question": "Kiedy mam kontrolę u lekarki i o której?",
+   "type": "when",
+   "answer": "We wtorek 27 października o 16:15.",
+   "mustInclude": [
+    "27",
+    "16:15"
+   ],
+   "mustNotInclude": [
+    "16:30"
+   ],
+   "sourceNotes": [
+    "07-zdrowie-zatoki-leki"
+   ],
+   "followUpOf": null
+  },
+  {
+   "id": "q11",
+   "language": "pl",
+   "question": "Hydraulik miał przyjść w środę, na kiedy się przełożył?",
+   "type": "when",
+   "answer": "Na czwartek (15 października) na 8:00 rano.",
+   "mustInclude": [
+    "czwartek",
+    "8"
+   ],
+   "mustNotInclude": [],
+   "sourceNotes": [
+    "02-zakupy-dom",
+    "e2-groceries-home"
+   ],
+   "followUpOf": null
+  },
+  {
+   "id": "q19",
+   "language": "pl",
+   "question": "Co mam dzisiaj do zrobienia?",
+   "type": "tasks",
+   "answer": "Dziś (wtorek 20.10): przed 9:00 oddzwonić do warsztatu (opony); serwisant pralki 10-14 (wpuszcza Kasia); sprawozdanie z elektrotechniki do 14:00; spotkanie z promotorem o 14:00; po pracy okulary i pralnia (do 18:00), zakupy, apteka; slajdy na środową prezentację gotowe do wieczora; dziś ostatni dzień na rachunek za prąd (212 zł).",
+   "mustInclude": [
+    "opon",
+    "okulary",
+    "pralni",
+    "sprawozdanie",
+    "slajd"
+   ],
+   "mustNotInclude": [],
+   "sourceNotes": [
+    "11-przypomnienie-opony",
+    "12-zakupy-jutro-po-pracy",
+    "14-dziennik-karnet-kurs",
+    "10-plan-tygodnia",
+    "15-sesja-egzaminy",
+    "01-promotor-rozdzial",
+    "02-zakupy-dom"
+   ],
+   "followUpOf": null
+  },
+  {
+   "id": "q20",
+   "language": "pl",
+   "question": "Co muszę zrobić w sprawie urodzin taty?",
+   "type": "tasks",
+   "answer": "Wpłacić zaliczkę 500 zł do końca października; zamówić tort bez orzechów na 30 osób do 14 listopada; podesłać Magdzie numery kuzynów z Radomia do piątku; zadzwonić do Pawła (tablet odpada) i do mamy (godzina 16:30); zrobić playlistę; przelać Magdzie 100 zł.",
+   "mustInclude": [
+    "zaliczk",
+    "tort",
+    "Paweł",
+    "playlist"
+   ],
+   "mustNotInclude": [],
+   "sourceNotes": [
+    "08-telefon-urodziny-taty"
+   ],
+   "followUpOf": null
+  },
+  {
+   "id": "q26",
+   "language": "pl",
+   "question": "Komu muszę oddać wiertarkę?",
+   "type": "cross",
+   "answer": "Wojtkowi (w sobotę rano przed 10:00) oraz Tomkowi (pożyczona we wrześniu, oddać w weekend).",
+   "mustInclude": [
+    "Wojtek",
+    "Tomek"
+   ],
+   "mustNotInclude": [],
+   "sourceNotes": [
+    "14-dziennik-karnet-kurs",
+    "10-plan-tygodnia"
+   ],
+   "followUpOf": null
+  },
+  {
+   "id": "q27",
+   "language": "pl",
+   "question": "Kiedy mam następne spotkanie z promotorem?",
+   "type": "cross",
+   "answer": "Dziś (wtorek 20 października) o 14:00 wg notatki z dr. Zielińskim; według notatki angielskiej kolejne 22 listopada o 14:00.",
+   "mustInclude": [
+    "20",
+    "22 listopada"
+   ],
+   "mustNotInclude": [],
+   "sourceNotes": [
+    "01-promotor-rozdzial",
+    "e1-advisor-chapter"
+   ],
+   "followUpOf": null
+  },
+  {
+   "id": "q29",
+   "language": "pl",
+   "question": "Jakiej karmy nie kupować dla Burka?",
+   "type": "negated",
+   "answer": "Nowej karmy z kurczakiem (miał po niej biegunkę); kupić tę samą co zawsze.",
+   "mustInclude": [
+    "kurczak"
+   ],
+   "mustNotInclude": [],
+   "sourceNotes": [
+    "18-bez-interpunkcji-mix"
+   ],
+   "followUpOf": null
+  },
+  {
+   "id": "q30",
+   "language": "pl",
+   "question": "Czy mam kupić mleko?",
+   "type": "negated",
+   "answer": "Nie, w lodówce są jeszcze dwa kartony.",
+   "mustInclude": [
+    "nie",
+    "dwa"
+   ],
+   "mustNotInclude": [],
+   "sourceNotes": [
+    "02-zakupy-dom",
+    "e2-groceries-home"
+   ],
+   "followUpOf": null
+  },
+  {
+   "id": "q36",
+   "language": "pl",
+   "question": "Ile kosztuje bilet na pociąg z Lizbony do Faro?",
+   "type": "absent",
+   "answer": "Notatki nie podają ceny (tylko że trwa ok. 3 godzin i bilety kupuje się na miejscu).",
+   "mustInclude": [],
+   "mustNotInclude": [
+    "58"
+   ],
+   "sourceNotes": [],
+   "followUpOf": null
+  },
+  {
+   "id": "q37",
+   "language": "pl",
+   "question": "Jaki jest numer telefonu do warsztatu z oponami?",
+   "type": "absent",
+   "answer": "Notatki nie zawierają numeru (jest tylko wzmianka, że jest w telefonie).",
+   "mustInclude": [],
+   "mustNotInclude": [],
+   "sourceNotes": [],
+   "followUpOf": null
+  },
+  {
+   "id": "q40",
+   "language": "pl",
+   "question": "Kiedy przyjdzie technik do zmywarki i czy mam zamawiać nową?",
+   "type": "crosslang",
+   "answer": "W czwartek między 12 a 14; nowej nie zamawiać, dopóki technik jej nie obejrzy.",
+   "mustInclude": [
+    "12",
+    "14",
+    "czwartek"
+   ],
+   "mustNotInclude": [],
+   "sourceNotes": [
+    "e8-week-plan"
+   ],
+   "followUpOf": null
+  },
+  {
+   "id": "q41",
+   "language": "pl",
+   "question": "Dokąd przeprowadza się Chris i kiedy?",
+   "type": "crosslang",
+   "answer": "Do Berlina w grudniu.",
+   "mustInclude": [
+    "Berlin",
+    "grudni"
+   ],
+   "mustNotInclude": [
+    "Wrocław"
+   ],
+   "sourceNotes": [
+    "e6-diary-evening"
+   ],
+   "followUpOf": null
+  },
+  {
+   "id": "q42",
+   "language": "pl",
+   "question": "A co mam zrobić przed nią?",
+   "type": "followup",
+   "answer": "Zrobić morfologię i CRP na czczo, najlepiej w poniedziałek 26 października rano.",
+   "mustInclude": [
+    "morfologi",
+    "CRP"
+   ],
+   "mustNotInclude": [],
+   "sourceNotes": [
+    "07-zdrowie-zatoki-leki"
+   ],
+   "followUpOf": "q10"
+  },
+  {
+   "id": "a01",
+   "language": "pl",
+   "question": "Kiedy oddaję hulajnogę do naprawy?",
+   "type": "when",
+   "answer": "",
+   "mustInclude": [
+    "czwart",
+    "17:15"
+   ],
+   "mustNotInclude": [],
+   "sourceNotes": [
+    "suite-pl-plan"
+   ],
+   "followUpOf": null,
+   "liveDate": true
+  },
+  {
+   "id": "a02",
+   "language": "pl",
+   "question": "Kiedy jest trening siatkówki?",
+   "type": "when",
+   "answer": "",
+   "mustInclude": [
+    "czwart",
+    "20"
+   ],
+   "mustNotInclude": [
+    "środ"
+   ],
+   "sourceNotes": [
+    "suite-pl-plan"
+   ],
+   "followUpOf": null,
+   "liveDate": true
+  },
+  {
+   "id": "a03",
+   "language": "pl",
+   "question": "Czy mam kupić masło?",
+   "type": "negated",
+   "answer": "",
+   "mustInclude": [
+    "nie"
+   ],
+   "mustNotInclude": [],
+   "sourceNotes": [
+    "suite-pl-plan"
+   ],
+   "followUpOf": null,
+   "liveDate": true
+  },
+  {
+   "id": "a04",
+   "language": "pl",
+   "question": "Ile kosztują bilety na festiwal jazzowy i do kiedy trzeba je kupić?",
+   "type": "fact",
+   "answer": "",
+   "mustInclude": [
+    "180",
+    "niedziel"
+   ],
+   "mustNotInclude": [],
+   "sourceNotes": [
+    "suite-pl-plan"
+   ],
+   "followUpOf": null,
+   "liveDate": true
+  },
+  {
+   "id": "a05",
+   "language": "pl",
+   "question": "Komu mam oddać pendrive?",
+   "type": "fact",
+   "answer": "",
+   "mustInclude": [
+    "Zuz"
+   ],
+   "mustNotInclude": [],
+   "sourceNotes": [
+    "suite-pl-plan"
+   ],
+   "followUpOf": null,
+   "liveDate": true
+  },
+  {
+   "id": "a06",
+   "language": "pl",
+   "question": "O której jest hackathon dla nowych pracowników?",
+   "type": "when",
+   "answer": "",
+   "mustInclude": [
+    "13"
+   ],
+   "mustNotInclude": [],
+   "sourceNotes": [
+    "suite-pl-dziennik"
+   ],
+   "followUpOf": null,
+   "liveDate": true
+  },
+  {
+   "id": "a07",
+   "language": "pl",
+   "question": "Ile kosztowało burrito?",
+   "type": "fact",
+   "answer": "",
+   "mustInclude": [
+    "27"
+   ],
+   "mustNotInclude": [],
+   "sourceNotes": [
+    "suite-pl-dziennik"
+   ],
+   "followUpOf": null,
+   "liveDate": true
+  },
+  {
+   "id": "a08",
+   "language": "en",
+   "question": "When is my train to Prague?",
+   "type": "when",
+   "answer": "",
+   "mustInclude": [
+    "6:45|6.45|645"
+   ],
+   "mustNotInclude": [],
+   "sourceNotes": [
+    "suite-en-trip"
+   ],
+   "followUpOf": null,
+   "liveDate": true
+  },
+  {
+   "id": "a09",
+   "language": "en",
+   "question": "Should I buy a new jacket?",
+   "type": "negated",
+   "answer": "",
+   "mustInclude": [
+    "no|not|don"
+   ],
+   "mustNotInclude": [],
+   "sourceNotes": [
+    "suite-en-trip"
+   ],
+   "followUpOf": null,
+   "liveDate": true
+  },
+  {
+   "id": "a10",
+   "language": "pl",
+   "question": "Ile mogę wydać na hostel w Pradze?",
+   "type": "crosslang",
+   "answer": "",
+   "mustInclude": [
+    "40"
+   ],
+   "mustNotInclude": [],
+   "sourceNotes": [
+    "suite-en-trip"
+   ],
+   "followUpOf": null,
+   "liveDate": true
+  },
+  {
+   "id": "a11",
+   "language": "pl",
+   "question": "Co mam zrobić przed wyjazdem do Pragi?",
+   "type": "tasks",
+   "answer": "",
+   "mustInclude": [
+    "hostel",
+    "prawo jazdy|licence|licencj|prawa jazdy"
+   ],
+   "mustNotInclude": [],
+   "sourceNotes": [
+    "suite-en-trip"
+   ],
+   "followUpOf": null,
+   "liveDate": true
+  },
+  {
+   "id": "a12",
+   "language": "pl",
+   "question": "Komu mam pomóc w niedzielę i o której?",
+   "type": "when",
+   "answer": "",
+   "mustInclude": [
+    "Len",
+    "10"
+   ],
+   "mustNotInclude": [],
+   "sourceNotes": [
+    "suite-pl-dziennik"
+   ],
+   "followUpOf": null,
+   "liveDate": true
+  }
+ ]
+}

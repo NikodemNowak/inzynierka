@@ -77,9 +77,15 @@ const HALF_TO = /wpół\s+do\s*$/iu;
 
 const digitValues = (text: string): number[] => (text.match(/\d+/gu) ?? []).map(token => Number.parseInt(token, 10));
 
+// "19 500" is one amount, not 19 and 500.
+const GROUPED_DIGITS = /(?<![\d.,])\d{1,3}(?:[ \u00a0\u202f]\d{3})+(?!\d|[.,]\d)/gu;
+const groupedValues = (text: string): number[] =>
+  (text.match(GROUPED_DIGITS) ?? []).map(token => Number.parseInt(token.replace(/\D/gu, ''), 10));
+
 // Strict set of values a text states: digits plus compound number-word values.
-export const statedNumbers = (text: string): Set<number> => {
-  const values = new Set([...digitValues(text), ...numberSpans(text).map(span => span.value)]);
+export const statedNumbers = (raw: string): Set<number> => {
+  const text = mergedPercentForPrompt(raw);
+  const values = new Set([...digitValues(text), ...groupedValues(text), ...numberSpans(text).map(span => span.value)]);
   // "wpół do dziesiątej" states 9:30
   for (const span of numberSpans(text)) {
     if (HALF_TO.test(text.slice(0, span.start)) && span.value <= 24) { values.add(span.value - 1); values.add(30); }
@@ -89,7 +95,9 @@ export const statedNumbers = (text: string): Set<number> => {
 
 // Values a summary point states (digits and words); zero is never checked.
 export const pointNumbers = (text: string): Set<number> => {
-  const values = new Set([...digitValues(text), ...numberSpans(text.replace(/\d+/gu, ' ')).map(span => span.value)]);
+  const grouped = groupedValues(text);
+  const plain = text.replace(GROUPED_DIGITS, ' ');
+  const values = new Set([...digitValues(plain), ...grouped, ...numberSpans(plain.replace(/\d+/gu, ' ')).map(span => span.value)]);
   values.delete(0);
   return values;
 };

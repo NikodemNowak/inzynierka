@@ -38,6 +38,7 @@ const paths = {
   upload: 'M12 16V4m-5 5 5-5 5 5M4 16v4h16v-4',
   edit: 'm15 4 5 5M4 20l5-1L21 7l-5-5L4 14Z',
   share: 'M12 15V2m-4 4 4-4 4 4M7 9H4v12h16V9h-3',
+  calendar: 'M4 6h16v15H4ZM4 10h16M8 3v4M16 3v4M12 13v5M9.5 15.5h5',
   trash: 'M3 6h18M9 6V3h6v3M6 6l1 15h10l1-15M10 10v7M14 10v7',
   shield: 'm12 2 9 4v6c0 5-9 10-9 10S3 17 3 12V6Zm-4 10 3 3 5-6',
   lock: 'M7 10V7a5 5 0 0 1 10 0v3M5 10h14v11H5ZM12 14v3',

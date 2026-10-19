@@ -183,6 +183,31 @@ const announcedTopic = (content: string): string => {
 const DIARY_MARKER = /(?<!\p{L})(?:dziennik\p{L}*|pamiętnik\p{L}*|(?:wieczorn\p{L}+|osobist\p{L}+) zapis\p{L}*|zapis\p{L}* (?:dnia|wieczorn\p{L}+)|diary|journal|evening log)/iu
 export const isDiaryLead = (lead: string): boolean => DIARY_MARKER.test(lead)
 
+// The recording announces a weekly plan right at the start ("Plan na tydzień, długi.").
+const PLAN_MARKER = /^\W*(?:plan(?:u|em)?\s+(?:na\s+(?:ten\s+|ten\s+nadchodzący\s+)?tydzie\p{L}*|tygodnia)|(?:weekly|week)\s+plan|plan\s+for\s+(?:the|this|next)\s+week)/iu
+export const isPlanLead = (lead: string): boolean => PLAN_MARKER.test(lead.trim())
+
+// ------------------------------------------------------------------ category safety net
+
+// Unambiguous medical vocabulary: one mention of a visit to a psychologist, dentist or doctor is
+// enough for the health category even when the model filed the note under work or studies.
+const HEALTH_WORDS = /(?<!\p{L})(?:psycholog\p{L}*|psychiatr\p{L}*|psychoterap\p{L}*|terapeut\p{L}*|lekarz\p{L}*|lekark\p{L}*|dentyst\p{L}*|stomatolog\p{L}*|pediatr\p{L}*|okulist\p{L}*|fizjoterap\p{L}*|antybiotyk\p{L}*|recept\p{L}*|gorączk\p{L}*|zatok\p{L}*|psychologist\w*|psychiatrist\w*|therap\w*|doctor\w*|dentist\w*|physician\w*|pediatric\w*|physio\w*|antibiotic\w*|prescription\w*|fever\w*|sinus\w*)/iu
+const VET_WORDS = /(?<!\p{L})(?:weteryn\p{L}*|vet|vets|veterinar\w*)(?!\p{L})/iu
+
+export const adjustCategories = (categories: readonly string[], content: string): string[] => {
+  const text = content
+  const hasHealth = HEALTH_WORDS.test(text)
+  let result = [...categories]
+  if (hasHealth && !result.includes('Zdrowie')) {
+    // Keep the main category first; the health visit becomes an additional one.
+    result = result.length >= MAX_TAGS ? [...result.slice(0, MAX_TAGS - 1), 'Zdrowie'] : [...result, 'Zdrowie']
+  } else if (!hasHealth && result.includes('Zdrowie') && VET_WORDS.test(text)) {
+    // A pet at the vet is not a human health matter.
+    result = result.filter((category) => category !== 'Zdrowie')
+  }
+  return result
+}
+
 // ------------------------------------------------------------------ parsing
 
 const TITLE_LINE = /^[*_\-\s]*(?:tytuł|title)\s*\d?\s*:[*_\s]*(.*)$/iu
@@ -276,6 +301,8 @@ interface Vocabulary {
   isVerbLike: (word: string) => boolean
   // First word of a title that is an order or an infinitive.
   isCommandWord: (word: string) => boolean
+  // Discourse openers and time adverbs that start a spoken sentence, never a topic ("Wcześniej pomysł").
+  openers: ReadonlySet<string>
 }
 
 const set = (...items: string[]): ReadonlySet<string> => new Set(items)
@@ -305,8 +332,9 @@ const PL_SENTENCE_MARKERS = set('to', 'jest', 'są', 'był', 'była', 'było', '
   'my', 'wy', 'oni', 'trzeba', 'muszę', 'może', 'będzie', 'tak', 'no', 'więc', 'znaczy', 'czyli',
   'aha', 'dobra', 'okej', 'ok', 'jeszcze', 'też', 'już', 'chyba', 'właśnie', 'tylko', 'sobie',
   'kto', 'komu', 'ile', 'gdzie', 'kiedy', 'dlaczego', 'około', 'mnie', 'mi', 'jego', 'jej', 'żeby',
-  'chce', 'chcę', 'należy', 'można', 'odbiera', 'robi', 'ma', 'mają', 'idzie', 'jedzie')
-const PL_VACUOUS_HEAD = set('szczegóły', 'informacje', 'uwagi', 'podsumowanie', 'notatka', 'nagranie', 'zapis', 'tekst', 'temat',
+  'chce', 'chcę', 'należy', 'można', 'odbiera', 'robi', 'ma', 'mają', 'idzie', 'jedzie',
+  'mój', 'moja', 'moje', 'mojego', 'mojej', 'moim', 'naszej', 'nasz', 'nasza', 'nasze')
+const PL_VACUOUS_HEAD = set('sprawa', 'sprawy', 'szczegóły', 'informacje', 'uwagi', 'podsumowanie', 'notatka', 'nagranie', 'zapis', 'tekst', 'temat',
   'tematy', 'różne', 'rzeczy', 'ustalenia')
 const PL_PAST_VERB = /(?:ała|ało|iła|iło|yła|yło|uła|eła|ęła|ąła|ały|iały|ili|eli|uje|ują)$/u
 const PL_PERSONAL_VERB = /(łem|łam|łeś|łaś|liśmy|łyśmy|liście|uję|ujemy|imy|ymy|esz|isz|ysz|amy|emy)$/u
@@ -339,6 +367,11 @@ const PL_FALLBACK_STOP = union(PL_SENTENCE_MARKERS, PL_STOP, PL_GENERIC, set(
 const PL_FALLBACK_STOP_HEAD = union(PL_SENTENCE_MARKERS, PL_STOP, set('gdy', 'jeśli', 'jak', 'kiedy', 'decyzja', 'najpierw',
   'potem', 'wystarczy', 'bez', 'może', 'dostałam', 'dostałem', 'istnieje', 'myślałem', 'myślałam', 'notatka', 'saldo'))
 const PL_CUT = /[,:;()\-–]|\s(?:do|od|we?|na|po|o|przez|bo|że|gdy|jeśli|ale|który|która|które|tylko|nie|jest|są|ma)\s/iu
+// Words that make a point head a clause ("Mama bierze Stasia", "Ustalono imprezę", "Karma dla Burka kupić").
+const PL_HEAD_VERB = /(?:ć|ono|ano|ęto|erze|ierze|ują|uje|ają|ał|ała|ało|ił|iła|dzie|ada|ierają)$/u
+const EN_HEAD_VERB = /(?:ed|ing)$/u
+const EN_HEAD_IMPERATIVE = new Set(['buy', 'pay', 'fix', 'add', 'send', 'call', 'book', 'check', 'take', 'bring', 'order', 'make', 'get', 'go',
+  'ask', 'pick', 'remind', 'finish', 'write', 'schedule', 'email', 'prepare', 'review', 'update', 'cancel', 'renew', 'top', 'do', 'don', 'keep'])
 const PL_VERB_END = /(?:ć|ać|eć|ić|yć|uje|ują|ał|ała|ało|ili|eli|ił|iła|ię|uję)$/u
 
 const EN_STOP = set('and', 'or', 'nor', 'a', 'an', 'the', 'of', 'in', 'on', 'at', 'to', 'for', 'with', 'from', 'by', 'about',
@@ -367,6 +400,12 @@ const EN_DATE_WORD = /^(?:january|february|march|april|may|june|july|august|sept
 const EN_END_BAD = union(EN_STOP, set('that', 'which', 'who', 'is', 'are', 'because', 'but', 'if'))
 const EN_CUT = /[,:;()\-–]|\s(?:to|of|in|on|at|for|with|from|by|about|that|which|who|because|but|if|when|is|are|was|were|has|have|will)\s/iu
 
+const PL_OPENERS = set('wcześniej', 'później', 'potem', 'najpierw', 'następnie', 'dzisiaj', 'dziś', 'wczoraj', 'jutro', 'teraz',
+  'ostatnio', 'jeszcze', 'także', 'również', 'dodatkowo', 'ponadto', 'ogólnie', 'generalnie', 'krótko', 'wreszcie', 'więc', 'no',
+  'aha', 'dobra', 'okej', 'ok', 'znaczy', 'czyli', 'właśnie', 'wtedy', 'kiedyś', 'ale')
+const EN_OPENERS = set('earlier', 'later', 'then', 'also', 'today', 'yesterday', 'tomorrow', 'recently',
+  'additionally', 'generally', 'basically', 'anyway', 'okay', 'ok', 'so', 'well', 'finally')
+
 const depluralize = (word: string): string => (word.endsWith('s') ? word.slice(0, -1) : word)
 
 const VOCABULARY: Record<Language, Vocabulary> = {
@@ -390,6 +429,7 @@ const VOCABULARY: Record<Language, Vocabulary> = {
     fallbackStopHead: PL_FALLBACK_STOP_HEAD,
     isVerbLike: (word) => PL_VERB_END.test(word),
     isCommandWord: (word) => PL_IMPERATIVE.test(word) || PL_INFINITIVE.test(word),
+    openers: PL_OPENERS,
   },
   en: {
     stop: EN_STOP,
@@ -401,7 +441,7 @@ const VOCABULARY: Record<Language, Vocabulary> = {
     isDateWord: (word) => EN_DATE_WORD.test(word),
     endBad: EN_END_BAD,
     examples: EN_EXAMPLES,
-    vacuousHead: set('details', 'information', 'notes', 'summary', 'note', 'recording', 'text', 'topic', 'topics', 'things', 'various'),
+    vacuousHead: set('matter', 'matters', 'issue', 'issues', 'details', 'information', 'notes', 'summary', 'note', 'recording', 'text', 'topic', 'topics', 'things', 'various'),
     isPastVerb: () => false,
     conjunctions: set('and', 'or'),
     badChars: /[^A-Za-zÀ-ɏ ,\-:–'’]/u,
@@ -411,6 +451,7 @@ const VOCABULARY: Record<Language, Vocabulary> = {
     fallbackStopHead: union(EN_SENTENCE_MARKERS, EN_STOP, set('decision', 'first', 'then', 'next', 'maybe')),
     isVerbLike: () => false,
     isCommandWord: () => false,
+    openers: EN_OPENERS,
   },
 }
 
@@ -437,6 +478,8 @@ export const titleProblems = (title: string, sources: readonly string[], languag
   if (low.some(vocabulary.isPersonalVerb) || low.some(vocabulary.isPastVerb)) problems.push('personal-verb')
   if (low.length > 0 && vocabulary.isCommandWord(low[0])) problems.push('imperative')
   if (words.length >= 2 && vocabulary.vacuousHead.has(low[0])) problems.push('vacuous-head')
+  if (low.length > 0 && vocabulary.openers.has(low[0])) problems.push('opener')
+  if (language === 'pl' && obliqueHeadWord(title)) problems.push('oblique-head')
   // "... i zadania": the last conjunct is a lone abstract word.
   const lastJoin = low.length - 2
   const vague = problems.some((problem) => problem === 'abstract' || problem === 'vacuous' || problem === 'generic')
@@ -472,6 +515,17 @@ export const titleProblems = (title: string, sources: readonly string[], languag
   return problems
 }
 
+// A title whose content words appear in none of the summary points names something the summary
+// does not mention (the long opening of a diary is the usual source: "Spotkanie z sąsiadką").
+const GENRE_WORDS = new Set(['dziennik', 'diary', 'journal', 'plan', 'notatka', 'note', 'wieczór', 'evening', 'week', 'tygodnia', 'tydzień', 'weekly'])
+export const isOffPoints = (title: string, points: readonly string[], language: Language): boolean => {
+  const vocabulary = VOCABULARY[language]
+  const topicWords = wordsOf(title.toLowerCase()).filter((word) => word.length >= 4 && !vocabulary.stop.has(word) && !GENRE_WORDS.has(word))
+  if (topicWords.length === 0 || points.length === 0) return false
+  const known = new Set(points.flatMap((point) => wordsOf(point.toLowerCase()).map((word) => stemOf(word, 4))))
+  return !topicWords.some((word) => known.has(stemOf(word, 4)))
+}
+
 // ------------------------------------------------------------------ repair
 
 interface ReasonText {
@@ -484,13 +538,16 @@ const REASONS: readonly ReasonText[] = [
   { keys: ['vacuous-head'], pl: 'zaczyna się od pustego słowa – zacznij od konkretnego tematu', en: 'starts with an empty word – start with a specific topic' },
   { keys: ['vague-tail'], pl: 'kończy się zbyt ogólnym członem – zastąp go konkretnym tematem z notatki', en: 'ends with a too generic part – replace it with a specific topic from the note' },
   { keys: ['abstract', 'generic', 'vacuous'], pl: 'składa się z samych ogólnych słów – nazwij konkretny temat', en: 'consists only of generic words – name a specific topic' },
+  { keys: ['off-points'], pl: 'nie nawiązuje do żadnego punktu notatki – nazwij temat z punktów', en: 'does not refer to any point of the note – name a topic from the points' },
+  { keys: ['opener'], pl: 'zaczyna się od przysłówka lub wtrętu zamiast tematu – zacznij od rzeczownika nazywającego temat', en: 'starts with an adverb or filler instead of the topic – start with a noun naming the topic' },
+  { keys: ['oblique-head'], pl: 'zaczyna się od słowa w złym przypadku – użyj mianownika', en: 'starts with a word in the wrong case' },
   { keys: ['imperative'], pl: 'zaczyna się od czasownika (polecenia) – podaj frazę rzeczownikową, np. rzeczownik odczasownikowy', en: 'starts with a verb – give a noun phrase' },
   { keys: ['sentence', 'personal-verb', 'dangling'], pl: 'jest fragmentem zdania – podaj frazę rzeczownikową', en: 'is a sentence fragment – give a noun phrase' },
   { keys: ['enumeration'], pl: 'jest wyliczanką – wybierz dwa lub trzy najważniejsze tematy', en: 'is a list – pick the two or three most important topics' },
-  { keys: ['words='], pl: 'ma złą liczbę słów (wymagane 2-6)', en: 'has the wrong number of words (2-6 required)' },
-  { keys: ['digits', 'date-word', 'bad-chars'], pl: 'zawiera liczbę, datę lub niedozwolone znaki', en: 'contains a number, date or disallowed characters' },
+  { keys: ['words='], pl: 'ma złą liczbę słów (wymagane 2-6 słów, bez cyfr)', en: 'has the wrong number of words (2-6 words required, no digits)' },
+  { keys: ['digits', 'date-word', 'bad-chars'], pl: 'zawiera cyfry, datę lub niedozwolone znaki – użyj samych słów, bez liczb', en: 'contains digits, a date or disallowed characters – use words only, no numbers' },
   { keys: ['unknown-name'], pl: 'zawiera nazwę spoza notatki', en: 'contains a name that is not in the note' },
-  { keys: ['invented-form'], pl: 'zawiera słowo w zmyślonej formie – użyj słów z notatki', en: 'contains an invented word form' },
+  { keys: ['invented-form'], pl: 'zawiera zmyślone słowo – pomiń je i nazwij temat innymi słowami z notatki', en: 'contains an invented word form – leave it out' },
   { keys: ['prompt-example'], pl: 'kopiuje przykład z instrukcji', en: 'copies an example from the instructions' },
   { keys: ['verbatim'], pl: 'kopiuje zdanie z notatki', en: 'copies a sentence from the note' },
   { keys: ['empty'], pl: 'jest pusty', en: 'is empty' },
@@ -517,9 +574,13 @@ export const titleRepairPrompt = (
   language: Language,
 ): string => {
   const reason = repairReason(problems, language)
+  // Name the offending words so the model does not repeat them.
+  const banned = problems.flatMap((problem) => /^(?:invented-form|unknown-name):(.+)$/u.exec(problem)?.[1] ?? [])
+  const avoidPl = banned.length > 0 ? ` Nie używaj słowa: ${banned.map((word) => `„${word}”`).join(', ')}.` : ''
+  const avoidEn = banned.length > 0 ? ` Do not use the word: ${banned.map((word) => `"${word}"`).join(', ')}.` : ''
   return language === 'pl'
-    ? `${firstPrompt}\n\nTwoja poprzednia odpowiedź:\n${previousAnswer.trim()}\n\nTytuł „${title}” ${reason}. Podaj inny tytuł zgodny z zasadami (2-5 słów). Odpowiedz jedną linią:\nTytuł: <tytuł>`
-    : `${firstPrompt}\n\nYour previous answer:\n${previousAnswer.trim()}\n\nTitle "${title}" ${reason}. Give a different title that follows the rules (2-5 words). Answer in one line:\nTitle: <title>`
+    ? `${firstPrompt}\n\nTwoja poprzednia odpowiedź:\n${previousAnswer.trim()}\n\nTytuł „${title}” ${reason}.${avoidPl} Podaj inny tytuł zgodny z zasadami (2-5 słów). Odpowiedz jedną linią:\nTytuł: <tytuł>`
+    : `${firstPrompt}\n\nYour previous answer:\n${previousAnswer.trim()}\n\nTitle "${title}" ${reason}.${avoidEn} Give a different title that follows the rules (2-5 words). Answer in one line:\nTitle: <title>`
 }
 
 // ------------------------------------------------------------------ word-form fix
@@ -571,15 +632,24 @@ export const fixWordForms = (title: string, sources: readonly string[]): string 
 // The model sometimes capitalises every item of a list ("Wypowiedzenie, Auto, Psycholożka"). A word
 // after the first is lowercased when the source writes the same word in lowercase and never
 // capitalises it inside a sentence (so names and acronyms stay).
-export const fixTitleCase = (title: string, content: string): string => {
+const EN_COMMON_SUFFIX = /(?:ing|tion|sion|ment|ness|ity|ance|ence|ship)$/iu
+export const fixTitleCase = (title: string, content: string, language: Language = 'pl'): string => {
   const lowerStems = new Set<string>()
-  for (const word of wordsOf(content)) if (!startsUpper(word)) lowerStems.add(stemOf(word))
+  const capCounts = new Map<string, number>()
+  for (const word of wordsOf(content)) {
+    if (startsUpper(word)) capCounts.set(stemOf(word), (capCounts.get(stemOf(word)) ?? 0) + 1)
+    else lowerStems.add(stemOf(word))
+  }
   const nameStems = new Set<string>()
   for (const match of content.matchAll(/[\p{Ll},:;]\s+(\p{Lu}\p{L}*)/gu)) nameStems.add(stemOf(match[1]))
   return title.replace(WORD, (word, offset: number) => {
     if (offset === 0 || !startsUpper(word) || word === word.toUpperCase()) return word
     const stem = stemOf(word)
-    return lowerStems.has(stem) && !nameStems.has(stem) ? word.toLowerCase() : word
+    if (nameStems.has(stem)) return word
+    // English models write Title Case; a capital survives only where the source shows a name
+    // (capitalised mid-sentence, or repeatedly).
+    const lower = lowerStems.has(stem) || (language === 'en' && ((capCounts.get(stem) ?? 0) < 2 || EN_COMMON_SUFFIX.test(word)))
+    return lower ? word.toLowerCase() : word
   })
 }
 
@@ -593,9 +663,101 @@ export const limitEnumeration = (title: string, language: Language): string => {
   return `${head ? `${head} ` : ''}${items[0]} ${joiner} ${items[1]}`
 }
 
+// Instrumental endings of Polish nouns and adjectives ("z promotorem", "z Olą", "z nowymi").
+const PL_INSTRUMENTAL = /(?:em|iem|ą|ią|ami|mi|ym|im)$/u
+const PL_COORD_EXEMPT = new Set(['problem', 'system', 'program'])
+const PL_TITLE_PREPOSITIONS = new Set(['z', 'ze', 'u', 'w', 'we', 'na', 'do', 'od', 'o', 'po', 'dla', 'przy', 'pod', 'nad', 'za', 'bez', 'przed', 'między'])
+
+// "Spotkanie z promotorem i prace dyplomowe": the second conjunct hangs on "z" and has the wrong
+// case. Moving it in front ("Prace dyplomowe i spotkanie z promotorem") keeps both topics and is correct.
+export const fixInstrumentalCoordination = (title: string): string => {
+  const colon = title.indexOf(':')
+  const head = colon >= 0 ? `${title.slice(0, colon + 1)} ` : ''
+  const body = colon >= 0 ? title.slice(colon + 1).trim() : title
+  const words = body.split(/\s+/u).filter(Boolean)
+  const withIndex = words.findIndex((word, index) => index >= 1 && /^(?:z|ze)$/iu.test(word))
+  if (withIndex < 1 || withIndex + 2 >= words.length) return title
+  const conjunctionIndex = words.findIndex((word, index) => index > withIndex + 1 && /^(?:i|oraz)$/iu.test(word))
+  if (conjunctionIndex < 0 || conjunctionIndex + 1 >= words.length) return title
+  const bridge = words.slice(withIndex + 1, conjunctionIndex)
+  const tail = words.slice(conjunctionIndex + 1)
+  const headWord = bridge[bridge.length - 1].toLowerCase()
+  const first = tail[0].toLowerCase()
+  if (bridge.length > 2 || tail.length > 2 || !PL_INSTRUMENTAL.test(headWord)) return title
+  if (PL_TITLE_PREPOSITIONS.has(first) || PL_INSTRUMENTAL.test(first) || PL_COORD_EXEMPT.has(first)) return title
+  const lead = words.slice(0, withIndex)
+  if (lead.length > 2 || words.length > 6) return title
+  const lowered = startsUpper(lead[0]) && lead[0] === lead[0].toUpperCase() ? lead[0] : lead[0].charAt(0).toLowerCase() + lead[0].slice(1)
+  const moved = [head ? tail[0] : capitalize(tail[0]), ...tail.slice(1), 'i', lowered, ...lead.slice(1), ...words.slice(withIndex, conjunctionIndex)]
+  return `${head}${moved.join(' ')}`
+}
+
+// "z Kuba" -> "z Kubą": a name copied from the source in the nominative after "z".
+export const fixNameAfterWith = (title: string): string =>
+  title.replace(/(^|\s)(z|ze) (\p{Lu}\p{Ll}*?)(ia|a)(?=\s|$|,)/gu, (_m, space: string, preposition: string, stem: string, ending: string) =>
+    `${space}${preposition} ${stem}${ending === 'ia' ? 'ią' : 'ą'}`)
+
+// "plan urlopu na Portugalii": a country in the locative takes "w", not "na".
+export const fixCountryPreposition = (title: string): string =>
+  title.replace(/(^|\s)na (\p{Lu}\p{L}+ii)(?=\s|$)/gu, (match, space: string, name: string) => (name === 'Słowacji' ? match : `${space}w ${name}`))
+
+// A name in an oblique case with no governing word in front ("Stasia z zapaleniem ucha") is turned
+// back into the nominative form the source also contains ("Staś").
+const plain = (word: string): string => word.toLowerCase().replace(/ś/gu, 's').replace(/ć/gu, 'c').replace(/ł/gu, 'l').replace(/ń/gu, 'n').replace(/ź|ż/gu, 'z').replace(/ó/gu, 'o').replace(/ą/gu, 'a').replace(/ę/gu, 'e')
+const PL_OBLIQUE_HEAD = /(?:ę|ą|ego|emu|owi|ami|ymi|imi|ych|ich)$/u
+export const obliqueHeadWord = (title: string): string | null => {
+  const first = wordsOf(title)[0]
+  if (!first || first.length < 5 || title.includes(':') || /ię$/u.test(first)) return null
+  return PL_OBLIQUE_HEAD.test(first.toLowerCase()) ? first : null
+}
+export const fixObliqueName = (title: string, content: string): string => {
+  const first = wordsOf(title)[0]
+  if (!first || !startsUpper(first) || title.includes(':') || !/(?:ia|iu|ię|ią|iem|iowi)$/u.test(first)) return title
+  const normal = plain(first)
+  const nominatives = new Set<string>()
+  for (const word of wordsOf(content)) {
+    if (startsUpper(word) && word !== first && !/[aeiouyąęó]$/iu.test(word) && normal.startsWith(plain(word)) && plain(word).length >= 3 && plain(word).length < normal.length)
+      nominatives.add(word)
+  }
+  return nominatives.size === 1 ? title.replace(first, [...nominatives][0]) : title
+}
+
+// "Kalkulacja 25% na 12 000 zł": figures never belong in a title; the words around them still can.
+const NUMBER_UNITS = /^(?:zł|zlotych|złotych|pln|usd|eur|dollars?|euros?|pounds?|tys|mln|mld|procent\p{L}*|percent|%|kg|km|min|minut\p{L}*|godzin\p{L}*|hours?|minutes?)$/iu
+export const stripNumbers = (title: string, language: Language): string => {
+  if (!/\d/u.test(title)) return title
+  const stops = VOCABULARY[language].stop
+  const words = title.split(/\s+/u).filter(Boolean)
+  const kept: string[] = []
+  for (const word of words) {
+    if (/\d/u.test(word) || NUMBER_UNITS.test(word)) {
+      // A preposition that governed the figure goes with it.
+      while (kept.length > 1 && stops.has(kept[kept.length - 1].toLowerCase().replace(/[,:]$/u, ''))) kept.pop()
+      continue
+    }
+    kept.push(word)
+  }
+  while (kept.length > 0 && stops.has(kept[kept.length - 1].toLowerCase().replace(/[,:]$/u, ''))) kept.pop()
+  const result = kept.join(' ').replace(/[,:]$/u, '')
+  return wordsOf(result).length >= 1 ? result : title
+}
+
+// "u promotora, u doktora Zielińskiego": the doctor is the supervisor, not a physician. A title that
+// turns him into a medical visit ("Spotkanie u doktora Zielińskiego") names the supervisor instead.
+const ACADEMIC_DOCTOR = /promotor\p{L}*[^.!?]{0,30}?(?:doktor\p{L}*|dr)\s+(\p{Lu}\p{L}+)/iu
+export const fixAcademicDoctor = (title: string, content: string): string => {
+  const surname = ACADEMIC_DOCTOR.exec(content)?.[1]
+  if (!surname) return title
+  const stem = surname.toLowerCase().slice(0, Math.max(4, surname.length - 3))
+  return title.replace(new RegExp(String.raw`(?:u|z|do|ze)\s+(?:doktor\p{L}*|dr\.?)\s+${stem}\p{L}*`, 'iu'), 'z promotorem')
+}
+
 // Deterministic clean-up of a model title.
-const polishTitle = (raw: string, content: string, language: Language): string =>
-  limitEnumeration(language === 'pl' ? fixTitleCase(fixWordForms(raw, [content]), content) : raw, language)
+const polishTitle = (raw: string, content: string, language: Language): string => {
+  if (language === 'en') return limitEnumeration(fixTitleCase(stripNumbers(raw, 'en'), content, 'en'), 'en')
+  const cased = fixTitleCase(fixAcademicDoctor(fixWordForms(stripNumbers(raw, 'pl'), [content]), content), content)
+  return limitEnumeration(fixInstrumentalCoordination(fixNameAfterWith(fixCountryPreposition(fixObliqueName(cased, content)))), language)
+}
 
 // ------------------------------------------------------------------ deterministic fallback
 
@@ -610,6 +772,9 @@ const pointHead = (line: string, language: Language): string | null => {
   if (words.length === 0) return null
   const first = words[0].toLowerCase()
   if (vocabulary.fallbackStopHead.has(first) || vocabulary.isVerbLike(first)) return null
+  if (language === 'pl' && words.some((word) => PL_HEAD_VERB.test(word.toLowerCase()))) return null
+  if (language === 'en' && (EN_HEAD_IMPERATIVE.has(first) || words.some((word) => word.length > 4 && EN_HEAD_VERB.test(word.toLowerCase())))) return null
+  if (words.some((word) => NUMBER_UNITS.test(word))) return null
   const kept = words.slice(0, 4).filter((word) => !vocabulary.isDateWord(word.toLowerCase()))
   const dropTail = new Set(['około', 'ok', 'prawie', 'ponad', 'kto', 'ile', 'about', 'almost', 'over'])
   while (kept.length > 0 && (vocabulary.stop.has(kept[kept.length - 1].toLowerCase()) || dropTail.has(kept[kept.length - 1].toLowerCase())))
@@ -667,6 +832,10 @@ export const diaryTitle = (title: string, content: string, language: Language): 
   return wordsOf(result).length <= 6 ? result : title
 }
 
+// A note that opens by announcing a weekly plan is titled as one; the model tends to pick the first item.
+const planTitle = (title: string, language: Language): string =>
+  wordsOf(title).some((word) => /^(?:plan|week|weekly|tydzie)/iu.test(word)) ? title : language === 'pl' ? 'Plan tygodnia' : 'Week plan'
+
 // ------------------------------------------------------------------ main entry
 
 export const generateTitleAndTags = async (
@@ -690,11 +859,18 @@ export const generateTitleAndTags = async (
   recordGeneration('title', prompt.length, first, input.content.length)
   const parsed = parseTitleTagsResponse(first.text)
   const diary = isDiaryLead(lead)
-  const categories: string[] = diary
+  const plan = !diary && isPlanLead(lead)
+  const modelCategories: string[] = diary
     ? ['Dziennik', ...parsed.categories.filter((category) => category !== 'Dziennik')].slice(0, MAX_TAGS)
-    : parsed.categories
+    : plan ? ['Planowanie', ...parsed.categories.filter((category) => category !== 'Planowanie')].slice(0, MAX_TAGS) : parsed.categories
+  const categories = adjustCategories(modelCategories, input.content)
+  const checkTitle = (candidate: string): string[] => {
+    const found = titleProblems(candidate, sources, language)
+    if (found.length === 0 && isOffPoints(candidate, points, language)) found.push('off-points')
+    return found
+  }
   let title = polishTitle(parsed.title, input.content, language)
-  let problems = titleProblems(title, sources, language)
+  let problems = checkTitle(title)
 
   if (problems.length > 0) {
     try {
@@ -706,7 +882,7 @@ export const generateTitleAndTags = async (
       const line = repairedText.split(/\r?\n/u).map((l) => TITLE_LINE.exec(l.trim())).find((m) => m !== null)
       const repairedRaw = line ? cleanModelTitle(line[1]) : cleanModelTitle(repairedText)
       const repaired = polishTitle(repairedRaw, input.content, language)
-      const repairedProblems = titleProblems(repaired, sources, language)
+      const repairedProblems = checkTitle(repaired)
       if (repairedProblems.length === 0 || (hardProblems(problems).length > 0 && hardProblems(repairedProblems).length === 0)) {
         title = repaired
         problems = repairedProblems
@@ -720,7 +896,13 @@ export const generateTitleAndTags = async (
 
   // A merely vague title is better than a point head cut out of the middle of a sentence.
   if (hardProblems(problems).length === 0) {
-    return { title: diary ? diaryTitle(title, input.content, language) : title, categories, titleFallback: false }
+    const named = diary ? diaryTitle(title, input.content, language) : plan ? planTitle(title, language) : title
+    return { title: named, categories, titleFallback: false }
   }
-  return { title: fallbackTitleFromPoints(points, categories, sources, language), categories, titleFallback: true }
+  // A lone topic word ("Kalkulacja") still says more than the category label.
+  const lone = wordsOf(title)
+  const loneTopic = lone.length === 1 && lone[0].length >= 5 && !VOCABULARY[language].generic.has(lone[0].toLowerCase()) && sources.some((source) => source.toLowerCase().includes(lone[0].toLowerCase().slice(0, 5))) ? lone[0].toLowerCase() : ''
+  const fromPoints = fallbackTitleFromPoints(points, categories, sources, language)
+  const generic = fromPoints === defaultTitle(categories, language)
+  return { title: loneTopic && generic ? `${language === 'pl' ? 'Notatka' : 'Note'}: ${loneTopic}` : fromPoints, categories, titleFallback: true }
 }

@@ -30,3 +30,12 @@ export const decodeCheckpointMap = (json: string): Record<string, unknown> => {
     throw new Error('Invalid processing checkpoint')
   return value as Record<string, unknown>
 }
+
+// Task suggestions come from the transcript alone: a new title, summary or
+// category must not hide suggestions that are already prepared for it.
+export const taskSourceIdentity = (source: Pick<NoteInput, 'content' | 'language' | 'transcriptionIncomplete'>): string =>
+  JSON.stringify({
+    content: source.content,
+    language: source.language ?? 'pl',
+    transcriptionIncomplete: source.transcriptionIncomplete ?? false,
+  })

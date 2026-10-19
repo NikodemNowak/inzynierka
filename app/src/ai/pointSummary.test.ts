@@ -8,6 +8,7 @@ import {
   lowerStrayCapitals,
   snapToNoteSpelling,
   hedgeClock,
+  impersonalizeEn,
   cleanLiteral,
   outputTokensFor,
   splitIntoChunks,
@@ -26,8 +27,13 @@ import {
   isTrivia,
   recoverMissed,
   shortenLiteral,
+  parsePoints,
+  splitMergedEvents,
+  trimUnsupportedTail,
+  repairPoint,
   type SummaryPoint,
 } from './pointSummary';
+import { pointNumbers, statedNumbers } from './polishNumbers';
 import type { SummarySourceUnit } from './summarySources';
 import { generate, type GenerationResult } from './llm';
 
@@ -769,4 +775,122 @@ test('restores the hedge on a spoken hour and allows u/do person paraphrase', ()
 
 test('a literal keeps the hedged clock and drops "jakąś tam"', () => {
   expect(cleanLiteral('zajęcia Jakość jakąś tam oprogramowania z panem mgr')).toBe('Zajęcia Jakość oprogramowania z panem mgr.');
+});
+
+test('an English literal drops the first-person duty', () => {
+  expect(impersonalizeEn('I should book a slot in the lab for the user tests, probably next Wednesday')).toBe('Book a slot in the lab for the user tests, probably next Wednesday');
+  expect(impersonalizeEn('If the fever stays high, I have to call the clinic and not wait')).toBe('If the fever stays high, call the clinic and not wait');
+  expect(impersonalizeEn('Okay so I need to pay the rent')).toBe('Pay the rent');
+});
+
+describe('round 16 summary repairs', () => {
+  const unitsOf = (...texts: string[]): { id: number; text: string }[] => texts.map((text, index) => ({ id: index + 1, text }));
+  const byIdOf = (units: { id: number; text: string }[]): Map<number, { id: number; text: string }> => new Map(units.map(u => [u.id, u]));
+
+  test('drops the ids a model repeats inside the point text', () => {
+    const points = parsePoints('- Wizyta w poniedziałek o 16:30 (13) [13]\n- Zabrać książeczkę (14, 15) [14]', new Set([13, 14, 15]));
+    expect(points.map(p => p.text)).toEqual(['Wizyta w poniedziałek o 16:30', 'Zabrać książeczkę (14, 15)']);
+  });
+
+  test('a grouped amount is one number', () => {
+    expect(pointNumbers('Oferta 19 500 zł').has(19500)).toBe(true);
+    expect(pointNumbers('Oferta 19 500 zł').has(500)).toBe(false);
+    expect(statedNumbers('dziewiętnaście tysięcy pięćset').has(19500)).toBe(true);
+    const units = unitsOf('Oferta wynosi dziewiętnaście tysięcy pięćset złotych z materiałami.');
+    expect(checkPoint({ text: 'Oferta 19 500 zł z materiałami', sourceIds: [1] }, byIdOf(units), units, 'pl')).toEqual([]);
+  });
+
+  test('"jak będzie" in the source may stay in the point', () => {
+    const units = unitsOf('Oddam Tomkowi wiertarkę w weekend, jak będzie po drodze.');
+    expect(checkPoint({ text: 'Oddać Tomkowi wiertarkę w weekend, jak będzie po drodze', sourceIds: [1] }, byIdOf(units), units, 'pl')).toEqual([]);
+  });
+
+  test('a number stated one sentence away is cited, and the swapped weekday is replaced by the stated one', () => {
+    const units = unitsOf(
+      'Plan urlopu.',
+      'Wylot piątego listopada, w czwartek, o siódmej dziesięć z Okęcia.',
+      'Powrót dwunastego listopada wieczorem.',
+    );
+    const point = { text: 'Plan urlopu: piątek 5 listopada o 7:10 z Okęcia, powrót 12 listopada', sourceIds: [1, 2] };
+    const fixed = repairPoint(point, byIdOf(units), units, 'pl');
+    expect(fixed.issues).toEqual([]);
+    expect(fixed.point.text).toBe('Plan urlopu: czwartek 5 listopada o 7:10 z Okęcia, powrót 12 listopada');
+    expect(fixed.point.sourceIds).toEqual([1, 2, 3]);
+  });
+
+  test('an unsupported tail of a few words is cut, a negated or numeric one is not', () => {
+    const units = unitsOf('Jutro na ósmą trzydzieści zajęcia z panem, trzeba pokazać plany testów, jest to w miarę przygotowane.');
+    const byId = byIdOf(units);
+    const cut = trimUnsupportedTail({ text: 'Pokazać plany testów w stanie gotowości', sourceIds: [1] }, byId, units, 'pl');
+    expect(cut?.text).toBe('Pokazać plany testów');
+    expect(trimUnsupportedTail({ text: 'Pokazać plany testów, nie w stanie gotowości', sourceIds: [1] }, byId, units, 'pl')).toBeNull();
+    expect(trimUnsupportedTail({ text: 'Pokazać plany testów do czterech etapów', sourceIds: [1] }, byId, units, 'pl')).toBeNull();
+  });
+
+  test('an English point that lost the source hedge gets it back', () => {
+    const units = unitsOf('If the fever stays above thirty eight for three days, call the clinic.');
+    const fixed = repairPoint({ text: 'Fever above 38 for three days - call clinic', sourceIds: [1] }, byIdOf(units), units, 'en');
+    expect(fixed.issues).toEqual([]);
+    expect(fixed.point.text).toBe('If fever above 38 for three days - call clinic');
+  });
+
+  test('splits two events joined by "and" at a clock time', () => {
+    expect(splitMergedEvents('Go to gym now and 6 PM psychologist appointment', 'en')).toEqual(['Go to gym now', '6 PM psychologist appointment']);
+    expect(splitMergedEvents('Meeting at 5 PM and 6 PM dinner', 'en')).toEqual(['Meeting at 5 PM and 6 PM dinner']);
+    expect(splitMergedEvents('Open between 5 and 6 PM daily', 'en')).toEqual(['Open between 5 and 6 PM daily']);
+    expect(splitMergedEvents('Jedź na siłownię i o 18:00 wizyta', 'pl')).toEqual(['Jedź na siłownię i o 18:00 wizyta']);
+  });
+
+  test('the literal quotes the sentences that carry the rejected point, not the introduction', () => {
+    const units = unitsOf(
+      'No dobra, plan urlopu, żeby to wszystko było w jednym miejscu.',
+      'Lecimy do Portugalii.',
+      'Wylot piątego listopada o siódmej dziesięć z Okęcia.',
+      'Powrót dwunastego listopada wieczorem.',
+    );
+    const { points } = finalizePoints([{ text: 'Plan urlopu: lot 6 listopada o 7:10 z Okęcia, powrót 12 listopada, bilet 900 zł', sourceIds: [1, 3, 4] }], units, 'pl');
+    expect(points).toHaveLength(1);
+    expect(points[0].literal).toBe(true);
+    expect(points[0].sourceIds).toEqual([3, 4]);
+  });
+
+  test('unpunctuated speech is cut at spoken cues and an explanation tail goes', () => {
+    expect(shortenLiteral('Jutro mam na godzinę ok. 8:30 zajęcia Jakość oprogramowania z panem mgr trzeba pokazać plany testów jest to w miarę przygotowane'))
+      .toBe('Jutro mam na godzinę ok. 8:30 zajęcia Jakość oprogramowania z panem mgr, trzeba pokazać plany testów');
+    expect(shortenLiteral('Zadzwonić do pani Krystyny w sprawie umowy jeszcze dziś, bo ceny rosną')).toBe('Zadzwonić do pani Krystyny w sprawie umowy jeszcze dziś');
+    expect(shortenLiteral('Zapłacić do piątku, bo ceny rosną od poniedziałku')).toBe('Zapłacić do piątku, bo ceny rosną od poniedziałku');
+  });
+
+  test('the speaker duty inside a clause and "na godzinę" are tidied', () => {
+    expect(impersonalize('Potem trzy noce w Lagos, muszę to zrobić w tym tygodniu', new Set())).toBe('Potem trzy noce w Lagos, zrobić to w tym tygodniu');
+    expect(impersonalize('Jeśli gorączka wróci, to mam zadzwonić do przychodni', new Set())).toBe('Jeśli gorączka wróci, to zadzwonić do przychodni');
+  });
+
+  test('English first-person leftovers become note wording', () => {
+    expect(impersonalizeEn("After that three nights in Lagos, I haven't booked anything there yet, do it this week"))
+      .toBe('After that three nights in Lagos, nothing booked yet, do it this week');
+    expect(impersonalizeEn("I'm going to go by tram to the shop")).toBe('Go by tram to the shop');
+  });
+
+  test('"w środku" is not a weekday', () => {
+    expect(isEventUnit('Które też mają w środku ibuprofen')).toBe(false);
+    expect(checkPoint({ text: 'Tabletki ze środkiem', sourceIds: [1] }, byIdOf(unitsOf('Tabletki ze środkiem.')), null, 'pl')).toEqual([]);
+  });
+});
+
+test('capPoints keeps a literal that carries a number and a condition over weaker points', () => {
+  const units = [1, 2, 3].map(id => ({ id, text: `Zdanie ${id}.` }));
+  const dose = { text: 'Na gorączkę, jak będzie powyżej 38,5, paracetamol, 10 mililitrów, ale nie częściej niż co 6 godzin', sourceIds: [1], literal: true };
+  const weak = { text: 'Jutro rano jeszcze do niej zadzwonię przed wyjazdem', sourceIds: [2] };
+  const plain = { text: 'Mama bierze Stasia w sobotę', sourceIds: [3] };
+  expect(capPoints([dose, weak, plain], units, 2).map(p => p.text)).toContain(dose.text);
+});
+
+test('a spoken clause split never separates "nie" from its verb', () => {
+  const literal = shortenLiteral('na koniec najważniejsze w piątek nie mam zajęć więc mogę zostać dłużej na uczelni i dokończyć prezentację spokojnie w bibliotece');
+  expect(literal).not.toMatch(/nie,/u);
+});
+
+test('"na koniec najważniejsze" is a lead filler', () => {
+  expect(cleanLiteral('na koniec najważniejsze w piątek nie mam zajęć')).toBe('W piątek nie mam zajęć.');
 });

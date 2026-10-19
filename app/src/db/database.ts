@@ -68,6 +68,11 @@ const initDatabase = async (): Promise<SQLite.SQLiteDatabase> => {
       updatedAt INTEGER NOT NULL
     );
     CREATE UNIQUE INDEX IF NOT EXISTS processing_jobs_note_kind ON processing_jobs (noteId, kind);
+    CREATE TABLE IF NOT EXISTS ask_vectors (
+      key TEXT PRIMARY KEY NOT NULL,
+      noteId TEXT NOT NULL,
+      vector BLOB NOT NULL
+    );
   `)
   await addColumnIfMissing(db, 'notes', 'summary', 'TEXT')
   await addColumnIfMissing(db, 'notes', 'summaryDocument', 'TEXT')

@@ -1,8 +1,14 @@
 {
-  "android": { "app_name": "Notes" },
+  "android": {
+    "app_name": "Notes"
+  },
   "ios": {
     "CFBundleDisplayName": "Notes",
     "NSMicrophoneUsageDescription": "Allow Notes to record audio.",
-    "NSSpeechRecognitionUsageDescription": "Allow Notes to recognize speech."
+    "NSSpeechRecognitionUsageDescription": "Allow Notes to recognize speech.",
+    "NSCalendarsUsageDescription": "Allow Notes to add tasks to your calendar.",
+    "NSCalendarsFullAccessUsageDescription": "Allow Notes to add tasks to your calendar.",
+    "NSRemindersUsageDescription": "Allow Notes to add tasks to Reminders.",
+    "NSRemindersFullAccessUsageDescription": "Allow Notes to add tasks to Reminders."
   }
 }

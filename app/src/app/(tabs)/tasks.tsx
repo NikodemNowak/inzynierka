@@ -17,6 +17,8 @@ import { TasksEmptyState } from '../../tasks/TasksEmptyState'
 import { Icon } from '../../ui/Icon'
 import { useReducedMotion } from '../../ui/Motion'
 import { TaskArrival, TaskCheck, TaskText, subscribePersistedTaskText, useTaskMotionActive, useTaskTextReveal } from '../../tasks/TaskMotion'
+import { TaskDueChip } from '../../tasks/TaskDueChip'
+import { splitTaskText } from '../../tasks/taskDue'
 import { radius, spacing, type, useTheme } from '../../ui/theme'
 
 const ENTRANCE_WINDOW_MS = 1400
@@ -70,6 +72,7 @@ export default function TasksScreen() {
       ),
     [notes, t],
   )
+  const noteCreated = useMemo(() => new Map(notes.map((note) => [note.id, note.createdAt])), [notes])
   const sections = useMemo(
     () => [
       {
@@ -175,7 +178,7 @@ export default function TasksScreen() {
               </Pressable>
               <View style={styles.taskCopy}>
                 <TaskText
-                  text={item.text}
+                  text={noteCreated.has(item.noteId) ? splitTaskText(item.text).title : item.text}
                   reveal={textReveal.ids.has(item.id)}
                   active={motionActive}
                   reducedMotion={reducedMotion}
@@ -189,6 +192,9 @@ export default function TasksScreen() {
                     },
                   ]}
                 />
+                {noteCreated.has(item.noteId) && (
+                  <TaskDueChip text={item.text} recordedAt={new Date(noteCreated.get(item.noteId)!)} noteTitle={noteTitles.get(item.noteId) ?? t('Bez tytułu', 'Untitled')} done={item.done} />
+                )}
                 <Pressable
                   onPress={() => router.push(`/note/${item.noteId}`)}
                   accessibilityRole="button"

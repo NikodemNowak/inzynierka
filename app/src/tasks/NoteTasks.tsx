@@ -22,11 +22,14 @@ import { createTaskProposal, type TaskProposal } from '../ai/taskProposal'
 import { ensureModelReady, getModelMissingMessage } from '../ai/noteProcessing'
 import type { Language } from '../i18n/language'
 import { runDurableProcessing } from '../processing/jobRunner'
-import { jobSourceIdentity } from '../processing/jobIdentity'
+import { taskSourceIdentity } from '../processing/jobIdentity'
 import { MODEL_CONFIG } from '../ai/modelConfig'
 import { PIPELINE_VERSION } from '../ai/processingContext'
 import { recordOperationTiming } from '../ai/generationMetrics'
 import { useSettingsStore } from '../state/settingsStore'
+import { useTaskPrefetchStore } from './taskPrefetch'
+import { TaskDueChip } from './TaskDueChip'
+import { splitTaskText } from './taskDue'
 import {
   discardPendingProcessingResult,
   findPendingProcessingResult,
@@ -81,8 +84,13 @@ export function NoteTasks({
   const [discarding, setDiscarding] = useState(false)
   const actionInFlight = useRef(false)
   const [addedCount, setAddedCount] = useState(0)
-  const busy = status !== null || saving || discarding
-  const currentIdentity = note ? jobSourceIdentity(note) : null
+  // Suggestions prepared in the background right after processing (see taskPrefetch).
+  const prefetching = useTaskPrefetchStore((state) => Boolean(state.running[noteId]))
+  const prefetchSettled = useTaskPrefetchStore((state) => state.settled[noteId] ?? 0)
+  const seenPrefetch = useRef(prefetchSettled)
+  const shownStatus = status ?? (prefetching ? t('Przygotowuję propozycje zadań…', 'Preparing task suggestions…') : null)
+  const busy = shownStatus !== null || saving || discarding
+  const currentIdentity = note ? taskSourceIdentity(note) : null
   const proposalReveal = useTaskTextReveal(motionActive, reducedMotion, `${noteId}:${currentIdentity}`)
   const savedReveal = useTaskTextReveal(motionActive, reducedMotion, `${noteId}:${currentIdentity}`)
   const [proposalBatch, setProposalBatch] = useState(0)
@@ -116,6 +124,10 @@ export function NoteTasks({
     if (!currentIdentity) return
     let active = true
     const version = suggestionVersion.current
+    // Suggestions that arrive from a background prefetch while the note is open get the usual reveal.
+    const fromPrefetch = prefetchSettled !== seenPrefetch.current
+    seenPrefetch.current = prefetchSettled
+    const revealPrefetched = fromPrefetch ? proposalReveal.prepare() : null
     void findPendingProcessingResult({
       noteId,
       kind: 'tasks',
@@ -144,6 +156,10 @@ export function NoteTasks({
         setSourceLanguage(note?.language ?? 'pl')
         setSourceIdentity(currentIdentity)
         setProposals(fresh)
+        if (revealPrefetched) {
+          const revealAccepted = revealPrefetched(fresh)
+          setProposalBatch(batch => revealAccepted ? batch + 1 : 0)
+        }
         setProposalWarnings(found.warnings)
         setSelected(new Set(fresh))
       })
@@ -154,7 +170,7 @@ export function NoteTasks({
     return () => {
       active = false
     }
-  }, [noteId, currentIdentity, content, note?.language])
+  }, [noteId, currentIdentity, content, note?.language, prefetchSettled])
 
   useEffect(() => {
     onBusyChange?.(busy)
@@ -203,11 +219,11 @@ export function NoteTasks({
     generationInFlight.current = version
     const snapshot = content
     const snapshotLanguage = note.language ?? 'pl'
-    const snapshotIdentity = jobSourceIdentity(note)
+    const snapshotIdentity = taskSourceIdentity(note)
     const ownsView = () => suggestionVersion.current === version && generationInFlight.current === version
     const sourceIsCurrent = () => {
       const current = useNotesStore.getState().notes.find((item) => item.id === noteId)
-      return Boolean(current && !current.transcriptionIncomplete && jobSourceIdentity(current) === snapshotIdentity)
+      return Boolean(current && !current.transcriptionIncomplete && taskSourceIdentity(current) === snapshotIdentity)
     }
     const reportStatus = (label: string) => {
       if (ownsView() && sourceIsCurrent()) setStatus(label)
@@ -227,7 +243,7 @@ export function NoteTasks({
           {
             noteId,
             kind: 'tasks',
-            source: jobSourceIdentity(note),
+            source: taskSourceIdentity(note),
             model: MODEL_CONFIG.url,
             pipeline: PIPELINE_VERSION,
           },
@@ -356,7 +372,7 @@ export function NoteTasks({
     }
     if (
       sourceContent === null ||
-      sourceIdentity !== jobSourceIdentity(currentNote) ||
+      sourceIdentity !== taskSourceIdentity(currentNote) ||
       currentNote.transcriptionIncomplete ||
       currentNote.content !== sourceContent ||
       (currentNote.language ?? 'pl') !== sourceLanguage
@@ -434,7 +450,7 @@ export function NoteTasks({
     }
   }
 
-  const desiredView = { tasks, proposals, loading: Boolean(status) && proposals.length === 0, noteProcessing, addedCount, proposalWarnings }
+  const desiredView = { tasks, proposals, loading: Boolean(shownStatus) && proposals.length === 0, noteProcessing, addedCount, proposalWarnings }
   const viewScope = currentIdentity ?? noteId
   const shown = useLayoutTransition(desiredView, JSON.stringify(desiredView), viewScope, motionActive, reducedMotion)
   const exitingPlaceholders = usePlaceholderExit(shown.loading, shown.proposals.length, viewScope, motionActive, reducedMotion)
@@ -479,20 +495,25 @@ export function NoteTasks({
               ]}
             />
           </Pressable>
-          <TaskText
-            key={`${currentIdentity}:${task.id}`}
-            text={task.text}
-            index={index}
-            reveal={!isFastReveal(shown.tasks.length) && savedReveal.ids.has(task.id)}
-            active={motionActive}
-            reducedMotion={reducedMotion}
-            onRevealConsumed={() => savedReveal.consume(task.id)}
-            style={[
-              styles.taskText,
-              { color: task.done ? colors.muted : colors.ink },
-              task.done && styles.taskDone,
-            ]}
-          />
+          <View style={styles.taskCopy}>
+            <TaskText
+              key={`${currentIdentity}:${task.id}`}
+              text={note ? splitTaskText(task.text).title : task.text}
+              index={index}
+              reveal={!isFastReveal(shown.tasks.length) && savedReveal.ids.has(task.id)}
+              active={motionActive}
+              reducedMotion={reducedMotion}
+              onRevealConsumed={() => savedReveal.consume(task.id)}
+              style={[
+                styles.taskText,
+                { color: task.done ? colors.muted : colors.ink },
+                task.done && styles.taskDone,
+              ]}
+            />
+            {note && (
+              <TaskDueChip text={task.text} recordedAt={new Date(note.createdAt)} noteTitle={note.title || t('Bez tytułu', 'Untitled')} done={task.done} />
+            )}
+          </View>
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={t(
@@ -560,7 +581,7 @@ export function NoteTasks({
       ))}
       {proposalSlots.length > 0 && (
         <View style={styles.proposalList}>
-          {shown.loading && motionActive && <ProcessingIndicator label={status ?? undefined} stage={statusStage} active={motionActive} />}
+          {shown.loading && motionActive && <ProcessingIndicator label={shownStatus ?? undefined} stage={status ? statusStage : 'processing'} active={motionActive} />}
           {shown.proposals.length > 0 && <Text accessibilityLiveRegion="polite" style={[styles.description, { color: colors.muted }]}>
             {t('Zaznacz zadania, które chcesz dodać.', 'Select the tasks you want to add.')}
           </Text>}
@@ -678,7 +699,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  taskText: { ...type.body, flex: 1 },
+  taskCopy: { flex: 1 },
+  taskText: { ...type.body },
   taskDone: { textDecorationLine: 'line-through' },
   empty: { ...type.body },
   error: { ...type.body },

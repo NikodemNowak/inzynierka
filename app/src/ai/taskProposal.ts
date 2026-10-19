@@ -42,7 +42,7 @@ export const createTaskProposal = async (
   execution?: ProcessingExecutionContext,
   recoverUnresolved = false,
 ): Promise<TaskProposal> => {
-  if (getSummaryEngineMode() === 'points' && language === 'pl') {
+  if (getSummaryEngineMode() === 'points') {
     const found = await createQualityTaskLines(source, language, execution)
     const unique = new Map<string, string>()
     for (const task of found.tasks) {
