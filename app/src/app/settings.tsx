@@ -126,7 +126,7 @@ function LanguageSection() {
   return (
     <View style={styles.section}>
       <Text
-        style={[styles.sectionTitle, { color: colors.ink }]}
+        style={[styles.sectionTitle, { color: colors.muted }]}
         accessibilityRole="header"
       >
         {t('Język', 'Language')}
@@ -150,7 +150,6 @@ function LanguageSection() {
           onPress={() => open('app')}
           style={styles.preferenceRow}
         >
-          <Icon name="phone" color={colors.accent} size={21} />
           <Text style={[styles.preferenceLabel, { color: colors.ink }]}>
             {t('Język aplikacji', 'App language')}
           </Text>
@@ -176,7 +175,6 @@ function LanguageSection() {
             { borderTopColor: colors.line },
           ]}
         >
-          <Icon name="note" color={colors.accent} size={21} />
           <Text style={[styles.preferenceLabel, { color: colors.ink }]}>
             {t('Język nowych notatek', 'Language for new notes')}
           </Text>
@@ -222,7 +220,7 @@ function LanguageSection() {
                   <Text
                     style={[
                       styles.appearanceOptionTitle,
-                      { color: selected ? colors.accent : colors.ink },
+                      { color: colors.ink },
                     ]}
                   >
                     {option.title}
@@ -237,7 +235,7 @@ function LanguageSection() {
                   </Text>
                 </View>
                 {selected ? (
-                  <Icon name="check" color={colors.accent} size={22} />
+                  <Icon name="check" color={colors.ink} size={22} />
                 ) : (
                   <View style={styles.appearanceCheckSpace} />
                 )}
@@ -312,7 +310,7 @@ function ModelSection() {
   return (
     <View style={styles.section}>
       <Text
-        style={[styles.sectionTitle, { color: colors.ink }]}
+        style={[styles.sectionTitle, { color: colors.muted }]}
         accessibilityRole="header"
       >
         {t('Model lokalny', 'Local model')}
@@ -324,24 +322,19 @@ function ModelSection() {
         ]}
       >
         <View style={styles.modelHeader}>
-          <View
-            style={[styles.modelIcon, { backgroundColor: colors.accentSoft }]}
-          >
-            <Icon name="sparkles" color={colors.accent} size={25} />
-          </View>
           <View style={styles.modelIdentity}>
             <Text style={[styles.modelName, { color: colors.ink }]}>
-              {MODEL_CONFIG.displayName}
+              {MODEL_CONFIG.displayName.replace(/\s*\([^)]*\)$/, '')}
             </Text>
             <Text style={[styles.modelPurpose, { color: colors.muted }]}>
-              {t('Tytuły i podsumowania', 'Titles and summaries')}
+              {t('Tytuły, streszczenia i zadania na telefonie', 'Titles, summaries and tasks on the phone')}
             </Text>
           </View>
           <View
-            style={[styles.statusBadge, { backgroundColor: colors.accentSoft }]}
+            style={[styles.statusBadge, { backgroundColor: status === 'ready' ? colors.marker : colors.surface }]}
           >
-            <Icon name={statusIcon} color={colors.accent} size={15} />
-            <Text style={[styles.statusLabel, { color: colors.accent }]}>
+            {status === 'ready' && <Icon name={statusIcon} color={colors.onMarker} size={14} />}
+            <Text style={[styles.statusLabel, { color: status === 'ready' ? colors.onMarker : colors.ink }]}>
               {statusLabel}
             </Text>
           </View>
@@ -367,7 +360,7 @@ function ModelSection() {
         {status === 'downloading' && (
           <View style={styles.progressSection}>
             <View
-              style={[styles.progressTrack, { backgroundColor: colors.line }]}
+              style={[styles.progressTrack, { backgroundColor: colors.surface }]}
               accessibilityRole="progressbar"
               accessibilityLabel={t(
                 'Pobieranie modelu AI',
@@ -383,7 +376,7 @@ function ModelSection() {
                 style={[
                   styles.progressFill,
                   {
-                    backgroundColor: colors.accent,
+                    backgroundColor: colors.marker,
                     width: `${Math.min(100, Math.max(0, progress))}%`,
                   },
                 ]}
@@ -436,20 +429,6 @@ function ModelSection() {
           />
         )}
 
-        {status === 'ready' && (
-          <Pressable
-            onPress={confirmRemove}
-            accessibilityRole="button"
-            style={[styles.removeRow, { borderTopColor: colors.line }]}
-          >
-            <Icon name="trash" color={colors.danger} size={21} />
-            <Text style={[styles.removeLabel, { color: colors.danger }]}>
-              {t('Usuń model', 'Remove model')}
-            </Text>
-            <Icon name="chevron-right" color={colors.muted} size={20} />
-          </Pressable>
-        )}
-
         {error && (
           <Text
             style={[styles.error, { color: colors.danger }]}
@@ -459,6 +438,13 @@ function ModelSection() {
           </Text>
         )}
       </View>
+      {status === 'ready' && (
+        <Pressable onPress={confirmRemove} accessibilityRole="button" style={styles.removeLink}>
+          <Text style={[styles.removeLabel, { color: colors.danger }]}>
+            {t('Usuń model z telefonu', 'Remove the model from this phone')}
+          </Text>
+        </Pressable>
+      )}
     </View>
   )
 }
@@ -466,13 +452,13 @@ function ModelSection() {
 const PRIVACY_POINTS = [
   {
     icon: 'phone' as const,
-    title: 'Notatki zostają na telefonie',
-    titleEn: 'Notes stay on your phone',
+    title: 'Notatki i nagrania zostają na telefonie',
+    titleEn: 'Notes and recordings stay on your phone',
   },
   {
-    icon: 'sparkles' as const,
-    title: 'Przetwarzanie działa offline',
-    titleEn: 'Processing works offline',
+    icon: 'shield' as const,
+    title: 'Opracowanie działa bez internetu',
+    titleEn: 'Processing works without internet',
   },
   {
     icon: 'lock' as const,
@@ -487,7 +473,7 @@ function PrivacySection() {
   return (
     <View style={styles.section}>
       <Text
-        style={[styles.sectionTitle, { color: colors.ink }]}
+        style={[styles.sectionTitle, { color: colors.muted }]}
         accessibilityRole="header"
       >
         {t('Prywatność', 'Privacy')}
@@ -509,7 +495,9 @@ function PrivacySection() {
               },
             ]}
           >
-            <Icon name={point.icon} color={colors.accent} size={22} />
+            <View style={[styles.privacyIcon, { backgroundColor: colors.marker }]}>
+              <Icon name={point.icon} color={colors.onMarker} size={16} />
+            </View>
             <View style={styles.privacyCopy}>
               <Text style={[styles.privacyTitle, { color: colors.ink }]}>
                 {t(point.title, point.titleEn)}
@@ -524,6 +512,7 @@ function PrivacySection() {
 
 function DataSection() {
   const { t } = useI18n()
+  const router = useRouter()
   const notes = useNotesStore((state) => state.notes)
   const tasks = useTasksStore((state) => state.tasks)
   const [busy, setBusy] = useState(false)
@@ -549,238 +538,129 @@ function DataSection() {
   return (
     <View style={styles.section}>
       <Text
-        style={[styles.sectionTitle, { color: colors.ink }]}
+        style={[styles.sectionTitle, { color: colors.muted }]}
         accessibilityRole="header"
       >
         {t('Twoje dane', 'Your data')}
       </Text>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityState={{ disabled: busy || notes.length === 0 }}
-        onPress={() => void exportAll()}
-        disabled={busy || notes.length === 0}
-        style={({ pressed }) => [
-          styles.dataCard,
-          styles.dataRow,
-          {
-            backgroundColor: colors.paper,
-            borderColor: colors.line,
-            opacity: busy || notes.length === 0 ? 0.48 : pressed ? 0.62 : 1,
-          },
-        ]}
-      >
-        <Icon name="share" color={colors.ink} size={22} />
-        <View style={styles.dataCopy}>
-          <Text style={[styles.dataTitle, { color: colors.ink }]}>
-            {busy
-              ? t('Eksportowanie…', 'Exporting…')
-              : t('Eksportuj notatki', 'Export notes')}
+      <View style={[styles.preferenceCard, { backgroundColor: colors.paper, borderColor: colors.line }]}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityState={{ disabled: busy || notes.length === 0 }}
+          onPress={() => void exportAll()}
+          disabled={busy || notes.length === 0}
+          style={({ pressed }) => [styles.preferenceRow, { opacity: busy || notes.length === 0 ? 0.48 : pressed ? 0.62 : 1 }]}
+        >
+          <View style={styles.dataCopy}>
+            <Text style={[styles.dataTitle, { color: colors.ink }]}>
+              {busy ? t('Eksportowanie…', 'Exporting…') : t('Eksportuj notatki', 'Export notes')}
+            </Text>
+            <Text style={[styles.dataDescription, { color: colors.muted }]}>
+              {t('Tekst i zadania, bez nagrań', 'Text and tasks, without recordings')}
+            </Text>
+          </View>
+          <Icon name="chevron-right" color={colors.faint} size={20} />
+        </Pressable>
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => router.push('/welcome')}
+          style={({ pressed }) => [styles.preferenceRow, styles.preferenceAction, { borderTopColor: colors.line, opacity: pressed ? 0.62 : 1 }]}
+        >
+          <Text style={[styles.preferenceLabel, { color: colors.ink }]}>
+            {t('Pokaż wprowadzenie', 'Show the introduction')}
           </Text>
-          <Text style={[styles.dataDescription, { color: colors.muted }]}>
-            {t('Nagrania nie są dołączane', 'Recordings are not included')}
-          </Text>
-        </View>
-        <Icon name="chevron-right" color={colors.muted} size={20} />
-      </Pressable>
+          <Icon name="chevron-right" color={colors.faint} size={20} />
+        </Pressable>
+      </View>
       {notes.length === 0 && (
         <Text style={[styles.hint, { color: colors.muted }]}>
           {t('Brak notatek do wyeksportowania.', 'No notes to export.')}
         </Text>
       )}
       {error && (
-        <Text
-          style={[styles.error, { color: colors.danger }]}
-          accessibilityRole="alert"
-        >
+        <Text style={[styles.error, { color: colors.danger }]} accessibilityRole="alert">
           {error}
         </Text>
       )}
-      <AppearancePreferences />
     </View>
   )
 }
 
-function AppearancePreferences() {
+function AppearanceSection() {
   const { t } = useI18n()
-  const router = useRouter()
   const { colors } = useTheme()
-  const appearancePreference = useSettingsStore(
-    (state) => state.appearancePreference,
-  )
-  const setAppearancePreference = useSettingsStore(
-    (state) => state.setAppearancePreference,
-  )
-  const [appearanceVisible, setAppearanceVisible] = useState(false)
-  const [appearanceSaving, setAppearanceSaving] = useState(false)
-  const [appearanceError, setAppearanceError] = useState(false)
-  const appearanceSaveLock = useRef(false)
-
-  const chooseAppearance = async (preference: AppearancePreference) => {
-    if (appearanceSaveLock.current) return
-    appearanceSaveLock.current = true
-    setAppearanceError(false)
-    setAppearanceSaving(true)
+  const appearancePreference = useSettingsStore((state) => state.appearancePreference)
+  const setAppearancePreference = useSettingsStore((state) => state.setAppearancePreference)
+  const [saving, setSaving] = useState(false)
+  const [failed, setFailed] = useState(false)
+  const options: ReadonlyArray<{ value: AppearancePreference; title: string }> = [
+    { value: 'light', title: t('Jasny', 'Light') },
+    { value: 'dark', title: t('Ciemny', 'Dark') },
+    { value: 'system', title: t('Jak system', 'System') },
+  ]
+  const choose = async (preference: AppearancePreference) => {
+    if (saving || preference === appearancePreference) return
+    setFailed(false)
+    setSaving(true)
     try {
       await setAppearancePreference(preference)
-      setAppearanceVisible(false)
     } catch {
-      setAppearanceError(true)
+      setFailed(true)
     } finally {
-      appearanceSaveLock.current = false
-      setAppearanceSaving(false)
+      setSaving(false)
     }
   }
-
-  const appearanceLabel: Record<AppearancePreference, string> = {
-    system: t('System', 'System'),
-    light: t('Jasny', 'Light'),
-    dark: t('Ciemny', 'Dark'),
-  }
-
-  const appearanceOptions: ReadonlyArray<{
-    value: AppearancePreference
-    title: string
-    description: string
-  }> = [
-    {
-      value: 'system',
-      title: t('System', 'System'),
-      description: t(
-        'Zgodny z ustawieniami urządzenia',
-        'Follow device settings',
-      ),
-    },
-    {
-      value: 'light',
-      title: t('Jasny', 'Light'),
-      description: t('Jasny wygląd aplikacji', 'Light app appearance'),
-    },
-    {
-      value: 'dark',
-      title: t('Ciemny', 'Dark'),
-      description: t('Ciemny wygląd aplikacji', 'Dark app appearance'),
-    },
-  ]
-
   return (
-    <>
-      <View
-        style={[
-          styles.preferenceCard,
-          { backgroundColor: colors.paper, borderColor: colors.line },
-        ]}
-      >
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={t(
-            `Wygląd: ${appearanceLabel[appearancePreference]}`,
-            `Appearance: ${appearanceLabel[appearancePreference]}`,
+    <View style={styles.section}>
+      <Text style={[styles.sectionTitle, { color: colors.muted }]} accessibilityRole="header">
+        {t('Wygląd', 'Appearance')}
+      </Text>
+      <Segmented
+        label={t('Wybór wyglądu', 'Choose appearance')}
+        options={options}
+        value={appearancePreference}
+        disabled={saving}
+        onChange={(value) => void choose(value)}
+      />
+      {failed && (
+        <Text style={[styles.appearanceError, { color: colors.danger }]} accessibilityRole="alert">
+          {t(
+            'Nie udało się zapisać ustawienia. Przywrócono poprzedni wygląd.',
+            'Could not save this setting. Your previous appearance was restored.',
           )}
-          accessibilityHint={t(
-            'Otwiera wybór wyglądu aplikacji',
-            'Opens app appearance options',
-          )}
-          onPress={() => {
-            setAppearanceError(false)
-            setAppearanceVisible(true)
-          }}
-          style={styles.preferenceRow}
-        >
-          <Icon name="phone" color={colors.accent} size={21} />
-          <Text style={[styles.preferenceLabel, { color: colors.ink }]}>
-            {t('Wygląd', 'Appearance')}
-          </Text>
-          <Text style={[styles.preferenceValue, { color: colors.muted }]}>
-            {appearanceLabel[appearancePreference]}
-          </Text>
-          <Icon name="chevron-right" color={colors.muted} size={20} />
-        </Pressable>
-        <Pressable
-          accessibilityRole="button"
-          onPress={() => router.push('/welcome')}
-          style={[
-            styles.preferenceRow,
-            styles.preferenceAction,
-            { borderTopColor: colors.line },
-          ]}
-        >
-          <Icon name="refresh" color={colors.accent} size={21} />
-          <Text style={[styles.preferenceLabel, { color: colors.ink }]}>
-            {t('Pokaż wprowadzenie ponownie', 'Show introduction again')}
-          </Text>
-          <Icon name="chevron-right" color={colors.muted} size={20} />
-        </Pressable>
-      </View>
-      <BottomSheet
-        visible={appearanceVisible}
-        onClose={() => setAppearanceVisible(false)}
-        title={t('Wygląd', 'Appearance')}
-      >
-        <View
-          accessibilityRole="radiogroup"
-          accessibilityLabel={t('Wybór wyglądu', 'Choose appearance')}
-        >
-          {appearanceOptions.map((option, index) => {
-            const selected = appearancePreference === option.value
-            return (
-              <Pressable
-                key={option.value}
-                accessibilityRole="radio"
-                accessibilityLabel={`${option.title}. ${option.description}`}
-                accessibilityState={{
-                  checked: selected,
-                  disabled: appearanceSaving,
-                }}
-                disabled={appearanceSaving}
-                onPress={() => void chooseAppearance(option.value)}
-                style={[
-                  styles.appearanceOption,
-                  index < appearanceOptions.length - 1 && {
-                    borderBottomColor: colors.line,
-                    borderBottomWidth: StyleSheet.hairlineWidth,
-                  },
-                ]}
-              >
-                <View style={styles.appearanceOptionCopy}>
-                  <Text
-                    style={[
-                      styles.appearanceOptionTitle,
-                      { color: selected ? colors.accent : colors.ink },
-                    ]}
-                  >
-                    {option.title}
-                  </Text>
-                  <Text
-                    style={[
-                      styles.appearanceOptionDescription,
-                      { color: colors.muted },
-                    ]}
-                  >
-                    {option.description}
-                  </Text>
-                </View>
-                {selected ? (
-                  <Icon name="check" color={colors.accent} size={22} />
-                ) : (
-                  <View style={styles.appearanceCheckSpace} />
-                )}
-              </Pressable>
-            )
-          })}
-        </View>
-        {appearanceError && (
-          <Text
-            style={[styles.appearanceError, { color: colors.danger }]}
-            accessibilityRole="alert"
+        </Text>
+      )}
+    </View>
+  )
+}
+
+// Short choices sit side by side; the selected one lifts onto paper.
+function Segmented<T extends string>({ label, options, value, onChange, disabled = false }: {
+  label: string
+  options: ReadonlyArray<{ value: T; title: string }>
+  value: T
+  onChange: (value: T) => void
+  disabled?: boolean
+}) {
+  const { colors } = useTheme()
+  return (
+    <View accessibilityRole="radiogroup" accessibilityLabel={label} style={[styles.segment, { backgroundColor: colors.surface }]}>
+      {options.map((option) => {
+        const selected = option.value === value
+        return (
+          <Pressable
+            key={option.value}
+            accessibilityRole="radio"
+            accessibilityState={{ checked: selected, disabled }}
+            disabled={disabled}
+            onPress={() => onChange(option.value)}
+            style={[styles.segmentOption, selected && { backgroundColor: colors.paper }]}
           >
-            {t(
-              'Nie udało się zapisać ustawienia. Przywrócono poprzedni wygląd.',
-              'Could not save this setting. Your previous appearance was restored.',
-            )}
-          </Text>
-        )}
-      </BottomSheet>
-    </>
+            <Text style={{ fontFamily: fonts.semibold, fontSize: 14, color: selected ? colors.ink : colors.muted }}>{option.title}</Text>
+          </Pressable>
+        )
+      })}
+    </View>
   )
 }
 
@@ -812,7 +692,7 @@ function DeveloperSection() {
         style={[styles.sectionTitle, { color: colors.muted }]}
         accessibilityRole="header"
       >
-        {t('Narzędzia deweloperskie', 'Developer tools')}
+        {t('Dla dewelopera', 'For developers')}
       </Text>
       <View
         style={[
@@ -820,18 +700,22 @@ function DeveloperSection() {
           { backgroundColor: colors.paper, borderColor: colors.line },
         ]}
       >
-        {DEV_ROUTES.map((route, index) => (
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => router.push('/dev/benchmark')}
+          style={styles.devRow}
+        >
+          <Text style={[styles.preferenceLabel, { color: colors.ink }]}>
+            {t('Pomiary i porównanie modeli', 'Measurements and model comparison')}
+          </Text>
+          <Icon name="chevron-right" color={colors.faint} size={20} />
+        </Pressable>
+        {(__DEV__ ? DEV_ROUTES : []).map((route) => (
           <Pressable
             key={route.href}
             accessibilityRole="button"
             onPress={() => router.push(route.href)}
-            style={[
-              styles.devRow,
-              index > 0 && {
-                borderTopColor: colors.line,
-                borderTopWidth: StyleSheet.hairlineWidth,
-              },
-            ]}
+            style={[styles.devRow, { borderTopColor: colors.line, borderTopWidth: StyleSheet.hairlineWidth }]}
           >
             <Text style={[styles.preferenceLabel, { color: colors.ink }]}>
               {t(route.title, route.titleEn)}
@@ -847,7 +731,6 @@ function DeveloperSection() {
 export default function SettingsScreen() {
   const { t } = useI18n()
   const { colors } = useTheme()
-  const router = useRouter()
   return (
     <ScrollView
       style={{ backgroundColor: colors.canvas }}
@@ -855,20 +738,13 @@ export default function SettingsScreen() {
       showsVerticalScrollIndicator={false}
     >
       <Stack.Screen options={{ title: t('Ustawienia', 'Settings') }} />
-      <LanguageSection />
-      <ProcessingSettingsSection />
       <ModelSection />
+      <ProcessingSettingsSection />
+      <LanguageSection />
+      <AppearanceSection />
       <PrivacySection />
       <DataSection />
-      <Button
-        label={t(
-          'Pomiary i porównanie modeli',
-          'Measurements and model comparison',
-        )}
-        variant="secondary"
-        onPress={() => router.push('/dev/benchmark')}
-      />
-      {__DEV__ && <DeveloperSection />}
+      <DeveloperSection />
     </ScrollView>
   )
 }
@@ -881,7 +757,7 @@ const styles = StyleSheet.create({
     gap: spacing.xl,
   },
   section: { gap: spacing.sm },
-  sectionTitle: { ...type.label, fontSize: 16 },
+  sectionTitle: { ...type.label, fontSize: 13, lineHeight: 18, marginLeft: 4 },
   modelCard: {
     padding: spacing.lg,
     borderRadius: radius.lg,
@@ -897,7 +773,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   modelIdentity: { flex: 1, gap: 2, minWidth: 0 },
-  modelName: { ...type.title, fontSize: 16 },
+  modelName: { ...type.title, fontSize: 17 },
   modelPurpose: { ...type.meta },
   statusBadge: {
     flexDirection: 'row',
@@ -905,24 +781,17 @@ const styles = StyleSheet.create({
     gap: 5,
     borderRadius: radius.pill,
     paddingHorizontal: 10,
-    paddingVertical: 6,
+    minHeight: 26,
   },
   statusLabel: { ...type.meta, fontFamily: fonts.semibold },
   modelSize: { ...type.body, fontSize: 14 },
   progressSection: { gap: spacing.sm },
-  progressTrack: { height: 7, borderRadius: radius.pill, overflow: 'hidden' },
-  progressFill: { height: '100%', borderRadius: radius.pill },
+  progressTrack: { height: 10, borderRadius: 3, overflow: 'hidden' },
+  progressFill: { height: '100%', borderTopRightRadius: 6, borderBottomRightRadius: 2 },
   progressHint: { ...type.meta },
   modelHelper: { textAlign: 'center' },
-  removeRow: {
-    minHeight: 49,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    paddingTop: spacing.sm,
-  },
-  removeLabel: { ...type.body, flex: 1, fontFamily: fonts.semibold },
+  removeLink: { alignSelf: 'flex-start', minHeight: 40, justifyContent: 'center', marginLeft: 4 },
+  removeLabel: { ...type.label, fontSize: 14 },
   error: { ...type.body, fontSize: 14 },
   privacyCard: {
     paddingHorizontal: spacing.lg,
@@ -936,6 +805,7 @@ const styles = StyleSheet.create({
     gap: spacing.md,
   },
   privacyCopy: { flex: 1, gap: 2 },
+  privacyIcon: { width: 28, height: 28, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
   privacyTitle: { ...type.body, fontFamily: fonts.medium },
   dataCard: {
     minHeight: 76,
@@ -955,7 +825,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   preferenceRow: {
-    minHeight: 66,
+    minHeight: 58,
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
@@ -976,5 +846,7 @@ const styles = StyleSheet.create({
   appearanceOptionDescription: { ...type.meta },
   appearanceCheckSpace: { width: 22, height: 22 },
   appearanceError: { ...type.meta },
-  devRow: { minHeight: 52, flexDirection: 'row', alignItems: 'center' },
+  devRow: { minHeight: 54, flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing.lg },
+  segment: { flexDirection: 'row', padding: 3, borderRadius: 14, gap: 3 },
+  segmentOption: { flex: 1, minHeight: 40, borderRadius: 11, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6 },
 })

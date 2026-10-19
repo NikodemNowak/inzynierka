@@ -2,7 +2,6 @@ import { useState } from 'react'
 import { Pressable, StyleSheet, Switch, Text, View } from 'react-native'
 import { useI18n } from '../i18n/useI18n'
 import { useSettingsStore } from '../state/settingsStore'
-import { Icon } from '../ui/Icon'
 import { radius, spacing, type, useTheme, fonts } from '../ui/theme'
 import {
   nativeProcessing,
@@ -68,31 +67,31 @@ export function ProcessingSettingsSection() {
     <View style={styles.section}>
       <Text
         accessibilityRole="header"
-        style={[styles.heading, { color: colors.ink }]}
+        style={[styles.heading, { color: colors.muted }]}
       >
         {t('Opracowanie notatek', 'Note processing')}
       </Text>
       <View
         style={[
           styles.card,
-          { backgroundColor: colors.surface, borderColor: colors.line },
+          { backgroundColor: colors.paper, borderColor: colors.line },
         ]}
       >
         {[
           {
             value: false,
-            label: t('Szybko, w otwartej aplikacji', 'Fast, with the app open'),
+            label: t('Szybko, przy otwartej aplikacji', 'Fast, with the app open'),
             detail: t(
-              'Po schowaniu aplikacji postęp zostaje zachowany.',
-              'Progress is saved if you leave the app.',
+              'Postęp zapisuje się, jeśli na chwilę wyjdziesz.',
+              'Progress is saved if you leave for a moment.',
             ),
           },
           {
             value: true,
-            label: t('Kontynuuj w tle', 'Continue in the background'),
+            label: t('W tle', 'In the background'),
             detail: t(
-              'Tryb CPU. Może potrwać dłużej; iOS pokazuje postęp.',
-              'CPU mode. May take longer; iOS shows progress.',
+              'Wolniej, ale działa też przy zablokowanym ekranie.',
+              'Slower, but keeps going with the screen locked.',
             ),
           },
         ].map((option) => (
@@ -114,6 +113,9 @@ export function ProcessingSettingsSection() {
               option.value && !available && { opacity: 0.5 },
             ]}
           >
+            <View style={[styles.radio, { borderColor: enabled === option.value ? colors.ink : colors.faint }]}>
+              {enabled === option.value && <View style={[styles.radioDot, { backgroundColor: colors.ink }]} />}
+            </View>
             <View style={styles.copy}>
               <Text style={[styles.label, { color: colors.ink }]}>
                 {option.label}
@@ -122,21 +124,18 @@ export function ProcessingSettingsSection() {
                 {option.detail}
               </Text>
             </View>
-            {enabled === option.value && (
-              <Icon name="check" color={colors.accent} size={20} />
-            )}
           </Pressable>
         ))}
       </View>
-      <View style={[styles.card, styles.row, { backgroundColor: colors.surface, borderColor: colors.line }]}>
+      <View style={[styles.card, styles.row, { backgroundColor: colors.paper, borderColor: colors.line }]}>
         <View style={styles.copy}>
           <Text style={[styles.label, { color: colors.ink }]}>
             {t('Proponuj zadania od razu', 'Suggest tasks right away')}
           </Text>
           <Text style={[styles.detail, { color: colors.muted }]}>
             {t(
-              'Po opracowaniu notatki propozycje zadań liczą się same i czekają na wybór.',
-              'After a note is processed, task suggestions are prepared and wait for your choice.',
+              'Po opracowaniu notatki zadania czekają na Twój wybór.',
+              'After a note is processed, tasks wait for your choice.',
             )}
           </Text>
         </View>
@@ -144,6 +143,9 @@ export function ProcessingSettingsSection() {
           accessibilityLabel={t('Proponuj zadania od razu', 'Suggest tasks right away')}
           value={autoTasks}
           onValueChange={(value) => void chooseAutoTasks(value)}
+          trackColor={{ false: colors.line, true: colors.action }}
+          thumbColor={autoTasks ? colors.marker : colors.paper}
+          ios_backgroundColor={colors.line}
         />
       </View>
       {!available && (
@@ -160,7 +162,7 @@ export function ProcessingSettingsSection() {
           onPress={() => void notifications()}
           style={styles.notify}
         >
-          <Text style={[styles.label, { color: colors.accent }]}>
+          <Text style={[styles.label, { color: colors.ink, textDecorationLine: 'underline' }]}>
             {t('Powiadomienia o ukończeniu', 'Completion notifications')}
           </Text>
         </Pressable>
@@ -178,22 +180,25 @@ export function ProcessingSettingsSection() {
 }
 
 const styles = StyleSheet.create({
-  section: { gap: spacing.sm, marginBottom: spacing.xl },
-  heading: { ...type.title },
+  section: { gap: spacing.sm },
+  heading: { ...type.label, fontSize: 13, lineHeight: 18, marginLeft: 4 },
   card: {
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 1,
     borderRadius: radius.lg,
     overflow: 'hidden',
   },
   row: {
-    padding: spacing.md,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: 14,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.md,
-    minHeight: 68,
+    gap: 14,
+    minHeight: 72,
   },
-  copy: { flex: 1, gap: 5 },
-  label: { fontSize: 15, fontFamily: fonts.semibold },
+  copy: { flex: 1, gap: 4 },
+  radio: { width: 22, height: 22, borderRadius: 11, borderWidth: 1.6, alignItems: 'center', justifyContent: 'center' },
+  radioDot: { width: 12, height: 12, borderRadius: 6 },
+  label: { fontSize: 16, lineHeight: 21, fontFamily: fonts.medium },
   detail: { fontSize: 13, lineHeight: 19 },
   notify: { minHeight: 44, justifyContent: 'center' },
 })
