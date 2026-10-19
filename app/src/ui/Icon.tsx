@@ -30,7 +30,7 @@ const paths = {
   pause: 'M8 5v14M16 5v14',
   waveform: 'M3 10v4M7 6v12M12 3v18M17 7v10M21 10v4',
   note: 'M6 3h12a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2ZM8 8h8M8 12h8M8 16h5',
-  tasks: 'M9 5h11M9 12h11M9 19h11m-16-15 1 1 2-2m-3 9 1 1 2-2m-3 9 1 1 2-2',
+  tasks: 'm4 7 2 2 4-4M4 17l2 2 4-4M13 7h7M13 17h7',
   settings: `M${settingsOutline}ZM12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7`,
   search: 'M10.5 3a7.5 7.5 0 1 0 0 15 7.5 7.5 0 0 0 0-15m5.5 13 5 5',
   sort: 'M8 4v16m-4-4 4 4 4-4M16 20V4m-4 4 4-4 4 4',

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useRouter } from 'expo-router'
-import { Animated, Easing, Pressable, Text, View } from 'react-native'
+import { Animated, Easing, Pressable, StyleSheet, Text, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useI18n } from '../i18n/useI18n'
 import { BottomSheet } from './BottomSheet'
@@ -103,14 +103,14 @@ export function HomeNavigation({
       <View
         testID="home-tab-bar"
         style={{
-          paddingBottom: Math.max(insets.bottom, 10),
-          paddingTop: 10,
-          borderTopWidth: 0.5,
+          paddingBottom: Math.max(insets.bottom, 8),
+          paddingTop: 4,
+          borderTopWidth: StyleSheet.hairlineWidth,
           borderTopColor: colors.line,
           backgroundColor: colors.canvas,
           flexDirection: 'row',
           justifyContent: 'space-around',
-          alignItems: 'center',
+          alignItems: 'flex-end',
         }}
       >
         {(['notes', 'add', 'tasks'] as const).map((tab) =>
@@ -121,13 +121,22 @@ export function HomeNavigation({
               accessibilityLabel={t('Dodaj notatkę', 'Add note')}
               onPress={() => setAdding(true)}
               style={({ pressed }) => ({
-                width: 54,
-                height: 54,
-                borderRadius: 27,
+                width: 64,
+                height: 64,
+                borderRadius: 32,
+                marginTop: -30,
+                marginBottom: 4,
+                borderWidth: 5,
+                borderColor: colors.canvas,
                 backgroundColor: colors.brand,
                 alignItems: 'center',
                 justifyContent: 'center',
-                opacity: pressed ? 0.7 : 1,
+                shadowColor: '#000',
+                shadowOpacity: 0.18,
+                shadowRadius: 10,
+                shadowOffset: { width: 0, height: 4 },
+                elevation: 6,
+                transform: [{ scale: pressed ? 0.94 : 1 }],
               })}
             >
               <Icon name="plus" size={28} color={colors.onBrand} />
@@ -145,29 +154,30 @@ export function HomeNavigation({
               }
               style={{
                 minWidth: 90,
-                minHeight: 52,
+                minHeight: 48,
                 alignItems: 'center',
-                justifyContent: 'center',
-                gap: 4,
+                justifyContent: 'flex-end',
+                gap: 2,
               }}
             >
               <Icon
                 name={tab === 'notes' ? 'note' : 'tasks'}
-                size={22}
-                color={active === tab ? colors.accent : colors.muted}
+                size={21}
+                color={active === tab ? colors.ink : colors.muted}
               />
               <Text
                 style={{
                   fontSize: 11,
                   lineHeight: 15,
                   fontFamily: active === tab ? fonts.semibold : fonts.regular,
-                  color: active === tab ? colors.accent : colors.muted,
+                  color: active === tab ? colors.ink : colors.muted,
                 }}
               >
                 {tab === 'notes'
                   ? t('Notatki', 'Notes')
                   : t('Zadania', 'Tasks')}
               </Text>
+              <View style={{ width: 18, height: 3, borderRadius: 2, marginTop: 1, backgroundColor: active === tab ? colors.marker : 'transparent' }} />
             </Pressable>
           ),
         )}
