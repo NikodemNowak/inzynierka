@@ -116,9 +116,9 @@ export default function RootLayout() {
     Literata_400Regular,
     Literata_500Medium,
   })
-  // Fall back to system fonts rather than block the app on a font error.
-  if (!fontsLoaded && !fontError)
-    return <View style={{ flex: 1, backgroundColor: colors.canvas }} />
+  // The router needs its navigator on the first render, so the fonts load under
+  // a plain cover instead of in place of the Stack; a font error just shows the app.
+  const fontsPending = !fontsLoaded && !fontError
 
   return (
     <SafeAreaProvider>
@@ -131,6 +131,9 @@ export default function RootLayout() {
       >
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       </Stack>
+      {fontsPending && (
+        <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: colors.canvas }} />
+      )}
     </SafeAreaProvider>
   )
 }

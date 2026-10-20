@@ -12,7 +12,7 @@ import {
   Text,
   View,
 } from 'react-native'
-import { Stack, useLocalSearchParams, useRouter } from 'expo-router'
+import { Stack, useLocalSearchParams, useNavigation, useRouter } from 'expo-router'
 import { useIsFocused } from 'expo-router/react-navigation'
 import { LayoutEntry, useLayoutTransition } from '../../ui/LayoutMotion'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
@@ -213,6 +213,7 @@ export default function NoteDetailScreen() {
   const noteTasks = allTasks.filter((task) => task.noteId === id)
   const modelReady = useModelStore((state) => state.status === 'ready')
   const router = useRouter()
+  const navigation = useNavigation()
   const isFocused = useIsFocused()
   const isFocusedRef = useRef(isFocused)
   isFocusedRef.current = isFocused
@@ -305,9 +306,10 @@ export default function NoteDetailScreen() {
     titleMarker.current.accepted = true
     setPendingTitle(true)
     // Keep the pending title only in this mounted screen; returning cannot
-    // hide a saved title behind a stale route parameter.
-    router.setParams({ titlePending: undefined })
-  }, [id, titlePending, router])
+    // hide a saved title behind a stale route parameter. The screen's own
+    // navigation works while the global router is still settling the replace.
+    navigation.setParams({ titlePending: undefined } as never)
+  }, [id, titlePending, navigation])
 
   useEffect(() => {
     if (proposal) setSelection(NO_SELECTION)

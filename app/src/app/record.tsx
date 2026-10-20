@@ -3,6 +3,9 @@ import { Stack, useNavigation, useRouter } from 'expo-router'
 import { usePreventRemove } from 'expo-router/react-navigation'
 import {
   ActivityIndicator,
+  Animated,
+  Easing,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -34,6 +37,7 @@ import { BottomSheet } from '../ui/BottomSheet'
 import { Button } from '../ui/Button'
 import { Icon } from '../ui/Icon'
 import { spacing, type, useTheme, fonts } from '../ui/theme'
+import { useReducedMotion } from '../ui/Motion'
 
 const formatDuration = (durationMs: number): string => {
   const totalSeconds = Math.floor(durationMs / 1000)
@@ -91,7 +95,7 @@ function RecordingWaveform({
   const level = useRef(0)
   level.current = recording ? volumeLevel : 0
   const [history, setHistory] = useState<readonly number[]>(silentWaveform)
-  const color = recording ? colors.accent : colors.faint
+  const color = recording ? colors.ink : colors.line
 
   // Sample on a fixed clock so the trace keeps moving while the level holds.
   useEffect(() => {
@@ -121,6 +125,74 @@ function RecordingWaveform({
           ]}
         />
       ))}
+    </View>
+  )
+}
+
+// The one control while recording: yellow on graphite, black on paper, with a
+// ring that breathes while the microphone is open.
+function RecordButton({ live, label, disabled, busy, onPress }: {
+  live: boolean
+  label: string
+  disabled: boolean
+  busy: boolean
+  onPress: () => void
+}) {
+  const { colors } = useTheme()
+  const reduced = useReducedMotion()
+  const ring = useRef(new Animated.Value(0)).current
+  useEffect(() => {
+    if (!live || reduced) { ring.setValue(0); return }
+    const loop = Animated.loop(Animated.timing(ring, { toValue: 1, duration: 1600, easing: Easing.out(Easing.quad), useNativeDriver: true }))
+    loop.start()
+    return () => loop.stop()
+  }, [live, reduced, ring])
+  return (
+    <View style={styles.recordWrap}>
+      <View style={styles.recordButton}>
+        <Animated.View
+          pointerEvents="none"
+          style={[styles.recordRing, { backgroundColor: colors.marker, opacity: ring.interpolate({ inputRange: [0, 1], outputRange: [live ? 0.5 : 0, 0] }), transform: [{ scale: ring.interpolate({ inputRange: [0, 1], outputRange: [1, 1.45] }) }] }]}
+        />
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={label}
+          accessibilityState={{ disabled, busy }}
+          disabled={disabled}
+          onPress={onPress}
+          style={({ pressed }) => [styles.recordCore, { backgroundColor: colors.brand, opacity: disabled ? 0.5 : 1, transform: [{ scale: pressed ? 0.94 : 1 }] }]}
+        >
+          {busy ? (
+            <ActivityIndicator color={colors.onBrand} />
+          ) : live ? (
+            <View style={{ width: 24, height: 24, borderRadius: 6, backgroundColor: colors.onBrand }} />
+          ) : (
+            <Icon name="mic" size={30} color={colors.onBrand} />
+          )}
+        </Pressable>
+      </View>
+      <Text style={[styles.recordLabel, { color: colors.ink }]}>{label}</Text>
+    </View>
+  )
+}
+
+function LivePill({ live, label }: { live: boolean; label: string }) {
+  const { colors } = useTheme()
+  const reduced = useReducedMotion()
+  const blink = useRef(new Animated.Value(1)).current
+  useEffect(() => {
+    if (!live || reduced) { blink.setValue(1); return }
+    const loop = Animated.loop(Animated.sequence([
+      Animated.timing(blink, { toValue: 0.3, duration: 700, useNativeDriver: true }),
+      Animated.timing(blink, { toValue: 1, duration: 700, useNativeDriver: true }),
+    ]))
+    loop.start()
+    return () => loop.stop()
+  }, [live, reduced, blink])
+  return (
+    <View style={[styles.livePill, { backgroundColor: live ? colors.brand : colors.surface }]}>
+      <Animated.View style={[styles.liveDot, { backgroundColor: live ? colors.onBrand : colors.faint, opacity: blink }]} />
+      <Text style={[styles.pillTime, { color: live ? colors.onBrand : colors.ink }]}>{label}</Text>
     </View>
   )
 }
@@ -394,61 +466,44 @@ export default function RecordNoteScreen() {
       <Stack.Screen options={{ title: t('Nagrywanie', 'Recording') }} />
 
       <View style={styles.counterBlock}>
-        <View style={styles.languagePicker}>
-          <LanguagePicker
-            value={
-              showingRecoveredDraft
-                ? noteLanguageOrDefault(draft?.language)
-                : protectNavigation
-                  ? (recorder.recordingLanguage ?? recordingLanguageRef.current)
-                  : noteLanguage
-            }
-            onChange={(language) => void changeNoteLanguage(language)}
-            disabled={
-              protectNavigation ||
-              live ||
-              showingRecoveredDraft ||
-              !draftReady ||
-              languageSaving ||
-              !settingsLoaded
-            }
-          />
+        {!live && !showingProgress && (
+          <View style={styles.languagePicker}>
+            <LanguagePicker
+              value={
+                showingRecoveredDraft
+                  ? noteLanguageOrDefault(draft?.language)
+                  : protectNavigation
+                    ? (recorder.recordingLanguage ?? recordingLanguageRef.current)
+                    : noteLanguage
+              }
+              onChange={(language) => void changeNoteLanguage(language)}
+              disabled={
+                protectNavigation ||
+                live ||
+                showingRecoveredDraft ||
+                !draftReady ||
+                languageSaving ||
+                !settingsLoaded
+              }
+            />
+          </View>
+        )}
+        <View accessibilityLabel={`${t('Czas nagrania', 'Recording time')} ${formatDuration(recorder.durationMs)}`}>
+          <LivePill live={live} label={formatDuration(recorder.durationMs)} />
         </View>
         <View style={styles.statusRow} accessibilityLiveRegion="polite">
-          {live && (
-            <View style={[styles.liveDot, { backgroundColor: colors.ember }]} />
-          )}
           {showingProgress && (
-            <ActivityIndicator size="small" color={colors.accent} />
+            <ActivityIndicator size="small" color={colors.muted} />
           )}
-          <Text
-            style={[
-              styles.status,
-              {
-                color: live
-                  ? colors.ember
-                  : showingProgress
-                    ? colors.accent
-                    : colors.muted,
-              },
-            ]}
-          >
-            {statusLabel(status, requesting, saving)}
+          <Text style={[styles.status, { color: colors.muted }]}>
+            {live
+              ? `${statusLabel(status, requesting, saving)} · ${t('na telefonie', 'on this phone')}`
+              : statusLabel(status, requesting, saving)}
           </Text>
         </View>
-        <Text
-          style={[styles.counter, { color: colors.ink }]}
-          accessibilityLabel={`${t('Czas nagrania', 'Recording time')} ${formatDuration(recorder.durationMs)}`}
-        >
-          {formatDuration(recorder.durationMs)}
-        </Text>
         <RecordingWaveform status={status} volumeLevel={volumeLevel} />
-        <Text style={[styles.info, { color: colors.muted }]}>
-          {t('Limit nagrania: 30 minut', 'Recording limit: 30 minutes')}
-        </Text>
       </View>
 
-      <View style={[styles.transcriptDivider, { borderColor: colors.line }]} />
 
       <ScrollView
         style={styles.transcriptArea}
@@ -578,7 +633,8 @@ export default function RecordNoteScreen() {
             onPress={retrySave}
           />
         ) : (
-          <Button
+          <RecordButton
+            live={live}
             label={
               saving
                 ? t('Zapisuję notatkę…', 'Saving note…')
@@ -588,10 +644,8 @@ export default function RecordNoteScreen() {
                     ? t('Przygotowuję mikrofon…', 'Preparing microphone…')
                     : status === 'stopping'
                       ? t('Zapisuję nagranie…', 'Saving recording…')
-                      : t('Rozpocznij nagrywanie', 'Start recording')
+                      : t('Nagraj', 'Record')
             }
-            variant="primary"
-            icon={live ? 'stop' : 'mic'}
             onPress={live ? recorder.stop : () => void onStart()}
             disabled={
               !draftReady ||
@@ -603,6 +657,9 @@ export default function RecordNoteScreen() {
             busy={!draftReady || saving || starting || status === 'stopping'}
           />
         )}
+        <Text style={[styles.info, { color: colors.faint }]}>
+          {t('Limit nagrania: 30 minut', 'Recording limit: 30 minutes')}
+        </Text>
       </View>
 
       <BottomSheet
@@ -676,29 +733,36 @@ const styles = StyleSheet.create({
   },
   counterBlock: {
     alignItems: 'center',
-    paddingTop: 20,
-    paddingBottom: 18,
-    gap: 3,
+    paddingTop: 16,
+    paddingBottom: 8,
+    gap: 8,
   },
+  livePill: { flexDirection: 'row', alignItems: 'center', gap: 8, height: 36, paddingHorizontal: 16, borderRadius: 18 },
+  pillTime: { fontFamily: fonts.semibold, fontSize: 17, fontVariant: ['tabular-nums'] },
+  recordWrap: { alignItems: 'center', gap: 8, paddingTop: 4 },
+  recordButton: { width: 84, height: 84, alignItems: 'center', justifyContent: 'center' },
+  recordRing: { position: 'absolute', width: 84, height: 84, borderRadius: 42 },
+  recordCore: { width: 84, height: 84, borderRadius: 42, alignItems: 'center', justifyContent: 'center' },
+  recordLabel: { fontFamily: fonts.semibold, fontSize: 15 },
   statusRow: {
     minHeight: 26,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
   },
-  liveDot: { width: 9, height: 9, borderRadius: 5 },
-  status: { ...type.label, fontFamily: fonts.medium },
+  liveDot: { width: 8, height: 8, borderRadius: 4 },
+  status: { ...type.label, fontSize: 13, fontFamily: fonts.medium },
   counter: { ...type.counter, fontVariant: ['tabular-nums'] },
   waveform: {
-    width: '82%',
-    height: 52,
+    width: '88%',
+    height: 44,
     alignSelf: 'center',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     marginTop: 2,
   },
-  waveformBar: { width: 3, borderRadius: 999 },
+  waveformBar: { width: 4, borderRadius: 999 },
   transcriptDivider: {
     marginHorizontal: spacing.lg,
     borderBottomWidth: StyleSheet.hairlineWidth,
@@ -711,9 +775,9 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.xl,
     gap: spacing.lg,
   },
-  transcript: { fontSize: 19, lineHeight: 30, letterSpacing: -0.15 },
+  transcript: { fontFamily: fonts.medium, fontSize: 23, lineHeight: 33, letterSpacing: -0.2 },
   emptyTranscript: { gap: spacing.sm, paddingTop: 8 },
-  emptyTitle: { ...type.title, fontSize: 21, lineHeight: 28 },
+  emptyTitle: { ...type.display, fontSize: 26, lineHeight: 34 },
   placeholder: { ...type.body, lineHeight: 25 },
   info: { ...type.meta, textAlign: 'center' },
   errorNotice: {
@@ -728,6 +792,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.md,
     gap: spacing.sm,
+    alignItems: 'stretch',
   },
   sheetCopy: { ...type.body },
 })

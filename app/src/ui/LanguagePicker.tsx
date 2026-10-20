@@ -35,7 +35,7 @@ export function LanguagePicker({
               styles.option,
               {
                 backgroundColor:
-                  value === language ? colors.paper : 'transparent',
+                  value === language ? colors.raised : 'transparent',
                 opacity: disabled ? 0.65 : pressed ? 0.75 : 1,
               },
             ]}

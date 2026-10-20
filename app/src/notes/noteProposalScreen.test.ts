@@ -42,6 +42,7 @@ jest.mock('../i18n/useI18n', () => ({ useI18n: () => ({ t: (pl: string) => pl, l
 jest.mock('expo-router', () => ({
   Stack: { Screen: () => null }, useLocalSearchParams: () => ({ id: mockRouteId, titlePending: mockTitlePending }),
   useRouter: () => mockRouter,
+  useNavigation: () => ({ setParams: mockRouter.setParams }),
 }))
 jest.mock('expo-router/react-navigation', () => ({ useIsFocused: () => mockFocused }))
 jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0, bottom: 0 }) }))

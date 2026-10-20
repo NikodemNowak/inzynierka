@@ -3,7 +3,6 @@ import { act, create, type ReactTestRenderer } from 'react-test-renderer'
 import RecordNoteScreen from '../app/record'
 import type { RecordingResult } from './useSpeechRecorder'
 import { acknowledgeCapture } from '../audio/captureRecovery'
-import { Button } from '../ui/Button'
 
 const mockOrder: string[] = []
 const mockRouter = { replace: jest.fn(() => { mockOrder.push('navigate') }) }
@@ -93,7 +92,7 @@ test('uses AI directly for an already certified recording', async () => {
 })
 
 test.each([true, false])('marks a newly started capture title as pending through its first continuation (incomplete=%s)', async (incomplete) => {
-  const start = tree.root.findAllByType(Button).find((button) => button.props.label === 'Rozpocznij nagrywanie')
+  const start = tree.root.findAll((node) => node.props.accessibilityLabel === 'Nagraj' && typeof node.props.onPress === 'function')[0]
   if (!start) throw new Error('Start recording control is missing')
   await act(async () => { start.props.onPress() })
   await act(async () => { await mockComplete(result({ needsTranscription: incomplete })) })
