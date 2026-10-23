@@ -12,11 +12,6 @@
     },
     "scheme": "notatki",
     "newArchEnabled": true,
-    "splash": {
-      "image": "./assets/splash-icon.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
-    },
     "ios": {
       "buildNumber": "10",
       "deploymentTarget": "17.0",
@@ -26,7 +21,7 @@
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "backgroundColor": "#1C1C20"
       },
       "permissions": [
         "android.permission.RECORD_AUDIO"
@@ -77,6 +72,19 @@
             "pl",
             "en"
           ]
+        }
+      ],
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 150,
+          "resizeMode": "contain",
+          "backgroundColor": "#F7F6F2",
+          "dark": {
+            "image": "./assets/splash-icon.png",
+            "backgroundColor": "#141416"
+          }
         }
       ]
     ]

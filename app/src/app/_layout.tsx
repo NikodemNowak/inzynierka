@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { Alert, AppState, View } from 'react-native'
+import { Alert, AppState } from 'react-native'
 import { useFonts } from 'expo-font'
 import {
   Onest_400Regular,
@@ -15,6 +15,7 @@ import { Stack } from 'expo-router'
 import { StatusBar } from 'expo-status-bar'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
 import { AppHeader } from '../ui/AppHeader'
+import { StartSplash } from '../ui/StartSplash'
 import { useNotesStore } from '../state/notesStore'
 import { useTasksStore } from '../state/tasksStore'
 import { useSettingsStore } from '../state/settingsStore'
@@ -117,7 +118,7 @@ export default function RootLayout() {
     Literata_500Medium,
   })
   // The router needs its navigator on the first render, so the fonts load under
-  // a plain cover instead of in place of the Stack; a font error just shows the app.
+  // the start splash instead of in place of the Stack; a font error just shows the app.
   const fontsPending = !fontsLoaded && !fontError
 
   return (
@@ -131,9 +132,7 @@ export default function RootLayout() {
       >
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       </Stack>
-      {fontsPending && (
-        <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: colors.canvas }} />
-      )}
+      <StartSplash ready={!fontsPending} />
     </SafeAreaProvider>
   )
 }
