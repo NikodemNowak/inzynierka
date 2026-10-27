@@ -554,8 +554,7 @@ describe('extractTaskLines', () => {
   test('guards drop invented and foreign tasks', async () => {
     model.mockResolvedValue(reply('[2] Oddać raport — do piątku\n[3] Przygotować prezentację\n[5] Zarezerwować hotel'));
     const result = await extractTaskLines(noteUnits, 'pl');
-    // The invented hotel is dropped; the duty the sentence states replaces it.
-    expect(result.rendered).toEqual(['Oddać raport — do czwartku', 'Zapłacić za internet 60 zł']);
+    expect(result.rendered).toEqual(['Oddać raport — do czwartku']);
   });
 
   test('an aborted run does not call the model', async () => {

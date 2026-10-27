@@ -2024,8 +2024,11 @@ export const finishTaskLines = (
       const task = modalTask(unit)
       if (!task || !answered.has(unit.id)) return task ?? []
       // 'Mam zajęcia i muszę pokazać testy' answered as just 'Zajęcia': the stated duty still counts.
-      const verb = task.title.toLowerCase().slice(0, 5)
-      return raw.some((t) => t.sourceIds.includes(unit.id) && t.title.toLowerCase().includes(verb)) ? [] : [task]
+      // Only when the model named no action for the sentence, and the duty has a real object.
+      const own = raw.filter((t) => t.sourceIds.includes(unit.id))
+      const object = task.title.split(/\s+/u).slice(1)
+      const actionGiven = own.some((t) => /ć$/u.test(t.title.split(/\s+/u)[0]!.toLowerCase()))
+      return actionGiven || object.length < 2 || PREPOSITIONS.has(object[0]!.toLowerCase()) ? [] : [task]
     }))
     raw.push(...completeDuties(raw, candidates))
   }
