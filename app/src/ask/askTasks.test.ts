@@ -173,3 +173,17 @@ describe('askNotes', () => {
     expect(generate).not.toHaveBeenCalled()
   })
 })
+
+test('"this week" asked on a Sunday is the week, not today', () => {
+  const sunday = new Date(2026, 9, 25, 10)
+  expect(taskScope('Co mam w tym tygodniu?', sunday)?.kind).toBe('week')
+})
+
+test('day ranges stay on local midnights across a DST change', () => {
+  // Poland switches clocks on 25 October 2026; each boundary must still be a midnight.
+  const saturday = new Date(2026, 9, 24, 10)
+  const range = questionDays('Co mam w przyszłym tygodniu?', saturday)!
+  expect(new Date(range.from).getHours()).toBe(0)
+  expect(new Date(range.to).getHours()).toBe(0)
+  expect(new Date(range.from).getDate()).toBe(26)
+})

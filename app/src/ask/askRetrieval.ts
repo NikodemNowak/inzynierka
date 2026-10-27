@@ -21,8 +21,11 @@ export interface RetrievedNote {
 
 const DAY = 86400000
 const startOfDay = (date: Date): number => new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime()
+// Local midnight `offset` days from now; adding milliseconds would drift across DST.
+export const dayAt = (now: Date, offset: number): number => new Date(now.getFullYear(), now.getMonth(), now.getDate() + offset).getTime()
+export const weekEndOffset = (now: Date): number => (7 - now.getDay()) % 7
 
-const WEEK_THIS = /\b(?:w\s+tym\s+tygodniu|ten\s+tydzien|tego\s+tygodnia|this\s+week)\b/u
+export const WEEK_THIS = /\b(?:w\s+tym\s+tygodniu|ten\s+tydzien|tego\s+tygodnia|this\s+week)\b/u
 const WEEK_NEXT = /\b(?:w\s+przyszlym\s+tygodniu|przyszly\s+tydzien|next\s+week)\b/u
 const TEMPORAL = /\b(?:dzis|dzisiaj|jutro|pojutrze|wczoraj|poniedzial\w*|wtor\w*|srod(?:a|e|y|zie)|czwart(?:ek|ku|kiem)|piat(?:ek|ku|kiem)|sobot\w*|niedziel\w*|weekend\w*|today|tonight|tomorrow|yesterday|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b|\d{1,2}\s+(?:stycz|lut|mar|kwie|maj|czerw|lip|sierp|wrze|pazdz|listop|grud|jan|feb|apr|jun|jul|aug|sep|oct|nov|dec)/u
 
@@ -42,15 +45,14 @@ const NEXT = /\b(?:przysz\w*|nastepn\w*|next)\b/u
 
 // Sat..Sun: the coming one (today counts on a weekend), the next one, or the last one.
 const weekendRange = (text: string, now: Date): DayRange => {
-  const today = startOfDay(now)
   const dow = now.getDay()
   if (PAST.test(text)) {
-    const saturday = today - ((((dow - 6 + 7) % 7) || 7)) * DAY
-    return { from: saturday, to: saturday + DAY }
+    const saturday = -(((dow - 6 + 7) % 7) || 7)
+    return { from: dayAt(now, saturday), to: dayAt(now, saturday + 1) }
   }
-  const saturday = dow === 0 ? today - DAY : today + ((6 - dow + 7) % 7) * DAY
-  if (NEXT.test(text)) return { from: saturday + 7 * DAY, to: saturday + 8 * DAY }
-  return { from: Math.max(saturday, today), to: saturday + DAY }
+  const saturday = dow === 0 ? -1 : (6 - dow + 7) % 7
+  if (NEXT.test(text)) return { from: dayAt(now, saturday + 7), to: dayAt(now, saturday + 8) }
+  return { from: dayAt(now, Math.max(saturday, 0)), to: dayAt(now, saturday + 1) }
 }
 
 // The day or week a question is about, relative to "now". One calendar: a week
@@ -58,12 +60,12 @@ const weekendRange = (text: string, now: Date): DayRange => {
 export const questionDays = (question: string, now: Date): DayRange | null => {
   const text = plain(question).replace(/[?!.,;:]+(?=\s|$)/gu, ' ').replace(/\s+/gu, ' ').trim()
   const today = startOfDay(now)
-  const weekEnd = today + ((7 - now.getDay()) % 7) * DAY
-  if (OVERDUE.test(text)) return { from: -Infinity, to: today - DAY }
-  if (WEEK_NEXT.test(text)) return { from: weekEnd + DAY, to: weekEnd + 7 * DAY }
-  if (WEEK_THIS.test(text)) return { from: today, to: weekEnd }
+  const weekEnd = weekEndOffset(now)
+  if (OVERDUE.test(text)) return { from: -Infinity, to: dayAt(now, -1) }
+  if (WEEK_NEXT.test(text)) return { from: dayAt(now, weekEnd + 1), to: dayAt(now, weekEnd + 7) }
+  if (WEEK_THIS.test(text)) return { from: today, to: dayAt(now, weekEnd) }
   if (!TEMPORAL.test(text)) return null
-  if (/\b(?:wczoraj|yesterday)\b/u.test(text)) return single(today - DAY)
+  if (/\b(?:wczoraj|yesterday)\b/u.test(text)) return single(dayAt(now, -1))
   if (WEEKEND.test(text)) return weekendRange(text, now)
   const monthDay = MONTH_DAY.exec(text)
   const dated = monthDay ? resolveDue(monthDay[0], now) : null
@@ -76,7 +78,7 @@ export const questionDays = (question: string, now: Date): DayRange | null => {
   if (weekday !== undefined && !/\b(?:przysz\w*|next)\b/u.test(text)) {
     const ahead = (weekday - now.getDay() + 7) % 7
     // Today counts as "w piątek" on a Friday.
-    return single(PAST.test(text) ? today - (ahead === 0 ? 7 : 7 - ahead) * DAY : today + ahead * DAY)
+    return single(dayAt(now, PAST.test(text) ? -(ahead === 0 ? 7 : 7 - ahead) : ahead))
   }
   const resolved = resolveDue(text, now)
   return resolved ? single(startOfDay(resolved.date)) : null

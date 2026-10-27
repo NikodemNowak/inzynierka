@@ -1,4 +1,4 @@
-import { InteractionManager } from 'react-native'
+import { afterInteractions } from '../ui/afterInteractions'
 import { create } from 'zustand'
 import { useNotesStore } from '../state/notesStore'
 import { useTasksStore } from '../state/tasksStore'
@@ -68,7 +68,7 @@ export const startSearchIndexing = (): (() => void) => {
   const schedule = (): void => {
     if (timer) clearTimeout(timer)
     timer = setTimeout(() => {
-      InteractionManager.runAfterInteractions(() => {
+      void afterInteractions().then(() => {
         // A note still processing postpones the run instead of dropping it.
         if (Object.keys(useNotesStore.getState().processing).length > 0) schedule()
         else indexNow()

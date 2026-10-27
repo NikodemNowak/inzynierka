@@ -4,7 +4,7 @@ import { localeForLanguage, type Language } from '../i18n/language'
 import { resolveTaskDay, splitTaskText, type TaskDay } from '../tasks/taskDue'
 import { groupTasksByDue, type TaskGroup } from '../tasks/taskGroups'
 import type { AskAnswer, AskItem, AskSource } from './askAnswer'
-import { GENERIC_DAY_WORDS, HAVE_QUESTION, TASK_WORDS, isTaskQuestion, questionDays, type DayRange } from './askRetrieval'
+import { GENERIC_DAY_WORDS, HAVE_QUESTION, TASK_WORDS, WEEK_THIS, dayAt, isTaskQuestion, questionDays, weekEndOffset, type DayRange } from './askRetrieval'
 import { plain, terms } from './askText'
 
 // "Co mam dzisiaj?" is not a search: the tasks that are due are known, so the
@@ -30,13 +30,15 @@ export const rangeKind = (range: DayRange, now: Date, question = ''): TaskScopeK
   const today = startOfDay(now)
   if (range.from === Number.NEGATIVE_INFINITY) return 'overdue'
   if (/\bweekend\w*\b/u.test(plain(question))) return 'weekend'
+  // Checked before a single day: on a Sunday "this week" is today..today.
+  const weekEnd = weekEndOffset(now)
+  if (range.from === today && range.to === dayAt(now, weekEnd) && WEEK_THIS.test(plain(question))) return 'week'
   if (range.from === range.to) {
     const shift = Math.round((range.from - today) / DAY)
     return shift === 0 ? 'today' : shift === 1 ? 'tomorrow' : shift === 2 ? 'dayAfter' : 'day'
   }
-  const weekEnd = today + ((7 - now.getDay()) % 7) * DAY
-  if (range.from === today && range.to === weekEnd) return 'week'
-  if (range.from === weekEnd + DAY && range.to === weekEnd + 7 * DAY) return 'nextWeek'
+  if (range.from === today && range.to === dayAt(now, weekEnd)) return 'week'
+  if (range.from === dayAt(now, weekEnd + 1) && range.to === dayAt(now, weekEnd + 7)) return 'nextWeek'
   return 'range'
 }
 
