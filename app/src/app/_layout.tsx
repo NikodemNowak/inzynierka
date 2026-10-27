@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { Alert, AppState } from 'react-native'
+import { Alert, AppState, View } from 'react-native'
 import { afterInteractions } from '../ui/afterInteractions'
 import { useFonts } from 'expo-font'
 import {
@@ -127,7 +127,10 @@ export default function RootLayout() {
   return (
     <SafeAreaProvider>
       <StatusBar style={isDark ? 'light' : 'dark'} />
+      {/* Screens render only once the fonts are in: text measured with the fallback
+          font stays clipped, since the measurement cache outlives a remount. */}
       <Stack
+        screenLayout={({ children }) => (fontsPending ? <View /> : children)}
         screenOptions={{
           contentStyle: { backgroundColor: colors.canvas },
           header: (props) => <AppHeader {...props} />,
