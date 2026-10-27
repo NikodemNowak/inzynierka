@@ -187,3 +187,13 @@ test('day ranges stay on local midnights across a DST change', () => {
   expect(new Date(range.to).getHours()).toBe(0)
   expect(new Date(range.from).getDate()).toBe(26)
 })
+
+test('an empty day points to undated open tasks', () => {
+  const now = new Date(2026, 9, 2, 12)
+  const notes = [{ id: 'n', title: 'Notatka', createdAt: new Date(2026, 9, 1, 9).getTime() }] as unknown as Note[]
+  const tasks = [{ id: 't', noteId: 'n', text: 'Sprawdzić literaturę', done: false }] as unknown as Task[]
+  const answer = answerTaskQuestion(taskScope('Co mam dzisiaj?', now)!, { notes, tasks }, 'pl', now)
+  expect(answer.intro).toContain('Bez terminu: 1')
+  expect(answer.followUps?.[0]).toBe('Pokaż wszystkie zadania')
+  expect(taskScope('Pokaż wszystkie zadania', now)?.kind).toBe('all')
+})

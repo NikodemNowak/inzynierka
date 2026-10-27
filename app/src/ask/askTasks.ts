@@ -22,7 +22,7 @@ const DAY = 86400000
 const OVERDUE_CAP = 5
 const startOfDay = (date: Date): number => new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime()
 
-const GENERIC = new Set(terms(`${GENERIC_DAY_WORDS} wszystkie otwarte open all`))
+const GENERIC = new Set(terms(`${GENERIC_DAY_WORDS} wszystkie otwarte open all pokaż pokaz wypisz lista show list`))
 // Words of the question that are neither a day nor a task cue: a topic ("urodziny taty").
 const topicTerms = (question: string): string[] => terms(question).filter((term) => !GENERIC.has(term) && !/^\d/u.test(term))
 
@@ -218,6 +218,10 @@ export const answerTaskQuestion = (
       ? `${none} ${pl ? `Masz jednak ${overdueCount} ${overdueWord(overdueCount, language)}:` : `You do have ${overdueCount} ${overdueWord(overdueCount, language)}:`}`
       : none
   }
+  // An empty day says what else is open, so "nothing today" is not a dead end.
+  const undated = rows.filter((row) => !row.resolved).length
+  const pointToAll = !inScope && scope.kind !== 'all' && undated > 0
+  if (pointToAll) intro += pl ? ` Bez terminu: ${undated}.` : ` Without a date: ${undated}.`
   const lines = items.map((item) => `- ${item.text}${item.due ? ` — ${item.due}` : ''}`)
   return {
     text: [intro, ...lines].join('\n'),
@@ -226,6 +230,8 @@ export const answerTaskQuestion = (
     deterministic: true,
     intro,
     items,
-    followUps: followUpsFor(scope.kind, language),
+    followUps: pointToAll
+      ? [pl ? 'Pokaż wszystkie zadania' : 'Show all tasks', ...followUpsFor(scope.kind, language)].slice(0, 2)
+      : followUpsFor(scope.kind, language),
   }
 }
