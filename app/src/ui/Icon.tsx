@@ -113,7 +113,7 @@ export function IconButton({
         opacity: disabled ? 0.4 : pressed ? 0.55 : 1,
       })}
     >
-      <Icon name={name} size={size} color={colors.accent} />
+      <Icon name={name} size={size} color={colors.ink} />
     </Pressable>
   )
 }

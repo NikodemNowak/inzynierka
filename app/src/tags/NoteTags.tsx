@@ -48,8 +48,8 @@ export function NoteTags({
               style={({ pressed }) => [
                 compact ? styles.compactChip : styles.chip,
                 {
-                  backgroundColor: active ? colors.accentSoft : colors.surface,
-                  borderColor: active ? colors.accentSoft : colors.surface,
+                  backgroundColor: active ? colors.marker : colors.surface,
+                  borderColor: active ? colors.marker : colors.surface,
                   opacity: pressed && editable ? 0.72 : 1,
                 },
               ]}
@@ -62,7 +62,7 @@ export function NoteTags({
               <Text
                 style={[
                   compact ? styles.compactText : styles.text,
-                  { color: active ? colors.accent : colors.body },
+                  { color: active ? colors.onMarker : colors.body },
                 ]}
               >
                 {categoryLabel(category, language)}

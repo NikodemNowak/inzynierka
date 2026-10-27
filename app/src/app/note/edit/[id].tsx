@@ -1,6 +1,6 @@
 import { useI18n } from '../../../i18n/useI18n'
 import { useEffect, useRef, useState } from 'react'
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { ScrollView, StyleSheet, Text, View } from 'react-native'
 import {
   Stack,
   useLocalSearchParams,
@@ -11,8 +11,9 @@ import { usePreventRemove } from 'expo-router/react-navigation'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { BottomSheet } from '../../../ui/BottomSheet'
 import { Button } from '../../../ui/Button'
+import { ErrorCard } from '../../../ui/ErrorCard'
 import { Field } from '../../../ui/Field'
-import { useTheme, spacing, type, fonts } from '../../../ui/theme'
+import { useTheme, spacing, type } from '../../../ui/theme'
 import { useNotesStore } from '../../../state/notesStore'
 import { useModelStore } from '../../../state/modelStore'
 import { getModelMissingMessage } from '../../../ai/noteProcessing'
@@ -200,36 +201,22 @@ export default function EditNoteScreen() {
           title: t('Edytuj notatkę', 'Edit note'),
           headerBackVisible: false,
           headerLeft: () => (
-            <Pressable
+            <Button
+              compact
+              variant="quiet"
+              label={t('Anuluj', 'Cancel')}
               onPress={goToList}
-              accessibilityRole="button"
-              accessibilityLabel={t('Anuluj edycję', 'Cancel editing')}
-              style={styles.headerCancel}
-            >
-              <Text style={[styles.headerSaveText, { color: colors.accent }]}>
-                {t('Anuluj', 'Cancel')}
-              </Text>
-            </Pressable>
+            />
           ),
           headerRight: () => (
-            <Pressable
+            <Button
+              compact
+              variant="primary"
+              label={t('Zapisz', 'Save')}
               onPress={() => void save()}
               disabled={!dirty || !editable}
-              accessibilityRole="button"
-              accessibilityLabel={t('Zapisz zmiany', 'Save changes')}
-              accessibilityState={{
-                disabled: !dirty || !editable,
-                busy: saving,
-              }}
-              style={({ pressed }) => [
-                styles.headerSave,
-                { opacity: !dirty || !editable ? 0.4 : pressed ? 0.65 : 1 },
-              ]}
-            >
-              <Text style={[styles.headerSaveText, { color: colors.accent }]}>
-                {t('Zapisz', 'Save')}
-              </Text>
-            </Pressable>
+              busy={saving}
+            />
           ),
         }}
       />
@@ -254,7 +241,7 @@ export default function EditNoteScreen() {
           </Text>
         )}
         {error && (
-          <Text style={[styles.body, { color: colors.danger }]}>{error}</Text>
+          <ErrorCard message={error} />
         )}
         {externalChange && (
           <>
@@ -368,18 +355,7 @@ const styles = StyleSheet.create({
     padding: spacing.xl,
     gap: spacing.lg,
   },
-  headerSave: {
-    minHeight: 44,
-    justifyContent: 'center',
-    paddingHorizontal: spacing.sm,
-  },
-  headerCancel: {
-    minHeight: 44,
-    justifyContent: 'center',
-    paddingHorizontal: spacing.sm,
-  },
-  headerSaveText: { ...type.label },
-  titleField: { fontSize: 20, lineHeight: 28, fontFamily: fonts.semibold },
+  titleField: { ...type.display, fontSize: 24, lineHeight: 34 },
   body: { ...type.body },
   hint: { ...type.meta },
 })

@@ -147,7 +147,7 @@ export default function WelcomeScreen() {
     if (page === 1) return (
       <>
         <Button label={t('Włącz mikrofon', 'Turn on the microphone')} icon="mic" variant="primary" onPress={() => void enableMicrophone()} disabled={isFinishing} />
-        <Text style={[styles.caption, { color: micNote ? colors.ember : colors.muted }]}>
+        <Text style={[styles.caption, { color: colors.muted }]}>
           {micNote ?? t('Telefon zapyta o mikrofon i rozpoznawanie mowy.', 'The phone will ask for the microphone and speech recognition.')}
         </Text>
         {micNote && <Button label={t('Dalej', 'Next')} variant="quiet" onPress={() => goToPage(2)} />}

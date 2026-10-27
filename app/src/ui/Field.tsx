@@ -33,7 +33,7 @@ export function Field({
         accessibilityLabel={label}
         placeholder={placeholder}
         placeholderTextColor={colors.muted}
-        selectionColor={colors.accent}
+        selectionColor={colors.markerLine}
         multiline={multiline}
         editable={editable}
         clearButtonMode="never"
@@ -49,8 +49,8 @@ export function Field({
             paddingTop: 13,
             minHeight: minHeight ?? 50,
             borderWidth: 1,
-            borderColor: focused ? colors.accent : colors.line,
-            borderRadius: radius.md,
+            borderColor: focused ? colors.ink : colors.line,
+            borderRadius: radius.lg,
             textAlignVertical: multiline ? 'top' : 'center',
           },
           textStyle,

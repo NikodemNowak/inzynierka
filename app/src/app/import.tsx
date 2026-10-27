@@ -39,9 +39,9 @@ import {
 import type { Note } from '../domain/note'
 import { BottomSheet } from '../ui/BottomSheet'
 import { Button } from '../ui/Button'
-import { Icon } from '../ui/Icon'
-import { ProcessingIndicator } from '../ui/Motion'
-import { spacing, type, useTheme, fonts } from '../ui/theme'
+import { ErrorCard } from '../ui/ErrorCard'
+import { PulseDot } from '../ui/PulseDot'
+import { radius, spacing, type, useTheme, fonts } from '../ui/theme'
 
 interface SelectedAudio {
   name: string
@@ -563,13 +563,13 @@ export default function ImportAudioScreen() {
         <View
           style={[
             styles.fileRow,
-            { backgroundColor: colors.surface, borderColor: colors.line },
+            { backgroundColor: colors.paper, borderColor: colors.line },
           ]}
         >
           <View
-            style={[styles.fileIcon, { backgroundColor: colors.accentSoft }]}
+            style={[styles.fileIcon, { backgroundColor: colors.marker }]}
           >
-            <AudioFileMark size={38} color={colors.accent} />
+            <AudioFileMark size={34} color={colors.onMarker} />
           </View>
           <View style={styles.fileDetails}>
             <Text
@@ -595,14 +595,9 @@ export default function ImportAudioScreen() {
       >
         {!selectedAudio && (
           <View style={styles.intro}>
-            <View
-              style={[styles.introIcon, { backgroundColor: colors.accentSoft }]}
-            >
-              <AudioFileMark
-                size={55}
-                color={colors.faint}
-                waveColor={colors.accent}
-              />
+            <View style={[styles.introIcon, { backgroundColor: colors.paper, borderColor: colors.line }]}>
+              <View style={[styles.introStroke, { backgroundColor: colors.marker }]} />
+              <AudioFileMark size={52} color={colors.ink} />
             </View>
             <Text style={[styles.title, { color: colors.ink }]}>
               {t('Zamień nagranie w notatkę', 'Turn a recording into a note')}
@@ -617,25 +612,21 @@ export default function ImportAudioScreen() {
         )}
 
         {statusText.length > 0 && (
-          <View style={styles.statusRow}>
-            {canceling ? null : <ProcessingIndicator label={statusText} active={isFocused} stage={saving ? 'saving' : 'processing'} />}
-            {canceling && (
-              <Text style={[styles.statusText, { color: colors.muted }]}>
-                {statusText}
-              </Text>
-            )}
+          <View
+            style={styles.statusRow}
+            accessibilityRole="progressbar"
+            accessibilityLabel={statusText}
+          >
+            {canceling ? null : isFocused ? (
+              <PulseDot color={colors.marker} size={10} />
+            ) : null}
+            <Text style={[styles.statusText, { color: colors.muted }]}>
+              {statusText}
+            </Text>
           </View>
         )}
 
-        {error && (
-          <View
-            style={[styles.errorNotice, { backgroundColor: colors.emberSoft }]}
-            accessibilityRole="alert"
-          >
-            <Icon name="alert" size={21} color={colors.ember} />
-            <Text style={[styles.error, { color: colors.ink }]}>{error}</Text>
-          </View>
-        )}
+        {error && <ErrorCard message={error} />}
         {recorder.permissionDenied && <PermissionSettingsButton />}
         {recorder.info && (
           <Text style={[styles.placeholder, { color: colors.muted }]}>
@@ -826,13 +817,13 @@ const styles = StyleSheet.create({
     marginHorizontal: spacing.lg,
     marginTop: spacing.lg,
     padding: spacing.md,
-    borderRadius: 16,
+    borderRadius: radius.lg,
     borderWidth: 1,
   },
   fileIcon: {
     width: 54,
     height: 54,
-    borderRadius: 15,
+    borderRadius: radius.md,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -855,28 +846,36 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   introIcon: {
-    width: 88,
-    height: 88,
-    borderRadius: 25,
+    width: 96,
+    height: 96,
+    borderRadius: radius.lg,
+    borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: spacing.md,
+    overflow: 'hidden',
   },
-  title: { ...type.title, fontSize: 22, lineHeight: 29, textAlign: 'center' },
+  introStroke: {
+    position: 'absolute',
+    left: 10,
+    right: 10,
+    bottom: 22,
+    height: 14,
+    borderRadius: 4,
+  },
+  title: { ...type.display, textAlign: 'center' },
   subtitle: { ...type.body, textAlign: 'center' },
-  statusRow: { minHeight: 28, justifyContent: 'center' },
-  statusText: { ...type.body, textAlign: 'center' },
-  errorNotice: {
+  statusRow: {
+    minHeight: 28,
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
+    justifyContent: 'center',
     gap: spacing.sm,
-    padding: spacing.md,
-    borderRadius: 14,
   },
-  error: { ...type.body, flex: 1, fontSize: 14, lineHeight: 21 },
+  statusText: { ...type.body, textAlign: 'center' },
   transcriptSection: { gap: spacing.md, paddingTop: spacing.sm },
   transcriptDivider: { borderBottomWidth: StyleSheet.hairlineWidth },
-  transcriptLabel: { ...type.title, fontSize: 18 },
+  transcriptLabel: { ...type.display, fontSize: 22, lineHeight: 30 },
   transcript: { fontSize: 18, lineHeight: 29, letterSpacing: -0.1 },
   placeholder: { ...type.body, lineHeight: 25 },
   actionBar: {

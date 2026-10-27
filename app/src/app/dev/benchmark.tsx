@@ -506,7 +506,7 @@ export default function BenchmarkScreen() {
           {present[model.filename] ? (
             <Button
               disabled={busy}
-              color="#B91C1C"
+              color={colors.danger}
               title={t('Usuń plik benchmarku', 'Remove benchmark file')}
               onPress={() =>
                 void perform(async () => {
@@ -731,7 +731,7 @@ export default function BenchmarkScreen() {
         <>
           <Text style={styles.copy}>{status}</Text>
           <Button
-            color="#B91C1C"
+            color={colors.danger}
             title={t('Anuluj', 'Cancel')}
             onPress={() => controller.current?.abort()}
           />

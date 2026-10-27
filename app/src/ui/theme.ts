@@ -1,3 +1,4 @@
+import { useMemo } from 'react'
 import { useColorScheme } from 'react-native'
 import { useSettingsStore } from '../state/settingsStore'
 import { resolveColorScheme } from './appearance'
@@ -12,8 +13,6 @@ const lightColors = {
   surface: '#EFEDE7',
   canvas: '#F7F6F2',
   paper: '#FFFFFF',
-  navy: '#18181B',
-  navySoft: '#EFEDE7',
   accent: '#18181B',
   accentSoft: '#EFEDE7',
   onAccent: '#F7F6F2',
@@ -45,8 +44,6 @@ const darkColors: ThemeColors = {
   surface: '#26262A',
   canvas: '#141416',
   paper: '#1E1E21',
-  navy: '#EDEBE6',
-  navySoft: '#26262A',
   accent: '#EDEBE6',
   accentSoft: '#2A2A2E',
   onAccent: '#141416',
@@ -69,7 +66,10 @@ export function useTheme() {
   const preference = useSettingsStore((state) => state.appearancePreference)
   const systemScheme = useColorScheme()
   const isDark = resolveColorScheme(preference, systemScheme) === 'dark'
-  return { colors: isDark ? darkColors : colors, isDark }
+  return useMemo(
+    () => ({ colors: isDark ? darkColors : colors, isDark }),
+    [isDark],
+  )
 }
 
 // Custom fonts ship one family per weight, so weights are picked by family.

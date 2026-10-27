@@ -43,7 +43,7 @@ export function LanguagePicker({
             <Text
               style={[
                 styles.text,
-                { color: value === language ? colors.accent : colors.muted },
+                { color: value === language ? colors.ink : colors.muted },
               ]}
             >
               {language === 'pl' ? 'Polski' : 'English'}

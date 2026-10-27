@@ -3,7 +3,7 @@ import { useRouter } from 'expo-router'
 import { Pressable, Text, View } from 'react-native'
 import { useModelStore } from '../state/modelStore'
 import { Icon } from '../ui/Icon'
-import { useTheme, fonts } from '../ui/theme'
+import { radius, useTheme, fonts } from '../ui/theme'
 
 export function ModelDownloadBanner() {
   const { colors } = useTheme()
@@ -25,25 +25,27 @@ export function ModelDownloadBanner() {
         marginHorizontal: 24,
         marginTop: 8,
         marginBottom: 8,
-        borderRadius: 9,
-        paddingHorizontal: 10,
-        paddingVertical: 8,
-        backgroundColor: colors.surface,
+        borderRadius: radius.lg,
+        paddingHorizontal: 14,
+        paddingVertical: 12,
+        backgroundColor: colors.paper,
+        borderWidth: 1,
+        borderColor: colors.line,
         flexDirection: 'row',
         alignItems: 'center',
         gap: 10,
         opacity: pressed ? 0.7 : 1,
       })}
     >
-      <Icon name="download" size={19} color={colors.accent} />
+      <Icon name="download" size={19} color={colors.ink} />
       <View style={{ flex: 1, gap: 4 }}>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-          <Text style={{ color: colors.body, fontSize: 12 }}>
+          <Text style={{ color: colors.body, fontSize: 12, fontFamily: fonts.regular }}>
             {t('Model · pobieranie', 'Model · downloading')}
           </Text>
           <Text
             style={{
-              color: colors.accent,
+              color: colors.ink,
               fontSize: 12,
               fontFamily: fonts.semibold,
               fontVariant: ['tabular-nums'],
@@ -54,22 +56,24 @@ export function ModelDownloadBanner() {
         </View>
         <View
           style={{
-            height: 3,
+            height: 4,
             borderRadius: 2,
-            backgroundColor: colors.line,
+            backgroundColor: colors.surface,
             overflow: 'hidden',
           }}
         >
           <View
             style={{
-              height: 3,
-              width: `${value}%`,
-              backgroundColor: colors.accent,
+              height: 4,
+              width: '100%',
+              backgroundColor: colors.marker,
+              transformOrigin: 'left center',
+              transform: [{ scaleX: value / 100 }],
             }}
           />
         </View>
       </View>
-      <Icon name="chevron-right" size={16} color={colors.accent} />
+      <Icon name="chevron-right" size={16} color={colors.muted} />
     </Pressable>
   )
 }

@@ -1,6 +1,5 @@
 import { useRef, useState } from 'react'
 import {
-  Alert,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -272,23 +271,8 @@ function ModelSection() {
   const remove = useModelStore((state) => state.remove)
   const { colors } = useTheme()
 
-  const confirmRemove = () => {
-    Alert.alert(
-      t('UsunÄ…Ä‡ model?', 'Remove model?'),
-      t(
-        'Zwolni to miejsce na urzÄ…dzeniu. TytuÅ‚y i podsumowania AI bÄ™dÄ… niedostÄ™pne, dopÃ³ki nie pobierzesz modelu ponownie. Notatki i nagrania zostanÄ… nienaruszone.',
-        'This frees up space on your device. AI titles and summaries will be unavailable until you download the model again. Your notes and recordings will be kept.',
-      ),
-      [
-        { text: t('Anuluj', 'Cancel'), style: 'cancel' },
-        {
-          text: t('UsuÅ„', 'Remove'),
-          style: 'destructive',
-          onPress: () => void remove(),
-        },
-      ],
-    )
-  }
+  const [confirming, setConfirming] = useState(false)
+  const confirmRemove = () => setConfirming(true)
 
   const statusLabel = {
     checking: t('Sprawdzanie', 'Checking'),
@@ -445,6 +429,31 @@ function ModelSection() {
           </Text>
         </Pressable>
       )}
+      <BottomSheet
+        visible={confirming}
+        onClose={() => setConfirming(false)}
+        title={t('Usun¹æ model?', 'Remove model?')}
+      >
+        <Text style={{ ...type.body, color: colors.body }}>
+          {t(
+            'Zwolni to miejsce na urz¹dzeniu. Tytu³y i podsumowania AI bêd¹ niedostêpne, dopóki nie pobierzesz modelu ponownie. Notatki i nagrania zostan¹ nienaruszone.',
+            'This frees up space on your device. AI titles and summaries will be unavailable until you download the model again. Your notes and recordings will be kept.',
+          )}
+        </Text>
+        <Button
+          label={t('Usuñ model', 'Remove model')}
+          variant="danger"
+          onPress={() => {
+            setConfirming(false)
+            void remove()
+          }}
+        />
+        <Button
+          label={t('Anuluj', 'Cancel')}
+          variant="quiet"
+          onPress={() => setConfirming(false)}
+        />
+      </BottomSheet>
     </View>
   )
 }
@@ -744,7 +753,7 @@ export default function SettingsScreen() {
       <AppearanceSection />
       <PrivacySection />
       <DataSection />
-      <DeveloperSection />
+      {__DEV__ && <DeveloperSection />}
     </ScrollView>
   )
 }

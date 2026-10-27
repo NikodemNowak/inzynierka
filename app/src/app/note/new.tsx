@@ -1,11 +1,12 @@
 import { useI18n } from '../../i18n/useI18n'
 import { useEffect, useRef, useState } from 'react'
-import { Pressable, ScrollView, StyleSheet, Text } from 'react-native'
+import { ScrollView, StyleSheet, Text } from 'react-native'
 import { Stack, useNavigation, useRouter } from 'expo-router'
 import { usePreventRemove } from 'expo-router/react-navigation'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { BottomSheet } from '../../ui/BottomSheet'
 import { Button } from '../../ui/Button'
+import { ErrorCard } from '../../ui/ErrorCard'
 import { Field } from '../../ui/Field'
 import { spacing, type, useTheme } from '../../ui/theme'
 import { useNotesStore } from '../../state/notesStore'
@@ -128,36 +129,22 @@ export default function NewNoteScreen() {
           title: t('Nowa notatka', 'New note'),
           headerBackVisible: false,
           headerLeft: () => (
-            <Pressable
+            <Button
+              compact
+              variant="quiet"
+              label={t('Anuluj', 'Cancel')}
               onPress={goToList}
-              accessibilityRole="button"
-              accessibilityLabel={t(
-                'Anuluj tworzenie notatki',
-                'Cancel creating the note',
-              )}
-              style={styles.headerCancel}
-            >
-              <Text style={[styles.headerSaveText, { color: colors.accent }]}>
-                {t('Anuluj', 'Cancel')}
-              </Text>
-            </Pressable>
+            />
           ),
           headerRight: () => (
-            <Pressable
+            <Button
+              compact
+              variant="primary"
+              label={t('Zapisz', 'Save')}
               onPress={() => void save()}
               disabled={!dirty || saving}
-              accessibilityRole="button"
-              accessibilityLabel={t('Zapisz notatkę', 'Save note')}
-              accessibilityState={{ disabled: !dirty || saving, busy: saving }}
-              style={({ pressed }) => [
-                styles.headerSave,
-                { opacity: !dirty || saving ? 0.4 : pressed ? 0.65 : 1 },
-              ]}
-            >
-              <Text style={[styles.headerSaveText, { color: colors.accent }]}>
-                {t('Zapisz', 'Save')}
-              </Text>
-            </Pressable>
+              busy={saving}
+            />
           ),
         }}
       />
@@ -180,7 +167,7 @@ export default function NewNoteScreen() {
           )}
         </Text>
         {error && (
-          <Text style={[styles.body, { color: colors.danger }]}>{error}</Text>
+          <ErrorCard message={error} />
         )}
         <LanguagePicker
           value={draft.language}
@@ -260,16 +247,6 @@ export default function NewNoteScreen() {
 const styles = StyleSheet.create({
   container: { padding: spacing.lg, paddingTop: spacing.xl, gap: spacing.xl },
   intro: { ...type.body },
+  titleField: { ...type.display, fontSize: 24, lineHeight: 34 },
   body: { ...type.body },
-  headerSave: {
-    minHeight: 44,
-    justifyContent: 'center',
-    paddingHorizontal: spacing.sm,
-  },
-  headerCancel: {
-    minHeight: 44,
-    justifyContent: 'center',
-    paddingHorizontal: spacing.sm,
-  },
-  headerSaveText: { ...type.label },
 })

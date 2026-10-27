@@ -62,7 +62,7 @@ export function NotesToolbar({
           autoCorrect={false}
           returnKeyType="search"
           keyboardAppearance={isDark ? 'dark' : 'light'}
-          selectionColor={colors.accent}
+          selectionColor={colors.markerLine}
           style={{
             flex: 1,
             minHeight: 46,
@@ -172,7 +172,7 @@ export function NotesToolbar({
             }}
           >
             <Text style={{ ...type.body, color: colors.ink }}>{label}</Text>
-            {sortMode === mode && <Icon name="check" color={colors.accent} />}
+            {sortMode === mode && <Icon name="check" color={colors.ink} />}
           </Pressable>
         ))}
       </BottomSheet>

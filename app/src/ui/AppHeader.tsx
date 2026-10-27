@@ -35,7 +35,7 @@ export function AppHeader({ back, navigation, options, route }: HeaderProps) {
   const [rightWidth, setRightWidth] = useState(44)
   const sideWidth = Math.max(44, leftWidth, rightWidth)
   const props = {
-    tintColor: colors.accent,
+    tintColor: colors.ink,
     canGoBack: showBack,
     backgroundColor: colors.canvas,
   }
@@ -44,8 +44,6 @@ export function AppHeader({ back, navigation, options, route }: HeaderProps) {
       style={{
         backgroundColor: colors.canvas,
         paddingTop: insets.top,
-        borderBottomWidth: 0.5,
-        borderBottomColor: colors.line,
       }}
     >
       <View

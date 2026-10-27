@@ -2,6 +2,7 @@ import { usePathname, useRouter } from 'expo-router'
 import { Pressable, Text, View } from 'react-native'
 import { useI18n } from '../i18n/useI18n'
 import { Icon } from '../ui/Icon'
+import { PulseDot } from '../ui/PulseDot'
 import { type, useTheme } from '../ui/theme'
 import { useCaptureActivity } from './useCaptureActivity'
 
@@ -25,15 +26,21 @@ export function RecordingBanner() {
         marginBottom: 10,
         paddingHorizontal: 12,
         paddingVertical: 10,
-        borderRadius: 12,
-        backgroundColor: colors.emberSoft,
+        borderRadius: 18,
+        backgroundColor: colors.paper,
+        borderWidth: 1,
+        borderColor: colors.line,
         flexDirection: 'row',
         alignItems: 'center',
         gap: 10,
         opacity: pressed ? 0.75 : 1,
       })}
     >
-      <Icon name="mic" size={18} color={colors.ember} />
+      {interrupted ? (
+        <Icon name="mic" size={18} color={colors.danger} />
+      ) : (
+        <PulseDot color={colors.danger} size={10} />
+      )}
       <View style={{ flex: 1 }}>
         <Text style={{ ...type.label, color: colors.ink }}>
           {interrupted

@@ -124,7 +124,7 @@ export const LiveTranscript = memo(function LiveTranscript({
               isInterim ? interimStyle : undefined,
               {
                 color: fadedTextColor(
-                  interpolateTranscriptColor(colors.accent, color, progress),
+                  interpolateTranscriptColor(colors.ink, color, progress),
                   getTranscriptLetterAlpha(letter, clockNow),
                 ),
               },
