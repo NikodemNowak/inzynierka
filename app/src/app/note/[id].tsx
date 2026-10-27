@@ -1194,17 +1194,20 @@ export default function NoteDetailScreen() {
                 label={discarding
                   ? t('Odrzucanie propozycji…', 'Discarding suggestions…')
                   : t('Odrzuć propozycje', 'Discard suggestions')}
-                variant="secondary"
+                variant="quiet"
                 onPress={() => void discardSuggestions()}
                 disabled={discarding || processing}
               />
             )}
-            <Button
-              label={t('Anuluj', 'Cancel')}
-              variant="secondary"
-              onPress={closeChoices}
-              disabled={discarding}
-            />
+            {/* The header already has Cancel; repeat it only when nothing else is offered. */}
+            {!proposal && (
+              <Button
+                label={t('Anuluj', 'Cancel')}
+                variant="secondary"
+                onPress={closeChoices}
+                disabled={discarding}
+              />
+            )}
           </View>
         </View>
       </Modal>
