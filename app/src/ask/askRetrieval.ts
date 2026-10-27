@@ -15,6 +15,8 @@ export interface RetrievedNote {
   noteId: string
   passages: AskChunk[]
   score: number
+  // Share of the question's own words found in this note's passages (0..1).
+  coverage?: number
 }
 
 const DAY = 86400000
@@ -34,15 +36,35 @@ const MONTH_DAY = /\d{1,2}\s+(?:stycz|lut|mar|kwie|maj|czerw|lip|sierp|wrze|pazd
 
 const single = (day: number): DayRange => ({ from: day, to: day })
 
-// The day or week a question is about, relative to "now".
+const OVERDUE = /\b(?:zalegl\w*|przeterminowan\w*|po\s+terminie|overdue|past\s+due)\b/u
+const WEEKEND = /\bweekend\w*\b/u
+const NEXT = /\b(?:przysz\w*|nastepn\w*|next)\b/u
+
+// Sat..Sun: the coming one (today counts on a weekend), the next one, or the last one.
+const weekendRange = (text: string, now: Date): DayRange => {
+  const today = startOfDay(now)
+  const dow = now.getDay()
+  if (PAST.test(text)) {
+    const saturday = today - ((((dow - 6 + 7) % 7) || 7)) * DAY
+    return { from: saturday, to: saturday + DAY }
+  }
+  const saturday = dow === 0 ? today - DAY : today + ((6 - dow + 7) % 7) * DAY
+  if (NEXT.test(text)) return { from: saturday + 7 * DAY, to: saturday + 8 * DAY }
+  return { from: Math.max(saturday, today), to: saturday + DAY }
+}
+
+// The day or week a question is about, relative to "now". One calendar: a week
+// runs to Sunday ("w tym tygodniu" = today..Sunday, "w przyszłym" = Monday..Sunday).
 export const questionDays = (question: string, now: Date): DayRange | null => {
   const text = plain(question).replace(/[?!.,;:]+(?=\s|$)/gu, ' ').replace(/\s+/gu, ' ').trim()
   const today = startOfDay(now)
   const weekEnd = today + ((7 - now.getDay()) % 7) * DAY
+  if (OVERDUE.test(text)) return { from: -Infinity, to: today - DAY }
   if (WEEK_NEXT.test(text)) return { from: weekEnd + DAY, to: weekEnd + 7 * DAY }
   if (WEEK_THIS.test(text)) return { from: today, to: weekEnd }
   if (!TEMPORAL.test(text)) return null
   if (/\b(?:wczoraj|yesterday)\b/u.test(text)) return single(today - DAY)
+  if (WEEKEND.test(text)) return weekendRange(text, now)
   const monthDay = MONTH_DAY.exec(text)
   const dated = monthDay ? resolveDue(monthDay[0], now) : null
   if (dated) {
@@ -60,9 +82,21 @@ export const questionDays = (question: string, now: Date): DayRange | null => {
   return resolved ? single(startOfDay(resolved.date)) : null
 }
 
-const GENERIC_DAY_WORDS = 'dzisiaj dziś jutro pojutrze wczoraj tydzień tygodniu tygodnia zrobienia zrobić załatwić zadania zadań plan planie today tomorrow week tasks things plate todo poniedziałek wtorek środa środę czwartek piątek sobota sobotę niedziela niedzielę weekend monday tuesday wednesday thursday friday saturday sunday października listopada grudnia'
-export const isTaskQuestion = (question: string): boolean => TASK_QUESTION.test(plain(question))
-const TASK_QUESTION =/\b(?:zadan\w*|zrobic|zalatwic|do\s+zrobienia|co\s+mam|musze|mam\s+do|plan\w*|to\s*do|tasks?|have\s+to|need\s+to|what\s+do\s+i|errands?|remind\w*)\b/u
+export const GENERIC_DAY_WORDS = 'dzisiaj dziś jutro pojutrze wczoraj tydzień tygodniu tygodnia przyszły przyszłym przyszłego następny zrobienia zrobić załatwić zadania zadań plan planie planu dnia today tomorrow yesterday week next tasks task things plate todo errands overdue zaległe zaległych zaległa przeterminowane terminie weekend weekendu poniedziałek wtorek środa środę czwartek piątek sobota sobotę niedziela niedzielę monday tuesday wednesday thursday friday saturday sunday stycznia lutego marca kwietnia maja czerwca lipca sierpnia września października listopada grudnia january february march april june july august september october november december'
+// Words that only a question about things to do uses.
+export const TASK_WORDS = /\b(?:zadan\w*|do\s+zrobienia|plan\w*\s+na|plan\s+dnia|todo|to\s*do|tasks?|errands?|zalegl\w*|przeterminowan\w*|po\s+terminie|overdue|past\s+due|agenda)\b/u
+// "Co mam jutro?" is about tasks only with a day; "co mam w lodówce" is not.
+const HAVE_QUESTION = /\b(?:co\s+(?:mam|musze|powinienem|powinnam|trzeba|planuje|jest|robie|bede\s+robi\w*)|jakie\s+mam|what\s+do\s+i\s+(?:have|need|got)|what\s+have\s+i\s+got|what(?:'s|\s+is)\s+(?:on|due|up|planned)|what\s+should\s+i|what\s+am\s+i)\b/u
+// Duties asked about without a day ("co muszę zrobić w sprawie urodzin taty").
+const DUTY_QUESTION = /\b(?:musze|mam\s+do|zrobic|zalatwic|have\s+to|need\s+to|remind\w*|przypomn\w*)\b/u
+
+export const isTaskQuestion = (question: string, now: Date = new Date()): boolean => {
+  const text = plain(question)
+  return TASK_WORDS.test(text) || (HAVE_QUESTION.test(text) && questionDays(question, now) !== null)
+}
+// Looser: also true for duty questions with no day; shapes retrieval and the list prompt.
+export const asksForTasks = (question: string, now: Date = new Date()): boolean => isTaskQuestion(question, now) || DUTY_QUESTION.test(plain(question))
+export { HAVE_QUESTION }
 
 const WHEN_QUESTION = /\b(?:kiedy|kiedys|o\s+ktorej|na\s+kiedy|do\s+kiedy|ktorego|when|what\s+time|which\s+day|by\s+when)\b/u
 
@@ -125,7 +159,7 @@ export const retrieve = (question: string, index: AskIndex, options: RetrieveOpt
   if (last && terms(question).length <= 3) add(last, 0.6)
   for (const extra of options.expansion ?? []) add(extra, 0.5)
   const days = questionDays(question, options.now) ?? (last && terms(question).length <= 3 ? questionDays(last, options.now) : null)
-  const wantsTasks = TASK_QUESTION.test(plain(question))
+  const wantsTasks = asksForTasks(question, options.now)
   // "Co mam dzisiaj do zrobienia?": the day is matched by dates and the duty by
   // task cues, so these words would only reward notes that happen to repeat them.
   if (days && wantsTasks) for (const term of terms(GENERIC_DAY_WORDS)) query.delete(term)
@@ -138,21 +172,29 @@ export const retrieve = (question: string, index: AskIndex, options: RetrieveOpt
   const recency = options.recency ?? 1.5
   const today = startOfDay(options.now)
   const asksWhen = WHEN_QUESTION.test(plain(question))
-  const scored = index.chunks.map((chunk) => {
-    let score = bm25(chunk, query, index) * KIND_WEIGHT[chunk.kind]
+  const scored = index.chunks.flatMap((chunk) => {
+    if (chunk.kind === 'task') {
+      // A day question is a filter for tasks: only those due in the range, and
+      // a question about things to do never lists finished ones.
+      if (days && (chunk.day === null || chunk.day < days.from || chunk.day > days.to)) return []
+      if (wantsTasks && chunk.done) return []
+    }
+    const base = bm25(chunk, query, index)
+    let score = base * KIND_WEIGHT[chunk.kind]
     if (semantic) score += semanticWeight * (semantic.get(chunk.id) ?? 0) * KIND_WEIGHT[chunk.kind]
     if (days && chunk.day !== null && chunk.day >= days.from && chunk.day <= days.to) {
       score += chunk.kind === 'task' ? 4 : 2.5
       if (wantsTasks && chunk.kind !== 'task' && DUTY.test(plain(chunk.text))) score += 1
     }
-    if (wantsTasks && chunk.kind === 'task' && !chunk.done) score += days ? 0.5 : 1
+    // Tasks lead only among those that match the words; no free lift for every open task.
+    if (wantsTasks && !days && chunk.kind === 'task' && !chunk.done && base > 0) score += 1
     if (chunk.done) score *= 0.6
     // "Kiedy mam dentystę?" after years of notes means the next visit, not one from 2024.
     const created = index.notes.get(chunk.noteId)?.createdAt ?? 0
     const age = Math.max(0, (options.now.getTime() - created) / DAY)
     score *= 1 + recency * Math.exp(-age / 30)
     if (asksWhen && !days && chunk.day !== null && chunk.day >= today) score *= 1.3
-    return { chunk, score }
+    return [{ chunk, score }]
   }).filter((item) => item.score > 0)
     .sort((a, b) => b.score - a.score)
 
@@ -184,5 +226,16 @@ export const retrieve = (question: string, index: AskIndex, options: RetrieveOpt
     note.passages = note.passages.slice(0, Math.max(1, Math.min(note.passages.length, budget)))
     budget -= note.passages.length
   }
+  const own = [...new Set(terms(question))]
+  for (const note of kept) {
+    const have = new Set(note.passages.flatMap((chunk) => chunk.terms))
+    note.coverage = own.length ? own.filter((term) => have.has(term)).length / own.length : 0
+  }
   return kept.filter((note) => note.passages.length > 0)
+}
+
+// The words of the question already sit in the best note: synonym expansion would add only latency.
+export const isConfidentMatch = (question: string, retrieved: readonly RetrievedNote[]): boolean => {
+  const own = new Set(terms(question)).size
+  return own >= 2 && (retrieved[0]?.coverage ?? 0) >= 0.8
 }

@@ -1,7 +1,7 @@
 import { deterministicSourceUnitPlan } from '../ai/sourceUnits'
 import { createSummarySources } from '../ai/summarySources'
 import type { Language } from '../i18n/language'
-import { resolveDue, splitTaskText } from '../tasks/taskDue'
+import { resolveDue, resolveTaskDay } from '../tasks/taskDue'
 import { terms } from './askText'
 
 // Everything the chat can quote: transcript sentences, summary points and tasks,
@@ -56,30 +56,66 @@ const sentencesOf = (content: string): string[] => {
 const pointsOf = (summary: string | null): string[] =>
   (summary ?? '').split(/\r?\n/u).map((line) => line.replace(/^\s*[•\-*]\s*/u, '').trim()).filter(Boolean)
 
+type ChunkBase = Omit<AskChunk, 'id'>
+
+// Chunks are cached per note (until its text changes) and per task (until its
+// text or state changes), so toggling a task or editing one note re-splits and
+// re-stems nothing else. Only the cheap assembly and document frequencies rerun.
+interface NoteEntry { note: AskNote; chunks: ChunkBase[] }
+const noteCache = new Map<string, NoteEntry>()
+const taskCache = new Map<string, ChunkBase | null>()
+
+const sameNote = (left: AskNote, right: AskNote): boolean =>
+  left.title === right.title && left.content === right.content && left.summary === right.summary && left.createdAt === right.createdAt
+
+const base = (chunk: Omit<ChunkBase, 'terms'>): ChunkBase | null => {
+  const found = terms(chunk.text)
+  return found.length ? { ...chunk, terms: found } : null
+}
+
+const chunksOfNote = (note: AskNote): ChunkBase[] => {
+  const cached = noteCache.get(note.id)
+  if (cached && sameNote(cached.note, note)) return cached.chunks
+  // "jutro o 18" in a note from Wednesday is Thursday: dates are read relative to the recording.
+  const dayOf = (text: string): number | null => {
+    const resolved = resolveDue(text, new Date(note.createdAt))
+    return resolved ? startOfDay(resolved.date) : null
+  }
+  const chunks: ChunkBase[] = []
+  const push = (chunk: Omit<ChunkBase, 'terms'>): void => {
+    const made = base(chunk)
+    if (made) chunks.push(made)
+  }
+  if (note.title.trim()) push({ noteId: note.id, kind: 'title', text: note.title, order: -1, day: null, done: false })
+  sentencesOf(note.content).forEach((text, order) => push({ noteId: note.id, kind: 'sentence', text, order, day: dayOf(text), done: false }))
+  pointsOf(note.summary).forEach((text, order) => push({ noteId: note.id, kind: 'point', text, order, day: dayOf(text), done: false }))
+  noteCache.set(note.id, { note: { ...note }, chunks })
+  return chunks
+}
+
 export const buildAskIndex = (notes: readonly AskNote[], tasks: readonly AskTask[]): AskIndex => {
-  const chunks: AskChunk[] = []
-  const push = (chunk: Omit<AskChunk, 'id' | 'terms'>): void => {
-    const found = terms(chunk.text)
-    if (found.length) chunks.push({ ...chunk, id: chunks.length, terms: found })
-  }
-  for (const note of notes) {
-    // "jutro o 18" in a note from Wednesday is Thursday: dates are read relative to the recording.
-    const dayOf = (text: string): number | null => {
-      const resolved = resolveDue(text, new Date(note.createdAt))
-      return resolved ? startOfDay(resolved.date) : null
-    }
-    if (note.title.trim()) push({ noteId: note.id, kind: 'title', text: note.title, order: -1, day: null, done: false })
-    sentencesOf(note.content).forEach((text, order) => push({ noteId: note.id, kind: 'sentence', text, order, day: dayOf(text), done: false }))
-    pointsOf(note.summary).forEach((text, order) => push({ noteId: note.id, kind: 'point', text, order, day: dayOf(text), done: false }))
-  }
   const byId = new Map(notes.map((note) => [note.id, note]))
+  const chunks: AskChunk[] = []
+  const add = (chunk: ChunkBase): void => {
+    chunks.push({ ...chunk, id: chunks.length })
+  }
+  for (const note of notes) for (const chunk of chunksOfNote(note)) add(chunk)
+  const taskKeys = new Set<string>()
   for (const task of tasks) {
     const note = byId.get(task.noteId)
     if (!note) continue
-    const { due } = splitTaskText(task.text)
-    const resolved = due ? resolveDue(due, new Date(note.createdAt)) : null
-    push({ noteId: note.id, kind: 'task', text: task.text, order: -1, day: resolved ? startOfDay(resolved.date) : null, done: task.done })
+    const key = `${task.noteId}|${note.createdAt}|${task.done ? 1 : 0}|${task.text}`
+    taskKeys.add(key)
+    if (!taskCache.has(key)) {
+      const resolved = resolveTaskDay(task.text, note.createdAt)
+      taskCache.set(key, base({ noteId: note.id, kind: 'task', text: task.text, order: -1, day: resolved ? resolved.day : null, done: task.done }))
+    }
+    const cached = taskCache.get(key)
+    if (cached) add(cached)
   }
+  // Entries of deleted notes and tasks go away.
+  for (const id of noteCache.keys()) if (!byId.has(id)) noteCache.delete(id)
+  for (const key of taskCache.keys()) if (!taskKeys.has(key)) taskCache.delete(key)
   const df = new Map<string, number>()
   for (const chunk of chunks) for (const term of new Set(chunk.terms)) df.set(term, (df.get(term) ?? 0) + 1)
   const averageLength = chunks.reduce((sum, chunk) => sum + chunk.terms.length, 0) / Math.max(1, chunks.length)

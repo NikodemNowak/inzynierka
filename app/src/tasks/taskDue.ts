@@ -153,3 +153,18 @@ export const resolveDue = (due: string, base: Date): ResolvedDue | null => {
   if (!time) return { date: day, allDay: true }
   return { date: new Date(day.getFullYear(), day.getMonth(), day.getDate(), time.hour, time.minute), allDay: false }
 }
+
+export interface TaskDay {
+  date: Date
+  allDay: boolean
+  // Start of the calendar day (ms).
+  day: number
+}
+
+// A task's deadline as a calendar day, read relative to the note it came from.
+// The single place that turns "Title — due" into a day: lists, groups and the chat use it.
+export const resolveTaskDay = (taskText: string, noteCreatedAt: number | string | Date): TaskDay | null => {
+  const { due } = splitTaskText(taskText)
+  const resolved = due ? resolveDue(due, new Date(noteCreatedAt)) : null
+  return resolved ? { date: resolved.date, allDay: resolved.allDay, day: startOfDay(resolved.date).getTime() } : null
+}

@@ -1,7 +1,6 @@
-import { useEffect, useRef, useState } from 'react'
+import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
-  Alert,
   Animated,
   Easing,
   KeyboardAvoidingView,
@@ -20,6 +19,7 @@ import { useAskStore, type AskMessage } from '../ask/askStore'
 import { EMBEDDING_MODEL } from '../ask/embeddingModel'
 import { useSearchModelStore } from '../ask/searchModel'
 import { useVectorIndexStore } from '../ask/vectorStore'
+import { BottomSheet } from '../ui/BottomSheet'
 import { Button } from '../ui/Button'
 import { useI18n } from '../i18n/useI18n'
 import { useNotesStore } from '../state/notesStore'
@@ -37,12 +37,48 @@ const EXAMPLES = {
 // rest of the answer reads clean and the cited notes follow as a card.
 const LINE_CITE = /^\s*(?:[-•*]\s*)?((?:\[\d+\]\s*)*)(.*?)\s*((?:\[\d+\]\s*)*)$/u
 const LIST_LINE = /^\s*(?:[-•*]\s*|\[\d+\])/u
-const stripCitations = (text: string): string => text.replace(/\s*\[\d+\]/gu, '').trim()
+// A citation still being typed ("[", "[1") is cut too, so no bracket flashes while streaming.
+const stripCitations = (text: string): string => text.replace(/\s*\[\d+\]/gu, '').replace(/\s*\[\d*$/u, '').trim()
 
-function AnswerText({ message, colors, onOpen, streaming }: { message: AskMessage; colors: ThemeColors; onOpen: (source: AskSource) => void; streaming: boolean }) {
+const AnswerText = memo(function AnswerText({ message, colors, onOpen, streaming }: { message: AskMessage; colors: ThemeColors; onOpen: (source: AskSource) => void; streaming: boolean }) {
   const { t } = useI18n()
-  const lines = message.answer.trim().split(/\n+/u)
-  const several = new Set(message.cited.map((source) => source.title)).size > 1
+  const lines = useMemo(() => message.answer.trim().split(/\n+/u), [message.answer])
+  const several = useMemo(() => new Set(message.cited.map((source) => source.title)).size > 1, [message.cited])
+  // A list computed from the tasks: every row carries its deadline and opens its note.
+  if (message.items) {
+    const items = message.items
+    return (
+      <View style={{ gap: 8 }}>
+        {message.intro ? <Text selectable style={[styles.answer, { color: colors.ink }]}>{message.intro}</Text> : null}
+        {items.map((item, index) => {
+          const source = message.sources.find((candidate) => candidate.noteId === item.noteId)
+          const heading = item.group && item.group !== items[index - 1]?.group ? item.group : null
+          return (
+            <Fragment key={index}>
+              {heading ? <Text style={[type.label, { fontSize: 13, color: item.overdue ? colors.danger : colors.muted, marginTop: index ? 6 : 0 }]}>{heading}</Text> : null}
+              <Pressable
+                disabled={!source}
+                accessibilityRole={source ? 'button' : undefined}
+                accessibilityHint={source ? t(`Otwiera notatkę ${source.title}`, `Opens the note ${source.title}`) : undefined}
+                onPress={() => source && onOpen(source)}
+                style={({ pressed }) => [styles.answerRow, { opacity: pressed ? 0.7 : 1 }]}
+              >
+                <View style={[styles.answerDot, { backgroundColor: colors.marker, borderColor: colors.markerLine }]} />
+                <View style={{ flex: 1, gap: 4 }}>
+                  <Text selectable style={[styles.answer, { color: colors.ink }]}>{item.text}</Text>
+                  {item.due ? (
+                    <View style={[styles.dueChip, { backgroundColor: colors.surface }]}>
+                      <Text style={[type.meta, { color: item.overdue ? colors.danger : colors.ink, fontVariant: ['tabular-nums'] }]}>{item.due}</Text>
+                    </View>
+                  ) : null}
+                </View>
+              </Pressable>
+            </Fragment>
+          )
+        })}
+      </View>
+    )
+  }
   return (
     <View style={{ gap: 8 }}>
       {lines.map((line, index) => {
@@ -80,7 +116,7 @@ function AnswerText({ message, colors, onOpen, streaming }: { message: AskMessag
       })}
     </View>
   )
-}
+})
 
 function Pulse() {
   const { colors } = useTheme()
@@ -141,7 +177,7 @@ function SearchDeck({ titles }: { titles: readonly string[] }) {
   )
 }
 
-function Message({ message, onOpen, titles }: { message: AskMessage; onOpen: (source: AskSource) => void; titles: readonly string[] }) {
+const Message = memo(function Message({ message, onOpen, titles, onFollowUp }: { message: AskMessage; onOpen: (source: AskSource) => void; titles: readonly string[]; onFollowUp?: ((question: string) => void) | undefined }) {
   const { t } = useI18n()
   const { colors } = useTheme()
   const searching = message.status === 'pending' && message.stage !== 'answering' && message.stage !== 'loading'
@@ -195,40 +231,66 @@ function Message({ message, onOpen, titles }: { message: AskMessage; onOpen: (so
           ))}
         </View>
       ) : null}
+      {message.status === 'done' && onFollowUp && message.followUps?.length ? (
+        <View style={styles.followUps}>
+          {message.followUps.map((question) => (
+            <Pressable
+              key={question}
+              accessibilityRole="button"
+              onPress={() => onFollowUp(question)}
+              style={({ pressed }) => [styles.pill, { borderColor: colors.line, backgroundColor: colors.paper, opacity: pressed ? 0.7 : 1 }]}
+            >
+              <Text style={[type.label, { color: colors.ink }]}>{question}</Text>
+            </Pressable>
+          ))}
+        </View>
+      ) : null}
     </View>
   )
-}
-
+})
 
 // The optional search model: offered, downloading, indexing, or installed.
 function SearchModelCard({ compact }: { compact: boolean }) {
   const { t } = useI18n()
   const { colors } = useTheme()
-  const model = useSearchModelStore()
-  const indexing = useVectorIndexStore()
-  if (indexing.indexing)
+  const downloaded = useSearchModelStore((state) => state.downloaded)
+  const downloading = useSearchModelStore((state) => state.downloading)
+  const percent = useSearchModelStore((state) => state.percent)
+  const error = useSearchModelStore((state) => state.error)
+  const download = useSearchModelStore((state) => state.download)
+  const cancel = useSearchModelStore((state) => state.cancel)
+  const remove = useSearchModelStore((state) => state.remove)
+  const indexing = useVectorIndexStore((state) => state.indexing)
+  const done = useVectorIndexStore((state) => state.done)
+  const total = useVectorIndexStore((state) => state.total)
+  const [confirming, setConfirming] = useState(false)
+  if (indexing)
     return (
       <View style={styles.stage}>
         <ActivityIndicator size="small" color={colors.muted} />
         <Text style={[type.meta, { color: colors.muted }]}>
-          {t(`Indeksuję notatki do wyszukiwania… ${indexing.done}/${indexing.total}`, `Indexing notes for search… ${indexing.done}/${indexing.total}`)}
+          {t(`Indeksuję notatki do wyszukiwania… ${done}/${total}`, `Indexing notes for search… ${done}/${total}`)}
         </Text>
       </View>
     )
   if (compact) return null
-  if (model.downloaded)
+  if (downloaded)
     return (
-      <Text style={[type.meta, { color: colors.muted, textAlign: 'center' }]}>
-        {t('Wyszukiwanie po znaczeniu włączone. ', 'Search by meaning is on. ')}
-        <Text accessibilityRole="button" onPress={() =>
-            Alert.alert(t('Usunąć model wyszukiwania?', 'Remove the search model?'), t('Zwolni to miejsce; czat będzie szukał tylko po słowach.', 'This frees the space; the chat will search by words only.'), [
-              { text: t('Anuluj', 'Cancel'), style: 'cancel' },
-              { text: t('Usuń', 'Remove'), style: 'destructive', onPress: () => void model.remove() },
-            ])
-          } style={{ color: colors.accent }}>
-          {t('Usuń model', 'Remove model')}
+      <>
+        <Text style={[type.meta, { color: colors.muted, textAlign: 'center' }]}>
+          {t('Wyszukiwanie po znaczeniu włączone. ', 'Search by meaning is on. ')}
+          <Text accessibilityRole="button" onPress={() => setConfirming(true)} style={{ color: colors.ink, textDecorationLine: 'underline' }}>
+            {t('Usuń model', 'Remove model')}
+          </Text>
         </Text>
-      </Text>
+        <BottomSheet visible={confirming} onClose={() => setConfirming(false)} title={t('Usunąć model wyszukiwania?', 'Remove the search model?')}>
+          <Text style={[type.body, { color: colors.body }]}>
+            {t('Zwolni to miejsce; czat będzie szukał tylko po słowach.', 'This frees the space; the chat will search by words only.')}
+          </Text>
+          <Button label={t('Usuń model', 'Remove model')} variant="danger" icon="trash" onPress={() => { setConfirming(false); void remove() }} />
+          <Button label={t('Anuluj', 'Cancel')} variant="quiet" onPress={() => setConfirming(false)} />
+        </BottomSheet>
+      </>
     )
   return (
     <View style={[styles.card, { backgroundColor: colors.paper, borderColor: colors.line }]}>
@@ -238,11 +300,11 @@ function SearchModelCard({ compact }: { compact: boolean }) {
           `Model wyszukiwania (${EMBEDDING_MODEL.approxSizeMb} MB) znajduje notatki opisane innymi słowami albo w drugim języku. Działa na telefonie, bez wysyłania notatek.`, `A search model (${EMBEDDING_MODEL.approxSizeMb} MB) finds notes that say it in other words or in the other language. It runs on this phone; notes are never sent.`,
         )}
       </Text>
-      {model.error ? <Text style={[type.meta, { color: colors.danger }]}>{model.error}</Text> : null}
-      {model.downloading ? (
-        <Button label={t(`Anuluj · ${Math.round(model.percent)}%`, `Cancel · ${Math.round(model.percent)}%`)} variant="quiet" onPress={model.cancel} />
+      {error ? <Text style={[type.meta, { color: colors.danger }]}>{error}</Text> : null}
+      {downloading ? (
+        <Button label={t(`Anuluj · ${Math.round(percent)}%`, `Cancel · ${Math.round(percent)}%`)} variant="quiet" onPress={cancel} />
       ) : (
-        <Button label={t('Pobierz model wyszukiwania', 'Download the search model')} icon="download" onPress={() => void model.download()} />
+        <Button label={t('Pobierz model wyszukiwania', 'Download the search model')} icon="download" onPress={() => void download()} />
       )}
     </View>
   )
@@ -263,18 +325,19 @@ export default function AskScreen() {
   const scroll = useRef<ScrollView>(null)
   const pending = messages.some((message) => message.status === 'pending')
   const last = messages.at(-1)
-  const titles = notes.map((note) => note.title.trim()).filter(Boolean)
+  const titles = useMemo(() => notes.map((note) => note.title.trim()).filter(Boolean), [notes])
 
   useEffect(() => {
-    scroll.current?.scrollToEnd({ animated: true })
-  }, [messages.length, last?.answer, last?.stage])
+    // Streaming text lands many times a second: an animated scroll would lag behind it.
+    scroll.current?.scrollToEnd({ animated: last?.status !== 'pending' })
+  }, [messages.length, last?.answer, last?.stage, last?.status])
 
-  const send = (question: string): void => {
+  const send = useCallback((question: string): void => {
     if (!question.trim() || pending) return
     setDraft('')
     void ask(question, { notes, tasks, appLanguage: language })
-  }
-  const open = (source: AskSource): void => router.push(`/note/${source.noteId}`)
+  }, [ask, language, notes, pending, tasks])
+  const open = useCallback((source: AskSource): void => router.push(`/note/${source.noteId}`), [router])
 
   return (
     <KeyboardAvoidingView
@@ -330,7 +393,7 @@ export default function AskScreen() {
         ) : (
           <>
             <SearchModelCard compact />
-            {messages.map((message) => <Message key={message.id} message={message} onOpen={open} titles={titles} />)}
+            {messages.map((message) => <Message key={message.id} message={message} onOpen={open} titles={titles} onFollowUp={message.id === last?.id && !pending ? send : undefined} />)}
           </>
         )}
       </ScrollView>
@@ -378,6 +441,9 @@ const styles = StyleSheet.create({
   question: { alignSelf: 'flex-end', maxWidth: '85%', borderRadius: 20, borderBottomRightRadius: 6, paddingHorizontal: spacing.lg, paddingVertical: 10 },
   answer: { ...type.body, fontSize: 17, lineHeight: 26 },
   answerRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
+  dueChip: { alignSelf: 'flex-start', minHeight: 24, paddingHorizontal: 10, borderRadius: 12, justifyContent: 'center' },
+  followUps: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  pill: { borderWidth: 1, borderRadius: radius.pill, paddingHorizontal: 14, minHeight: 40, justifyContent: 'center' },
   answerDot: { width: 8, height: 8, borderRadius: 4, borderWidth: 1, marginTop: 9 },
   stage: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   sources: { borderWidth: 1, borderRadius: radius.lg, paddingHorizontal: 14 },

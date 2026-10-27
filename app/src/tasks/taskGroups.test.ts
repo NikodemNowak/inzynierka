@@ -22,3 +22,16 @@ test('a task whose note is unknown stays undated', () => {
   const groups = groupTasksByDue([{ text: 'Coś — jutro', noteId: 'x' }], created, now)
   expect(groups.get('undated')).toHaveLength(1)
 })
+
+test('"week" is the rest of the calendar week, up to Sunday', () => {
+  // Wednesday 14 October 2026; the week ends Sunday the 18th.
+  const wednesday = new Date(2026, 9, 14, 12)
+  const made = new Map([['n', new Date(2026, 9, 14, 9).getTime()]])
+  const groups = groupTasksByDue([
+    { text: 'A — sobota', noteId: 'n' },
+    { text: 'B — niedziela', noteId: 'n' },
+    { text: 'C — poniedziałek', noteId: 'n' },
+  ], made, wednesday)
+  expect(groups.get('week')!.map((item) => item.task.text)).toEqual(['A — sobota', 'B — niedziela'])
+  expect(groups.get('later')!.map((item) => item.task.text)).toEqual(['C — poniedziałek'])
+})

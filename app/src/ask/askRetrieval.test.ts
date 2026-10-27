@@ -1,6 +1,6 @@
-import { buildAskContext, parseAnswer } from './askAnswer'
+import { buildAskContext, estimateTokens, parseAnswer } from './askAnswer'
 import { buildAskIndex, type AskNote } from './askIndex'
-import { questionDays, retrieve } from './askRetrieval'
+import { isConfidentMatch, questionDays, retrieve } from './askRetrieval'
 import { questionLanguage, terms } from './askText'
 
 // Wednesday 14 October 2026
@@ -69,7 +69,7 @@ test('context numbers notes and resolves task dates', () => {
   const { context, sources } = buildAskContext(found, index, 'pl', friday)
   expect(sources[0]).toEqual({ number: 1, noteId: 'dentist', title: 'Dentysta i zakupy' })
   expect(context).toContain('[1] Notatka „Dentysta i zakupy”')
-  expect(context).toMatch(/Zadanie: Wizyta u dentysty \(czwartek, 15 października, 16:30\)/u)
+  expect(context).toMatch(/Zadanie: Wizyta u dentysty \(czwartek, 15 października, 16:30, zaległe, 1 dzień\)/u)
 })
 
 test('parses citations and strips thinking', () => {
@@ -77,4 +77,66 @@ test('parses citations and strips thinking', () => {
   const answer = parseAnswer('<think>\n</think>\nDentysta jest w czwartek [2], a zakupy [2][1]. [7]', sources)
   expect(answer.text.startsWith('Dentysta')).toBe(true)
   expect(answer.cited.map((source) => source.noteId)).toEqual(['b', 'a'])
+})
+
+test('parseAnswer drops citations of notes that do not exist', () => {
+  const sources = [{ number: 1, noteId: 'a', title: 'A' }]
+  const answer = parseAnswer('Tak [1] i jeszcze [4].', sources)
+  expect(answer.text).toBe('Tak [1] i jeszcze.')
+  expect(answer.cited.map((source) => source.noteId)).toEqual(['a'])
+})
+
+test('an answer without numbers cites the best note, unless nothing was found', () => {
+  const sources = [{ number: 1, noteId: 'a', title: 'A' }, { number: 2, noteId: 'b', title: 'B' }]
+  expect(parseAnswer('W czwartek o 16:30.', sources).cited.map((source) => source.noteId)).toEqual(['a'])
+  expect(parseAnswer('Nie znalazłem tego w notatkach.', sources).cited).toEqual([])
+})
+
+test('the context is trimmed from the lowest-ranked passages to fit the budget', () => {
+  const long = (id: string) => ({ id, title: id, content: Array.from({ length: 20 }, (_, n) => `Zdanie numer ${n} o sprawie ${id} i dentyście.`).join(' '), summary: null, createdAt: wednesday })
+  const big = buildAskIndex([long('a'), long('b')], [])
+  const found = retrieve('dentyście sprawie', big, { now: friday, maxPassages: 12 })
+  const full = buildAskContext(found, big, 'pl', friday)
+  const trimmed = buildAskContext(found, big, 'pl', friday, true, 120)
+  expect(estimateTokens(full.context)).toBeGreaterThan(120)
+  expect(estimateTokens(trimmed.context)).toBeLessThanOrEqual(120)
+  expect(trimmed.context).toContain('[1]')
+  expect(trimmed.sources.length).toBeLessThanOrEqual(full.sources.length)
+  expect(trimmed.sources[0]?.noteId).toBe(full.sources[0]?.noteId)
+})
+
+test('a task with an unreadable deadline says so', () => {
+  const unclear = buildAskIndex([notes[0]!], [{ noteId: 'dentist', text: 'Zadzwonić — przed obroną', done: false }])
+  const found = retrieve('zadzwonić', unclear, { now: friday })
+  expect(buildAskContext(found, unclear, 'pl', friday).context).toContain('Zadanie: Zadzwonić (termin niejasny)')
+})
+
+test('a question that its best note fully covers skips synonym expansion', () => {
+  const found = retrieve('kupić mleko i chleb', index, { now: friday })
+  expect(isConfidentMatch('kupić mleko i chleb', found)).toBe(true)
+  expect(isConfidentMatch('stomatolog', retrieve('stomatolog', index, { now: friday }))).toBe(false)
+})
+
+test('a day question only keeps tasks due that day and never done ones', () => {
+  const day = buildAskIndex(notes, [
+    { noteId: 'dentist', text: 'Wizyta u dentysty — jutro 16:30', done: false },
+    { noteId: 'dentist', text: 'Kupić mleko — jutro', done: true },
+    { noteId: 'car', text: 'Oddać auto — poniedziałek', done: false },
+  ])
+  const found = retrieve('co mam do zrobienia w czwartek?', day, { now: new Date(2026, 9, 15, 10) })
+  const taskTexts = found.flatMap((note) => note.passages).filter((chunk) => chunk.kind === 'task').map((chunk) => chunk.text)
+  expect(taskTexts).not.toContain('Oddać auto — poniedziałek')
+  expect(taskTexts).not.toContain('Kupić mleko — jutro')
+}) 
+
+test('toggling one task does not rebuild the other notes', () => {
+  const first = buildAskIndex(notes, tasks)
+  const toggled = buildAskIndex(notes, tasks.map((task) => (task.text === 'Book the hotel' ? { ...task, done: true } : task)))
+  // The same chunk objects are reused for untouched notes (identical terms arrays).
+  const termsOf = (built: ReturnType<typeof buildAskIndex>, id: string) => built.chunks.find((chunk) => chunk.noteId === id && chunk.kind === 'sentence')?.terms
+  expect(termsOf(toggled, 'dentist')).toBe(termsOf(first, 'dentist'))
+  expect(toggled.chunks.find((chunk) => chunk.text === 'Book the hotel')?.done).toBe(true)
+  const edited = buildAskIndex(notes.map((note) => (note.id === 'car' ? { ...note, content: 'zupełnie inny tekst' } : note)), tasks)
+  expect(edited.chunks.some((chunk) => chunk.text.includes('zupełnie inny'))).toBe(true)
+  expect(edited.chunks.some((chunk) => chunk.text.includes('przegląd'))).toBe(false)
 })

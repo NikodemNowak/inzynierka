@@ -3,9 +3,10 @@ import { promptView, wordsToDigits } from '../ai/polishNumbers'
 import { englishWordsToDigits } from './englishNumbers'
 import type { Language } from '../i18n/language'
 import { localeForLanguage } from '../i18n/language'
+import { MODEL_CONFIG } from '../ai/modelConfig'
 import { resolveDue, splitTaskText } from '../tasks/taskDue'
 import { plain } from './askText'
-import { isTaskQuestion, questionDays } from './askRetrieval'
+import { asksForTasks, isTaskQuestion, questionDays } from './askRetrieval'
 import type { AskChunk, AskIndex, AskNote } from './askIndex'
 import type { RetrievedNote } from './askRetrieval'
 
@@ -19,9 +20,27 @@ export interface AskSource {
   title: string
 }
 
+// One row of a list answer built in code: it opens its note.
+export interface AskItem {
+  text: string
+  noteId: string
+  // Deadline label ("16:30", "pt. 17 paź · 9:00"); absent when there is nothing to show.
+  due?: string
+  overdue?: boolean
+  // Heading of the group the row sits under ("Zaległe").
+  group?: string
+}
+
 export interface AskAnswer {
   text: string
   sources: AskSource[]
+  // Answer computed in code from the tasks, without the model.
+  deterministic?: boolean
+  // Lead-in line above the rows of a deterministic list.
+  intro?: string
+  items?: AskItem[]
+  // Questions offered after the answer.
+  followUps?: string[]
   // The notes the answer cites, in citation order.
   cited: AskSource[]
   // The first answer was "not found" and a second look at the best note answered.
@@ -78,12 +97,26 @@ const withDays = (text: string, note: AskNote, now: Date, language: Language): s
 const readable = (text: string, note: AskNote | undefined): string =>
   (note?.language ?? (/[ąćęłńóśźż]/iu.test(text) ? 'pl' : 'en')) === 'pl' ? wordsToDigits(promptView(text)) : englishWordsToDigits(text)
 
+// "dziś", "jutro", "zaległe, 3 dni": where the deadline sits relative to now.
+export const relativeMarker = (day: number, now: Date, language: Language): string => {
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
+  const shift = Math.round((day - today) / DAY)
+  if (shift === 0) return language === 'pl' ? 'dziś' : 'today'
+  if (shift === 1) return language === 'pl' ? 'jutro' : 'tomorrow'
+  if (shift > 1) return language === 'pl' ? `za ${shift} dni` : `in ${shift} days`
+  const days = -shift
+  return language === 'pl' ? `zaległe, ${days} ${days === 1 ? 'dzień' : 'dni'}` : `overdue, ${days} ${days === 1 ? 'day' : 'days'}`
+}
+
 const passageLine = (chunk: AskChunk, index: AskIndex, language: Language, now: Date): string => {
   const note = index.notes.get(chunk.noteId)
   if (chunk.kind !== 'task') return note ? withDays(readable(chunk.text, note), note, now, language) : chunk.text
   const { title, due } = splitTaskText(chunk.text)
   const resolved = due && note ? resolveDue(due, new Date(note.createdAt)) : null
-  const when = resolved ? ` (${formatMoment(resolved.date, resolved.allDay, language)})` : due ? ` (${due})` : ''
+  const dayStart = resolved ? new Date(resolved.date.getFullYear(), resolved.date.getMonth(), resolved.date.getDate()).getTime() : 0
+  const marker = resolved && !chunk.done ? `, ${relativeMarker(dayStart, now, language)}` : ''
+  const unclear = language === 'pl' ? 'termin niejasny' : 'date unclear'
+  const when = resolved ? ` (${formatMoment(resolved.date, resolved.allDay, language)}${marker})` : due ? ` (${unclear})` : ''
   const label = language === 'pl' ? (chunk.done ? 'Zadanie (zrobione)' : 'Zadanie') : chunk.done ? 'Task (done)' : 'Task'
   return `${label}: ${readable(title, note)}${when}`
 }
@@ -101,20 +134,43 @@ const withNeighbours = (note: RetrievedNote, index: AskIndex): AskChunk[] => {
   return [...context, ...others]
 }
 
+// Rough token count for Polish/English text on a Qwen tokenizer.
+export const estimateTokens = (text: string): number => Math.ceil(text.length / 3.5)
+
 // A day question picks its passages by date; their neighbours only lengthen the prompt.
-export const buildAskContext = (retrieved: readonly RetrievedNote[], index: AskIndex, language: Language, now: Date, neighbours = true): { context: string; sources: AskSource[] } => {
-  const sources: AskSource[] = []
-  const blocks = retrieved.map((note, position) => {
+// With maxTokens, the lowest-ranked passages (the last of the last notes) are dropped
+// until the context fits, instead of overflowing the model window.
+export const buildAskContext = (
+  retrieved: readonly RetrievedNote[],
+  index: AskIndex,
+  language: Language,
+  now: Date,
+  neighbours = true,
+  maxTokens = Number.POSITIVE_INFINITY,
+): { context: string; sources: AskSource[] } => {
+  const entries = retrieved.map((note) => {
     const info = index.notes.get(note.noteId)
-    const number = position + 1
     const title = info?.title.trim() || (language === 'pl' ? 'Bez tytułu' : 'Untitled')
-    sources.push({ number, noteId: note.noteId, title })
     const recorded = info ? formatDay(info.createdAt, language) : ''
-    const header = language === 'pl' ? `[${number}] Notatka „${title}”, nagrana ${recorded}:` : `[${number}] Note "${title}", recorded ${recorded}:`
     const lines = (neighbours ? withNeighbours(note, index) : note.passages).map((chunk) => `- ${passageLine(chunk, index, language, now)}`)
-    return [header, ...lines].join('\n')
+    return { noteId: note.noteId, title, recorded, lines }
   })
-  return { context: blocks.join('\n\n'), sources }
+  const render = (): string =>
+    entries.map((entry, position) => {
+      const number = position + 1
+      const header = language === 'pl' ? `[${number}] Notatka „${entry.title}”, nagrana ${entry.recorded}:` : `[${number}] Note "${entry.title}", recorded ${entry.recorded}:`
+      return [header, ...entry.lines].join('\n')
+    }).join('\n\n')
+  let context = render()
+  while (estimateTokens(context) > maxTokens) {
+    const last = entries.at(-1)
+    if (!last || (entries.length === 1 && last.lines.length <= 1)) break
+    if (last.lines.length > 1) last.lines.pop()
+    else entries.pop()
+    context = render()
+  }
+  const sources = entries.map((entry, position): AskSource => ({ number: position + 1, noteId: entry.noteId, title: entry.title }))
+  return { context, sources }
 }
 
 const SYSTEM_PL = 'Odpowiadasz na pytania użytkownika o jego własne notatki głosowe. Korzystasz wyłącznie z podanych fragmentów notatek. Odpowiadasz po polsku, krótko i konkretnie.'
@@ -130,7 +186,7 @@ const rules = (language: Language, today: string): string =>
         '3. Daty w notatkach są już przeliczone na kalendarz („20 października (dziś)”). Podawaj je tak, jak są we fragmentach.',
         '4. Gdy notatka się poprawia („nie, czekaj”, „jednak”, „przesunięte na”), obowiązuje późniejsza wersja.',
         '5. Zachowaj zaprzeczenia i warunki („nie kupować”, „tylko jeśli”). Linie „Zadanie:” są skrótem notatki; gdy zdanie notatki mówi co innego, obowiązuje zdanie.',
-        '6. Notatki to zapis mowy, więc słowa bywają przekręcone („pen” zamiast „pendrive”, „Krakoff” zamiast „Kraków”). Gdy fragment mówi o tej samej sprawie, nawet innymi słowami albo bez jakiegoś szczegółu z pytania (np. nazwy miasta), odpowiedz na jego podstawie i dopisz krótko, czego notatka nie mówi. Gdy żaden fragment nie mówi o tej sprawie, napisz: „Nie znalazłem tego w notatkach.”',
+        '6. Notatki to zapis mowy, więc słowa bywają przekręcone („pen” zamiast „pendrive”, „Krakoff” zamiast „Kraków”). Odpowiadaj tylko wtedy, gdy fragment wyraźnie mówi o tej sprawie. Gdy brakuje szczegółu z pytania, napisz krótko, czego notatka nie podaje. Gdy żaden fragment nie mówi o tej sprawie, napisz: „Nie znalazłem tego w notatkach.”',
         '7. Liczby i godziny pisz cyframi.',
         '8. Gdy pytanie dotyczy rzeczy do zrobienia, wypisz każdą z fragmentów jako listę z myślnikami. W innym wypadku najwyżej 3 zdania.',
         '9. Na pytanie „Czy…?” zacznij od „Tak” albo „Nie” według fragmentu („chleba nie kupuję” znaczy „Nie”), a potem w tym samym zdaniu podaj, co mówi notatka. Nie przepisuj wtrąceń typu „nie, czekaj”.',
@@ -145,7 +201,7 @@ const rules = (language: Language, today: string): string =>
         '3. Dates in the notes are already turned into calendar days ("October 20 (today)"). Give them as they appear in the excerpts.',
         '4. When a note corrects itself ("no, wait", "actually", "moved to"), the later version counts.',
         '5. Keep negations and conditions ("don\'t buy", "only if"). "Task:" lines are shorthand; when a sentence of the note says otherwise, the sentence counts.',
-        '6. The notes are transcribed speech, so words can be garbled ("pen" for "pendrive", "Krakoff" for "Krakow"). When an excerpt talks about the same matter, even in other words or without some detail of the question (e.g. the city name), answer from it and briefly say what the note does not say. When no excerpt talks about it, write: "I couldn\'t find that in your notes."',
+        '6. The notes are transcribed speech, so words can be garbled ("pen" for "pendrive", "Krakoff" for "Krakow"). Answer only when an excerpt clearly talks about the matter. When a detail of the question is missing, briefly say what the note does not give. When no excerpt talks about it, write: "I couldn\'t find that in your notes."',
         '7. Write numbers and times with digits.',
         '8. When the question is about things to do, list every one from the excerpts with dashes. Otherwise at most 3 sentences.',
         '9. For a yes/no question start with "Yes" or "No" as the excerpt says ("I won\'t buy bread" means "No"), then in the same sentence say what the note says. Do not copy fillers like "no, wait".',
@@ -155,31 +211,37 @@ const rules = (language: Language, today: string): string =>
 
 export const askPrompt = (question: string, context: string, history: readonly { question: string; answer: string }[], language: Language, now: Date): string => {
   const today = formatDay(now.getTime(), language)
-  const earlier = history.slice(-2).map((turn) => (language === 'pl' ? `Pytanie: ${turn.question}\nOdpowiedź: ${turn.answer}` : `Question: ${turn.question}\nAnswer: ${turn.answer}`)).join('\n\n')
+  // Earlier answers are not fed back: the small model copies their mistakes. Questions give the topic.
+  const earlier = history.slice(-2).map((turn) => `- ${turn.question}`).join('\n')
   // A question about things to do gets a list; the model otherwise answers with one of them.
-  const list = isTaskQuestion(question)
+  const list = asksForTasks(question, now)
     ? language === 'pl'
       ? 'Wypisz każdą rzecz do zrobienia z fragmentów, których dotyczy pytanie, w osobnej linii z myślnikiem, z terminem w nawiasie.'
       : 'List every thing to do from the excerpts the question is about, one per line with a dash, with its date in brackets.'
     : ''
   const parts = language === 'pl'
-    ? [rules(language, today), `FRAGMENTY NOTATEK:\n${context || '(brak pasujących fragmentów)'}`, earlier ? `WCZEŚNIEJ W ROZMOWIE:\n${earlier}` : '', `PYTANIE: ${question}`, list, 'ODPOWIEDŹ:']
-    : [rules(language, today), `NOTE EXCERPTS:\n${context || '(no matching excerpts)'}`, earlier ? `EARLIER IN THE CONVERSATION:\n${earlier}` : '', `QUESTION: ${question}`, list, 'ANSWER:']
+    ? [rules(language, today), `FRAGMENTY NOTATEK:\n${context || '(brak pasujących fragmentów)'}`, earlier ? `WCZEŚNIEJSZE PYTANIA UŻYTKOWNIKA:\n${earlier}` : '', `PYTANIE: ${question}`, list, 'ODPOWIEDŹ:']
+    : [rules(language, today), `NOTE EXCERPTS:\n${context || '(no matching excerpts)'}`, earlier ? `EARLIER QUESTIONS FROM THE USER:\n${earlier}` : '', `QUESTION: ${question}`, list, 'ANSWER:']
   return parts.filter(Boolean).join('\n\n')
 }
 
 export const askSystem = (language: Language): string => (language === 'pl' ? SYSTEM_PL : SYSTEM_EN)
 
 export const parseAnswer = (raw: string, sources: readonly AskSource[]): AskAnswer => {
+  const known = new Set(sources.map((source) => source.number))
   const text = raw.replace(/<think>[\s\S]*?<\/think>/gu, '').replace(/<\/?think>/gu, '')
-    // Only [n] citations stay in brackets.
+    // Only [n] citations stay in brackets, and only those that point to a real note.
     .replace(/\s*\[(?!\d+\])[^\]\n]{1,40}\]/gu, '')
+    .replace(/\s*\[(\d+)\]/gu, (match: string, number: string) => (known.has(Number(number)) ? match : ''))
     .trim()
   const cited: AskSource[] = []
   for (const match of text.matchAll(/\[(\d+)\]/gu)) {
     const source = sources.find((item) => item.number === Number(match[1]))
     if (source && !cited.includes(source)) cited.push(source)
   }
+  // The model forgot the numbers: the best note is the likely origin, unless it found nothing.
+  const first = sources[0]
+  if (!cited.length && first && text && !NOT_FOUND.test(text)) cited.push(first)
   return { text, sources: [...sources], cited }
 }
 
@@ -190,11 +252,15 @@ export const answerQuestion = async (
   retrieved: readonly RetrievedNote[],
   index: AskIndex,
   language: Language,
-  options: { now: Date; history?: readonly { question: string; answer: string }[]; onToken?: (token: string) => void; signal?: AbortSignal },
+  options: { now: Date; history?: readonly { question: string; answer: string }[]; onToken?: (token: string) => void; signal?: AbortSignal; contextTokens?: number },
 ): Promise<AskAnswer> => {
-  const dayList = isTaskQuestion(question) && questionDays(question, options.now) !== null
-  const { context, sources } = buildAskContext(retrieved, index, language, options.now, !dayList)
-  const prompt = askPrompt(question, context, options.history ?? [], language, options.now)
+  const dayList = isTaskQuestion(question, options.now) && questionDays(question, options.now) !== null
+  const history = options.history ?? []
+  // The prompt must fit the model window with room for the answer: passages are trimmed, not the rules.
+  const frame = askPrompt(question, '', history, language, options.now)
+  const budget = (options.contextTokens ?? MODEL_CONFIG.nCtx) - ASK_OUTPUT_TOKENS - estimateTokens(frame + askSystem(language)) - 120
+  const { context, sources } = buildAskContext(retrieved, index, language, options.now, !dayList, Math.max(200, budget))
+  const prompt = askPrompt(question, context, history, language, options.now)
   const generations: AskGeneration[] = []
   const run = async (temperature: number, onToken: (token: string) => void, text = prompt) => {
     const result = await generate(text, onToken, {
