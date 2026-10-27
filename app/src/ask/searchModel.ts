@@ -1,3 +1,4 @@
+import { InteractionManager } from 'react-native'
 import { create } from 'zustand'
 import { useNotesStore } from '../state/notesStore'
 import { useTasksStore } from '../state/tasksStore'
@@ -22,8 +23,12 @@ interface SearchModelState {
 
 let controller: AbortController | null = null
 
+const INDEX_DEBOUNCE_MS = 30_000
+
 const indexNow = (): void => {
   if (!useSearchModelStore.getState().downloaded) return
+  // Indexing competes with the note LLM for the CPU, so wait until it is idle.
+  if (Object.keys(useNotesStore.getState().processing).length > 0) return
   const index = indexFor(useNotesStore.getState().notes, useTasksStore.getState().tasks)
   void indexMissingVectors(index).catch(() => undefined)
 }
@@ -62,7 +67,13 @@ export const startSearchIndexing = (): (() => void) => {
   let timer: ReturnType<typeof setTimeout> | null = null
   const schedule = (): void => {
     if (timer) clearTimeout(timer)
-    timer = setTimeout(indexNow, 8000)
+    timer = setTimeout(() => {
+      InteractionManager.runAfterInteractions(() => {
+        // A note still processing postpones the run instead of dropping it.
+        if (Object.keys(useNotesStore.getState().processing).length > 0) schedule()
+        else indexNow()
+      })
+    }, INDEX_DEBOUNCE_MS)
   }
   void useSearchModelStore.getState().refresh().then(schedule)
   const unsubscribeNotes = useNotesStore.subscribe((state, previous) => {

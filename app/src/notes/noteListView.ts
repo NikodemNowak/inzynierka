@@ -24,11 +24,24 @@ export const normalizeForSearch = (text: string): string =>
 // Every word of the query has to appear somewhere, in any order: "aneks czerwca"
 // finds a note mentioning both. Matching is on substrings, so inflected forms
 // ("najmu" for "najm") are found too — Polish has no stemmer available here.
+// Normalizing every note on each keystroke is the expensive part, so the
+// haystack is cached per note object (store updates create new objects).
+const haystacks = new WeakMap<Note, string>()
+
+const haystackOf = (note: Note): string => {
+  let haystack = haystacks.get(note)
+  if (haystack === undefined) {
+    haystack = normalizeForSearch(
+      [note.title, note.content, note.summary ?? ''].join('\n'),
+    )
+    haystacks.set(note, haystack)
+  }
+  return haystack
+}
+
 const matchesQuery = (note: Note, words: string[]): boolean => {
   if (words.length === 0) return true
-  const haystack = normalizeForSearch(
-    [note.title, note.content, note.summary ?? ''].join('\n'),
-  )
+  const haystack = haystackOf(note)
   return words.every((word) => haystack.includes(word))
 }
 

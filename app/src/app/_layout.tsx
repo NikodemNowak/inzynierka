@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { Alert, AppState } from 'react-native'
+import { Alert, AppState, InteractionManager } from 'react-native'
 import { useFonts } from 'expo-font'
 import {
   Onest_400Regular,
@@ -80,6 +80,10 @@ export default function RootLayout() {
     ])
       .then(async () => {
         initialized = true
+        // Recovery is not needed for the first frame; run it after interactions.
+        await new Promise<void>((resolve) => {
+          InteractionManager.runAfterInteractions(() => resolve())
+        })
         await recover()
       })
       .catch(() => {

@@ -32,12 +32,41 @@ const parseTags = (raw: string | null): string[] => {
   }
 }
 
+// Heavy JSON columns are parsed on first access, so listing hundreds of notes
+// at startup does not pay for timelines (up to 3000 levels) nobody reads.
+const defineLazy = <T extends object, V>(
+  target: T,
+  key: keyof Note,
+  compute: () => V,
+): void => {
+  Object.defineProperty(target, key, {
+    configurable: true,
+    enumerable: true,
+    get() {
+      const value = compute()
+      Object.defineProperty(target, key, {
+        value,
+        configurable: true,
+        enumerable: true,
+        writable: true,
+      })
+      return value
+    },
+    set(value: V) {
+      Object.defineProperty(target, key, {
+        value,
+        configurable: true,
+        enumerable: true,
+        writable: true,
+      })
+    },
+  })
+}
+
 const toNote = (row: NoteRow): Note => {
   const { summaryDocument, audioTimeline, ...fields } = row
-  return {
+  const note = {
     ...fields,
-    summaryDocument: parseSummaryDocument(summaryDocument, row.content, row.summary),
-    audioTimeline: row.audioUri && audioTimeline ? parseAudioTimeline(audioTimeline, row.content) : null,
     language: noteLanguageOrDefault(row.language),
     transcriptionIncomplete: row.transcriptionIncomplete === 1,
     tags: parseTags(row.tags),
@@ -45,7 +74,16 @@ const toNote = (row: NoteRow): Note => {
       row.audioUri && FileSystem.documentDirectory
         ? resolveRecordingUri(row.audioUri, FileSystem.documentDirectory)
         : row.audioUri,
-  }
+  } as Note
+  defineLazy(note, 'summaryDocument', () =>
+    parseSummaryDocument(summaryDocument, row.content, row.summary),
+  )
+  defineLazy(note, 'audioTimeline', () =>
+    row.audioUri && audioTimeline
+      ? parseAudioTimeline(audioTimeline, row.content)
+      : null,
+  )
+  return note
 }
 
 const storedAudioPath = (uri: string | null): string | null =>

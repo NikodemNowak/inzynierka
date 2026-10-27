@@ -12,12 +12,16 @@ export const BENCHMARK_AUDIO_FIXTURES = [
   { id: 'en-audio-30min-v1', ...ENGLISH_AUDIO_FIXTURE_DATA['en-audio-30min-v1'] },
 ] as const
 
+// Required only under __DEV__ so release bundles do not embed the WAV files.
 const audioModule = (id: BenchmarkAudioFixtureId): number => {
-  switch (id) {
-    case 'en-audio-3min-v1': return require('../../assets/benchmarks/english-3min.wav')
-    case 'en-audio-10min-v1': return require('../../assets/benchmarks/english-10min.wav')
-    case 'en-audio-30min-v1': return require('../../assets/benchmarks/english-30min.wav')
+  if (__DEV__) {
+    switch (id) {
+      case 'en-audio-3min-v1': return require('../../assets/benchmarks/english-3min.wav')
+      case 'en-audio-10min-v1': return require('../../assets/benchmarks/english-10min.wav')
+      case 'en-audio-30min-v1': return require('../../assets/benchmarks/english-30min.wav')
+    }
   }
+  throw new Error('Benchmark audio is available in development builds only')
 }
 const ensureFixtureActive = (signal?: AbortSignal): void => {
   if (signal?.aborted) throw new GenerationCancelledError()

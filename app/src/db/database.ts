@@ -99,6 +99,10 @@ const initDatabase = async (): Promise<SQLite.SQLiteDatabase> => {
   await addColumnIfMissing(db, 'metrics', 'predictedTokens', 'INTEGER')
   await addColumnIfMissing(db, 'metrics', 'metadata', 'TEXT')
   await addColumnIfMissing(db, 'llm_operations', 'metadata', 'TEXT')
+  await db.execAsync(`
+    CREATE INDEX IF NOT EXISTS notes_updatedAt ON notes (updatedAt);
+    CREATE INDEX IF NOT EXISTS tasks_noteId ON tasks (noteId);
+  `)
   return db
 }
 

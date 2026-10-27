@@ -1,7 +1,8 @@
 import { useI18n } from '../../i18n/useI18n'
-import { useMemo, useState } from 'react'
+import { useCallback, useDeferredValue, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'expo-router'
-import { SectionList, Text, View } from 'react-native'
+import { SectionList, Text, View, type SectionListRenderItem } from 'react-native'
+import type { Note } from '../../domain/note'
 import { useNotesStore } from '../../state/notesStore'
 import { useSettingsStore } from '../../state/settingsStore'
 import { NOTE_CATEGORIES } from '../../domain/categories'
@@ -17,6 +18,10 @@ import { NextTaskBanner } from '../../notes/NextTaskBanner'
 import { groupNotesByDate, selectVisibleNotes } from '../../notes/noteListView'
 import { type, useTheme } from '../../ui/theme'
 
+type Section = { title: string; data: Note[] }
+
+const keyOfNote = (item: Note): string => item.id
+
 export default function NotesListScreen() {
   const { colors } = useTheme()
   const { language } = useI18n()
@@ -30,13 +35,65 @@ export default function NotesListScreen() {
     () => NOTE_CATEGORIES.filter((c) => notes.some((n) => n.tags.includes(c))),
     [notes],
   )
+  // The input stays responsive; filtering the list follows at lower priority.
+  const deferredQuery = useDeferredValue(query)
   const visibleNotes = useMemo(
-    () => selectVisibleNotes(notes, { query, category, sortMode }),
-    [notes, query, category, sortMode],
+    () => selectVisibleNotes(notes, { query: deferredQuery, category, sortMode }),
+    [notes, deferredQuery, category, sortMode],
   )
   const sections = useMemo(
     () => groupNotesByDate(visibleNotes, sortMode, new Date(), language),
     [visibleNotes, sortMode, language],
+  )
+  // One stable handler per note id, so memoized rows are not invalidated.
+  const handlers = useRef(new Map<string, () => void>())
+  const handlerFor = useCallback(
+    (id: string): (() => void) => {
+      let handler = handlers.current.get(id)
+      if (!handler) {
+        handler = () => router.push(`/note/${id}`)
+        handlers.current.set(id, handler)
+      }
+      return handler
+    },
+    [router],
+  )
+  const renderSectionHeader = useCallback(
+    ({ section }: { section: Section }) => (
+      <Text
+        style={{
+          ...type.label,
+          color: colors.muted,
+          fontSize: 13,
+          lineHeight: 18,
+          marginTop: 14,
+          marginBottom: 8,
+          marginLeft: 4,
+        }}
+      >
+        {section.title}
+      </Text>
+    ),
+    [colors.muted],
+  )
+  const renderItem: SectionListRenderItem<Note, Section> = useCallback(
+    ({ item, index, section }) => (
+      <NoteRow
+        note={item}
+        timestamp={sortMode === 'created' ? item.createdAt : item.updatedAt}
+        groupPosition={
+          section.data.length === 1
+            ? 'only'
+            : index === 0
+              ? 'first'
+              : index === section.data.length - 1
+                ? 'last'
+                : 'middle'
+        }
+        onPress={handlerFor(item.id)}
+      />
+    ),
+    [sortMode, handlerFor],
   )
   return (
     <View style={{ flex: 1, backgroundColor: colors.canvas }}>
@@ -59,7 +116,7 @@ export default function NotesListScreen() {
         <NotesEmptyState />
       ) : !visibleNotes.length ? (
         <NotesNoResultsState
-          hasSearch={query.trim().length > 0}
+          hasSearch={deferredQuery.trim().length > 0}
           onClear={() => {
             if (query.trim()) {
               setQuery('')
@@ -71,44 +128,13 @@ export default function NotesListScreen() {
       ) : (
         <SectionList
           sections={sections}
-          keyExtractor={(item) => item.id}
+          keyExtractor={keyOfNote}
           stickySectionHeadersEnabled={false}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
           contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: 20 }}
-          renderSectionHeader={({ section }) => (
-            <Text
-              style={{
-                ...type.label,
-                color: colors.muted,
-                fontSize: 13,
-                lineHeight: 18,
-                marginTop: 14,
-                marginBottom: 8,
-                marginLeft: 4,
-              }}
-            >
-              {section.title}
-            </Text>
-          )}
-          renderItem={({ item, index, section }) => (
-            <NoteRow
-              note={item}
-              timestamp={
-                sortMode === 'created' ? item.createdAt : item.updatedAt
-              }
-              groupPosition={
-                section.data.length === 1
-                  ? 'only'
-                  : index === 0
-                    ? 'first'
-                    : index === section.data.length - 1
-                      ? 'last'
-                      : 'middle'
-              }
-              onPress={() => router.push(`/note/${item.id}`)}
-            />
-          )}
+          renderSectionHeader={renderSectionHeader}
+          renderItem={renderItem}
         />
       )}
     </View>

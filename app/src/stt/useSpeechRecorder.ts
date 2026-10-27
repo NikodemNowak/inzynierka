@@ -13,6 +13,7 @@ import { nativeCapture } from './nativeCapture'
 import { useNativeSpeechRecorder } from './useNativeSpeechRecorder'
 import { useNativeImportRecorder } from './useNativeImportRecorder'
 import { MAX_AUDIO_DURATION_MS } from '../audio/captureManifest'
+import { useRecorderMeterStore, type RecorderMeter } from './recorderMeter'
 import { readWavLevels, wavPartDurationMs } from '../audio/wavLevels'
 import {
   buildAudioSpans,
@@ -115,8 +116,11 @@ export interface SpeechRecorder {
   // Only the finalized part, which changes once per recognized utterance rather
   // than on every interim update — the right cadence for saving a draft.
   finalTranscript: string
+  // Snapshots of the live readings; they are not reactive. Components that draw
+  // them subscribe through `meter` instead of re-rendering the whole screen.
   durationMs: number
   volumeLevel: number
+  meter?: RecorderMeter
   error: string | null
   permissionDenied: boolean
   info: string | null
@@ -134,8 +138,8 @@ const useLegacySpeechRecorder = (
   const [status, setStatus] = useState<RecorderStatus>('idle')
   const [transcript, setTranscript] = useState('')
   const [finalTranscript, setFinalTranscript] = useState('')
-  const [durationMs, setDurationMs] = useState(0)
-  const [volumeLevel, setVolumeLevel] = useState(0)
+  const meter = useRecorderMeterStore()
+  const { setDuration: setDurationMs, setVolume: setVolumeLevel } = meter
   const [error, setError] = useState<string | null>(null)
   const [permissionDenied, setPermissionDenied] = useState(false)
   const [info, setInfo] = useState<string | null>(null)
@@ -674,8 +678,13 @@ const useLegacySpeechRecorder = (
     status,
     transcript,
     finalTranscript,
-    durationMs,
-    volumeLevel,
+    get durationMs() {
+      return meter.durationMs
+    },
+    get volumeLevel() {
+      return meter.volume
+    },
+    meter,
     error,
     permissionDenied,
     info,

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Stack, useNavigation, useRouter } from 'expo-router'
 import { usePreventRemove } from 'expo-router/react-navigation'
 import {
@@ -24,7 +24,6 @@ import {
 } from '../i18n/language'
 import { translate } from '../i18n/translate'
 import { acknowledgeCapture } from '../audio/captureRecovery'
-import type { RecorderStatus } from '../stt/useSpeechRecorder'
 import { LanguagePicker } from '../ui/LanguagePicker'
 import {
   useSpeechRecorder,
@@ -32,7 +31,8 @@ import {
 } from '../stt/useSpeechRecorder'
 import { LiveTranscript } from '../stt/LiveTranscript'
 import { PermissionSettingsButton } from '../stt/PermissionSettingsButton'
-import { pushWaveformSample, waveformBarHeight } from '../stt/microphoneMeter'
+import { waveformBarHeight, WAVEFORM_MAX_HEIGHT } from '../stt/microphoneMeter'
+import { RecorderMeterStore, type RecorderMeter } from '../stt/recorderMeter'
 import { BottomSheet } from '../ui/BottomSheet'
 import { Button } from '../ui/Button'
 import { Icon } from '../ui/Icon'
@@ -81,34 +81,39 @@ const statusLabel = (
 
 const WAVEFORM_BARS = 36
 const WAVEFORM_TICK_MS = 70
-const silentWaveform = (): number[] => Array.from({ length: WAVEFORM_BARS }, () => 0)
+const SILENT_SCALE = waveformBarHeight(0) / WAVEFORM_MAX_HEIGHT
 
-function RecordingWaveform({
-  status,
-  volumeLevel,
+// Bars have a fixed height and are scaled natively, so the trace moves without
+// any React render: each tick only shifts values between Animated.Values.
+const RecordingWaveform = memo(function RecordingWaveform({
+  recording,
+  meter,
 }: {
-  status: RecorderStatus
-  volumeLevel: number
+  recording: boolean
+  meter: RecorderMeter
 }) {
   const { colors } = useTheme()
-  const recording = status === 'recording'
-  const level = useRef(0)
-  level.current = recording ? volumeLevel : 0
-  const [history, setHistory] = useState<readonly number[]>(silentWaveform)
+  const scales = useRef(
+    Array.from({ length: WAVEFORM_BARS }, () => new Animated.Value(SILENT_SCALE)),
+  ).current
+  const samples = useRef<number[]>(Array.from({ length: WAVEFORM_BARS }, () => SILENT_SCALE))
   const color = recording ? colors.ink : colors.line
 
   // Sample on a fixed clock so the trace keeps moving while the level holds.
   useEffect(() => {
+    const history = samples.current
     if (!recording) {
-      setHistory(silentWaveform())
+      history.fill(SILENT_SCALE)
+      for (const scale of scales) scale.setValue(SILENT_SCALE)
       return
     }
-    const timer = setInterval(
-      () => setHistory((current) => pushWaveformSample(current, level.current)),
-      WAVEFORM_TICK_MS,
-    )
+    const timer = setInterval(() => {
+      history.shift()
+      history.push(waveformBarHeight(meter.volume) / WAVEFORM_MAX_HEIGHT)
+      for (let i = 0; i < WAVEFORM_BARS; i += 1) scales[i]!.setValue(history[i]!)
+    }, WAVEFORM_TICK_MS)
     return () => clearInterval(timer)
-  }, [recording])
+  }, [recording, meter, scales])
 
   return (
     <View
@@ -116,18 +121,18 @@ function RecordingWaveform({
       accessibilityElementsHidden
       importantForAccessibility="no-hide-descendants"
     >
-      {history.map((value, index) => (
-        <View
+      {scales.map((scale, index) => (
+        <Animated.View
           key={index}
           style={[
             styles.waveformBar,
-            { height: waveformBarHeight(value), backgroundColor: color },
+            { backgroundColor: color, transform: [{ scaleY: scale }] },
           ]}
         />
       ))}
     </View>
   )
-}
+})
 
 // The one control while recording: yellow on graphite, black on paper, with a
 // ring that breathes while the microphone is open.
@@ -176,7 +181,22 @@ function RecordButton({ live, label, disabled, busy, onPress }: {
   )
 }
 
-function LivePill({ live, label }: { live: boolean; label: string }) {
+// Owns the clock text, so the 250 ms duration ticks re-render only this pill.
+const RecordingTimer = memo(function RecordingTimer({ live, meter }: { live: boolean; meter: RecorderMeter }) {
+  const { t } = useI18n()
+  const [label, setLabel] = useState(() => formatDuration(meter.durationMs))
+  useEffect(() => {
+    setLabel(formatDuration(meter.durationMs))
+    return meter.subscribeDuration((ms) => setLabel(formatDuration(ms)))
+  }, [meter])
+  return (
+    <View accessibilityLabel={`${t('Czas nagrania', 'Recording time')} ${label}`}>
+      <LivePill live={live} label={label} />
+    </View>
+  )
+})
+
+const LivePill = memo(function LivePill({ live, label }: { live: boolean; label: string }) {
   const { colors } = useTheme()
   const reduced = useReducedMotion()
   const blink = useRef(new Animated.Value(1)).current
@@ -195,7 +215,7 @@ function LivePill({ live, label }: { live: boolean; label: string }) {
       <Text style={[styles.pillTime, { color: live ? colors.onBrand : colors.ink }]}>{label}</Text>
     </View>
   )
-}
+})
 
 export default function RecordNoteScreen() {
   const router = useRouter()
@@ -341,7 +361,14 @@ export default function RecordNoteScreen() {
   )
 
   const recorder = useSpeechRecorder(handleComplete, noteLanguage)
-  const { finalTranscript, status, volumeLevel } = recorder
+  const { finalTranscript, status } = recorder
+  // Recorders without a meter (mocks) get a static one fed from their snapshot.
+  const fallbackMeter = useRef(new RecorderMeterStore()).current
+  if (!recorder.meter) {
+    fallbackMeter.setVolume(recorder.volumeLevel)
+    fallbackMeter.setDuration(recorder.durationMs)
+  }
+  const meter = recorder.meter ?? fallbackMeter
 
   // Persist only finalized speech, not the recognizer's frequently revised tail.
   useEffect(() => {
@@ -488,9 +515,7 @@ export default function RecordNoteScreen() {
             />
           </View>
         )}
-        <View accessibilityLabel={`${t('Czas nagrania', 'Recording time')} ${formatDuration(recorder.durationMs)}`}>
-          <LivePill live={live} label={formatDuration(recorder.durationMs)} />
-        </View>
+        <RecordingTimer live={live} meter={meter} />
         <View style={styles.statusRow} accessibilityLiveRegion="polite">
           {showingProgress && (
             <ActivityIndicator size="small" color={colors.muted} />
@@ -501,7 +526,7 @@ export default function RecordNoteScreen() {
               : statusLabel(status, requesting, saving)}
           </Text>
         </View>
-        <RecordingWaveform status={status} volumeLevel={volumeLevel} />
+        <RecordingWaveform recording={live} meter={meter} />
       </View>
 
 
@@ -513,10 +538,10 @@ export default function RecordNoteScreen() {
       >
         {error && (
           <View
-            style={[styles.errorNotice, { backgroundColor: colors.emberSoft }]}
+            style={[styles.errorNotice, { backgroundColor: colors.paper, borderColor: colors.line }]}
             accessibilityRole="alert"
           >
-            <Icon name="alert" size={21} color={colors.ember} />
+            <Icon name="alert" size={18} color={colors.danger} />
             <Text style={[styles.error, { color: colors.ink }]}>{error}</Text>
           </View>
         )}
@@ -762,7 +787,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginTop: 2,
   },
-  waveformBar: { width: 4, borderRadius: 999 },
+  waveformBar: { width: 4, height: WAVEFORM_MAX_HEIGHT, borderRadius: 2 },
   transcriptDivider: {
     marginHorizontal: spacing.lg,
     borderBottomWidth: StyleSheet.hairlineWidth,
@@ -785,7 +810,8 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     gap: spacing.sm,
     padding: spacing.md,
-    borderRadius: 14,
+    borderRadius: 18,
+    borderWidth: StyleSheet.hairlineWidth,
   },
   error: { ...type.body, flex: 1, fontSize: 14, lineHeight: 21 },
   actionBar: {

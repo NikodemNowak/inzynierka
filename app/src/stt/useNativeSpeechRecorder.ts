@@ -15,6 +15,7 @@ import { pauseImportProcessing } from '../processing/importProcessing'
 import { enqueueLlm } from '../ai/llmQueue'
 import { unloadModel } from '../ai/llm'
 import { normalizeCaptureVolume } from './microphoneMeter'
+import { useRecorderMeterStore } from './recorderMeter'
 
 export const useNativeSpeechRecorder = (
   onComplete: (result: RecordingResult) => void,
@@ -23,8 +24,8 @@ export const useNativeSpeechRecorder = (
   const [status, setStatus] = useState<RecorderStatus>('idle')
   const [transcript, setTranscript] = useState('')
   const [finalTranscript, setFinalTranscript] = useState('')
-  const [durationMs, setDurationMs] = useState(0)
-  const [volumeLevel, setVolumeLevel] = useState(0)
+  const meter = useRecorderMeterStore()
+  const { setDuration: setDurationMs, setVolume: setVolumeLevel } = meter
   const [error, setError] = useState<string | null>(null)
   const [permissionDenied, setPermissionDenied] = useState(false)
   const [info, setInfo] = useState<string | null>(null)
@@ -281,8 +282,13 @@ export const useNativeSpeechRecorder = (
     status,
     transcript,
     finalTranscript,
-    durationMs,
-    volumeLevel,
+    get durationMs() {
+      return meter.durationMs
+    },
+    get volumeLevel() {
+      return meter.volume
+    },
+    meter,
     error,
     permissionDenied,
     info,

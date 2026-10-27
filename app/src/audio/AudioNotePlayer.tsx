@@ -1,5 +1,5 @@
 import { useI18n } from '../i18n/useI18n'
-import { useImperativeHandle, useState, type Ref } from 'react'
+import { memo, useImperativeHandle, useMemo, useState, type Ref } from 'react'
 import { Platform, Pressable, Text, View } from 'react-native'
 import {
   setAudioModeAsync,
@@ -37,6 +37,30 @@ type Props = {
 const BAR_WIDTH = 3
 const BAR_GAP = 2
 const BARS_HEIGHT = 32
+
+// Re-renders only when the played bar count changes, not on every position tick.
+const WaveBars = memo(function WaveBars({ heights, played, playedColor, restColor }: {
+  heights: readonly number[]
+  played: number
+  playedColor: string
+  restColor: string
+}) {
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+      {heights.map((height, index) => (
+        <View
+          key={index}
+          style={{
+            width: BAR_WIDTH,
+            height: 3 + (BARS_HEIGHT - 9) * height,
+            borderRadius: BAR_WIDTH / 2,
+            backgroundColor: index < played ? playedColor : restColor,
+          }}
+        />
+      ))}
+    </View>
+  )
+})
 export function AudioNotePlayer({ uri, durationMs, timeline, marks = [], ref }: Props) {
   const { colors } = useTheme()
   const { t } = useI18n()
@@ -58,10 +82,14 @@ export function AudioNotePlayer({ uri, durationMs, timeline, marks = [], ref }: 
   const activeRate = selectedRate
   const totalMs = durationSeconds * 1000
   const barCount = Math.floor((scrubberWidth + BAR_GAP) / (BAR_WIDTH + BAR_GAP))
-  const heights =
-    timeline && barCount > 0
-      ? relativeBarHeights(barsFromLevels(timeline.levels, barCount))
-      : []
+  const heights = useMemo(
+    () =>
+      timeline && barCount > 0
+        ? relativeBarHeights(barsFromLevels(timeline.levels, barCount))
+        : [],
+    [timeline, barCount],
+  )
+  const playedBars = Math.min(heights.length, Math.max(0, Math.floor(progress * heights.length + 0.5)))
   const handleError = (error: unknown) =>
     setPlaybackError(error instanceof Error ? error.message : String(error))
   const startPlayback = async (fromSeconds?: number) => {
@@ -224,19 +252,7 @@ export function AudioNotePlayer({ uri, durationMs, timeline, marks = [], ref }: 
                   }}
                 />
               ))}
-              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                {heights.map((height, index) => (
-                  <View
-                    key={index}
-                    style={{
-                      width: BAR_WIDTH,
-                      height: 3 + (BARS_HEIGHT - 9) * height,
-                      borderRadius: BAR_WIDTH / 2,
-                      backgroundColor: (index + 0.5) / heights.length <= progress ? colors.ink : colors.faint,
-                    }}
-                  />
-                ))}
-              </View>
+              <WaveBars heights={heights} played={playedBars} playedColor={colors.ink} restColor={colors.faint} />
             </View>
           ) : (
             // Played time is a highlighter stroke across the recording.

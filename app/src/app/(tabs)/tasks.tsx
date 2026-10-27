@@ -1,9 +1,8 @@
 import { useI18n } from '../../i18n/useI18n'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'expo-router'
 import { useIsFocused } from 'expo-router/react-navigation'
 import {
-  Alert,
   Pressable,
   SectionList,
   StyleSheet,
@@ -12,6 +11,8 @@ import {
 } from 'react-native'
 import { useTasksStore } from '../../state/tasksStore'
 import { useNotesStore } from '../../state/notesStore'
+import { useNoteCreatedMap } from '../../notes/useNoteCreatedMap'
+import type { Task } from '../../domain/task'
 import { ModelDownloadBanner } from '../../notes/ModelDownloadBanner'
 import { TasksEmptyState } from '../../tasks/TasksEmptyState'
 import { Icon } from '../../ui/Icon'
@@ -25,12 +26,115 @@ import { fonts, radius, spacing, type, useTheme } from '../../ui/theme'
 const ENTRANCE_WINDOW_MS = 1400
 const STAGGER_ROWS = 20
 
+interface TaskRowProps {
+  item: Task
+  rowIndex: number
+  staggerCount: number
+  isFirst: boolean
+  isLast: boolean
+  motionActive: boolean
+  entranceActive: boolean
+  reducedMotion: boolean
+  created: number | undefined
+  noteTitle: string
+  feedback: object | null
+  reveal: boolean
+  onToggle: (id: string) => void
+  onOpenNote: (noteId: string) => void
+  onFeedbackComplete: (token: object) => void
+  onRevealConsumed: (id: string) => void
+}
+
+const TaskRow = memo(function TaskRow({
+  item, rowIndex, staggerCount, isFirst, isLast, motionActive, entranceActive, reducedMotion,
+  created, noteTitle, feedback, reveal, onToggle, onOpenNote, onFeedbackComplete, onRevealConsumed,
+}: TaskRowProps) {
+  const { colors } = useTheme()
+  const { t } = useI18n()
+  const hasNote = created !== undefined
+  return (
+    <TaskArrival
+      index={rowIndex}
+      count={staggerCount}
+      active={motionActive && entranceActive}
+      reducedMotion={reducedMotion}
+      style={[
+        styles.taskRow,
+        { backgroundColor: colors.paper, borderColor: colors.line },
+        isFirst && styles.cardTop,
+        isLast && styles.cardBottom,
+      ]}
+    >
+      <Pressable
+        accessibilityRole="checkbox"
+        accessibilityState={{ checked: item.done }}
+        accessibilityLabel={item.text}
+        onPress={() => onToggle(item.id)}
+        style={styles.checkboxHitArea}
+      >
+        <TaskCheck
+          checked={item.done}
+          active={motionActive}
+          reducedMotion={reducedMotion}
+          feedback={feedback !== null}
+          onFeedbackComplete={() => {
+            if (feedback) onFeedbackComplete(feedback)
+          }}
+          size={17}
+          style={[
+            styles.checkbox,
+            {
+              borderColor: item.done ? colors.brand : colors.ink,
+              backgroundColor: item.done ? colors.brand : 'transparent',
+            },
+          ]}
+        />
+      </Pressable>
+      <View style={styles.taskCopy}>
+        <TaskText
+          text={hasNote ? splitTaskText(item.text).title : item.text}
+          reveal={reveal}
+          active={motionActive}
+          reducedMotion={reducedMotion}
+          onRevealConsumed={() => onRevealConsumed(item.id)}
+          numberOfLines={2}
+          style={[
+            styles.taskLabel,
+            {
+              color: item.done ? colors.muted : colors.ink,
+              textDecorationLine: item.done ? 'line-through' : 'none',
+            },
+          ]}
+        />
+        {hasNote && (
+          <TaskDueChip text={item.text} recordedAt={new Date(created)} noteTitle={noteTitle} done={item.done} />
+        )}
+        <Pressable
+          onPress={() => onOpenNote(item.noteId)}
+          accessibilityRole="button"
+          accessibilityLabel={t(`Otwórz notatkę ${noteTitle}`, `Open note ${noteTitle}`)}
+          style={styles.sourceLink}
+        >
+          <Text numberOfLines={1} style={[styles.sourceLabel, { color: colors.muted }]}>
+            {t(`z notatki „${noteTitle}”`, `from “${noteTitle}”`)}
+          </Text>
+        </Pressable>
+      </View>
+      {!isLast && (
+        <View pointerEvents="none" style={[styles.separator, { backgroundColor: colors.line }]} />
+      )}
+    </TaskArrival>
+  )
+})
+
 export default function TasksScreen() {
   const { colors } = useTheme()
   const { t } = useI18n()
   const tasks = useTasksStore((state) => state.tasks)
   const toggle = useTasksStore((state) => state.toggle)
   const notes = useNotesStore((state) => state.notes)
+  const noteCreated = useNoteCreatedMap()
+  const [toggleFailed, setToggleFailed] = useState(false)
   const router = useRouter()
   const reducedMotion = useReducedMotion()
   const motionActive = useTaskMotionActive(useIsFocused())
@@ -73,7 +177,6 @@ export default function TasksScreen() {
       ),
     [notes, t],
   )
-  const noteCreated = useMemo(() => new Map(notes.map((note) => [note.id, note.createdAt])), [notes])
   const [showCompleted, setShowCompleted] = useState(false)
   const groupTitles: Record<TaskGroup, string> = {
     overdue: t('Po terminie', 'Overdue'),
@@ -99,20 +202,28 @@ export default function TasksScreen() {
     [grouped, completed, showCompleted, pending.length, t],
   )
 
-  const onToggle = async (id: string) => {
+  const onToggle = useCallback(async (id: string) => {
     const epoch = visibilityEpoch.current
     const startedVisible = motionActiveRef.current
     try {
       await toggle(id)
+      setToggleFailed(false)
       if (startedVisible && motionActiveRef.current && visibilityEpoch.current === epoch)
         setLastToggled({ id })
     } catch {
-      Alert.alert(
-        t('Nie zapisano zmiany', 'Change not saved'),
-        t('Spróbuj ponownie.', 'Try again.'),
-      )
+      setToggleFailed(true)
     }
-  }
+  }, [toggle])
+  const openNote = useCallback((noteId: string) => router.push(`/note/${noteId}`), [router])
+  const clearFeedback = useCallback(
+    (token: object) => {
+      if (motionActiveRef.current) setLastToggled((current) => (current === token ? null : current))
+    },
+    [],
+  )
+  const consumeReveal = textReveal.consume
+  const pressToggle = useCallback((id: string) => { void onToggle(id) }, [onToggle])
+  const untitled = t('Bez tytułu', 'Untitled')
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.canvas }}>
@@ -125,6 +236,14 @@ export default function TasksScreen() {
           </Text>
         )}
       </View>
+      {toggleFailed && (
+        <View style={[styles.errorCard, { backgroundColor: colors.paper, borderColor: colors.line }]}>
+          <View style={[styles.errorDot, { backgroundColor: colors.danger }]} />
+          <Text style={[styles.errorText, { color: colors.ink }]}>
+            {t('Nie zapisano zmiany. Spróbuj ponownie.', 'Change not saved. Try again.')}
+          </Text>
+        </View>
+      )}
       <ModelDownloadBanner />
       {tasks.length === 0 ? (
         <TasksEmptyState onOpenNotes={() => router.navigate('/')} />
@@ -159,92 +278,24 @@ export default function TasksScreen() {
             )
           }
           renderItem={({ item, index, section }) => (
-            <TaskArrival
-              index={index + (section.key === 'completed' ? pending.length : 0)}
-              count={Math.min(tasks.length, STAGGER_ROWS)}
-              active={motionActive && entranceOpen}
+            <TaskRow
+              item={item}
+              rowIndex={index + (section.key === 'completed' ? pending.length : 0)}
+              staggerCount={Math.min(tasks.length, STAGGER_ROWS)}
+              isFirst={index === 0}
+              isLast={index === section.data.length - 1}
+              motionActive={motionActive}
+              entranceActive={entranceOpen}
               reducedMotion={reducedMotion}
-              style={[
-                styles.taskRow,
-                { backgroundColor: colors.paper, borderColor: colors.line },
-                index === 0 && styles.cardTop,
-                index === section.data.length - 1 && styles.cardBottom,
-              ]}
-            >
-              <Pressable
-                accessibilityRole="checkbox"
-                accessibilityState={{ checked: item.done }}
-                accessibilityLabel={item.text}
-                onPress={() => void onToggle(item.id)}
-                style={styles.checkboxHitArea}
-              >
-                <TaskCheck
-                  checked={item.done}
-                  active={motionActive}
-                  reducedMotion={reducedMotion}
-                  feedback={lastToggled?.id === item.id}
-                  onFeedbackComplete={() => {
-                    if (motionActiveRef.current)
-                      setLastToggled((current) => current === lastToggled ? null : current)
-                  }}
-                  size={17}
-                  style={[
-                    styles.checkbox,
-                    {
-                      borderColor: item.done ? colors.brand : colors.ink,
-                      backgroundColor: item.done
-                        ? colors.brand
-                        : 'transparent',
-                    },
-                  ]}
-                />
-              </Pressable>
-              <View style={styles.taskCopy}>
-                <TaskText
-                  text={noteCreated.has(item.noteId) ? splitTaskText(item.text).title : item.text}
-                  reveal={textReveal.ids.has(item.id)}
-                  active={motionActive}
-                  reducedMotion={reducedMotion}
-                  onRevealConsumed={() => textReveal.consume(item.id)}
-                  numberOfLines={2}
-                  style={[
-                    styles.taskLabel,
-                    {
-                      color: item.done ? colors.muted : colors.ink,
-                      textDecorationLine: item.done ? 'line-through' : 'none',
-                    },
-                  ]}
-                />
-                {noteCreated.has(item.noteId) && (
-                  <TaskDueChip text={item.text} recordedAt={new Date(noteCreated.get(item.noteId)!)} noteTitle={noteTitles.get(item.noteId) ?? t('Bez tytułu', 'Untitled')} done={item.done} />
-                )}
-                <Pressable
-                  onPress={() => router.push(`/note/${item.noteId}`)}
-                  accessibilityRole="button"
-                  accessibilityLabel={t(
-                    `Otwórz notatkę ${noteTitles.get(item.noteId) ?? t('Bez tytułu', 'Untitled')}`,
-                    `Open note ${noteTitles.get(item.noteId) ?? t('Bez tytułu', 'Untitled')}`,
-                  )}
-                  style={styles.sourceLink}
-                >
-                  <Text
-                    numberOfLines={1}
-                    style={[styles.sourceLabel, { color: colors.muted }]}
-                  >
-                    {t(
-                      `z notatki „${noteTitles.get(item.noteId) ?? t('Bez tytułu', 'Untitled')}”`,
-                      `from “${noteTitles.get(item.noteId) ?? t('Bez tytułu', 'Untitled')}”`,
-                    )}
-                  </Text>
-                </Pressable>
-              </View>
-              {index < section.data.length - 1 && (
-                <View
-                  pointerEvents="none"
-                  style={[styles.separator, { backgroundColor: colors.line }]}
-                />
-              )}
-            </TaskArrival>
+              created={noteCreated.get(item.noteId)}
+              noteTitle={noteTitles.get(item.noteId) ?? untitled}
+              feedback={lastToggled?.id === item.id ? lastToggled : null}
+              reveal={textReveal.ids.has(item.id)}
+              onToggle={pressToggle}
+              onOpenNote={openNote}
+              onFeedbackComplete={clearFeedback}
+              onRevealConsumed={consumeReveal}
+            />
           )}
         />
       )}
@@ -253,6 +304,9 @@ export default function TasksScreen() {
 }
 
 const styles = StyleSheet.create({
+  errorCard: { flexDirection: 'row', alignItems: 'center', gap: 10, marginHorizontal: 24, marginBottom: spacing.sm, paddingHorizontal: 14, paddingVertical: 12, borderRadius: 18, borderWidth: StyleSheet.hairlineWidth },
+  errorDot: { width: 8, height: 8, borderRadius: 4 },
+  errorText: { ...type.body, flex: 1, fontSize: 15, lineHeight: 21 },
   summary: {
     marginHorizontal: 24,
     paddingBottom: spacing.sm,

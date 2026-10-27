@@ -31,12 +31,17 @@ interface SuiteData {
   questions: { id: string; language: Language; question: string; type: string; answer: string; mustInclude: string[]; mustNotInclude: string[]; sourceNotes: string[]; followUpOf: string | null; liveDate?: boolean }[]
 }
 
+// The WAV fixtures are required only under __DEV__: Metro folds the constant in
+// release builds and drops the branch, so the audio stays out of the bundle.
 const audioModule = (id: string): number => {
-  switch (id) {
-    case 'pl-plan': return require('../../assets/benchmarks/suite-pl-plan.wav')
-    case 'pl-dziennik': return require('../../assets/benchmarks/suite-pl-dziennik.wav')
-    default: return require('../../assets/benchmarks/suite-en-trip.wav')
+  if (__DEV__) {
+    switch (id) {
+      case 'pl-plan': return require('../../assets/benchmarks/suite-pl-plan.wav')
+      case 'pl-dziennik': return require('../../assets/benchmarks/suite-pl-dziennik.wav')
+      default: return require('../../assets/benchmarks/suite-en-trip.wav')
+    }
   }
+  throw new Error('Benchmark audio is available in development builds only')
 }
 
 const words = (text: string): string[] => plain(text).replace(/[^\p{L}\p{N}\s]/gu, ' ').split(/\s+/u).filter(Boolean)

@@ -2,7 +2,7 @@ import { useMemo } from 'react'
 import { useRouter } from 'expo-router'
 import { Pressable, Text, View } from 'react-native'
 import { useI18n } from '../i18n/useI18n'
-import { useNotesStore } from '../state/notesStore'
+import { useNoteCreatedMap } from './useNoteCreatedMap'
 import { useTasksStore } from '../state/tasksStore'
 import { splitTaskText } from '../tasks/taskDue'
 import { groupTasksByDue } from '../tasks/taskGroups'
@@ -14,11 +14,11 @@ export function NextTaskBanner() {
   const { t, locale } = useI18n()
   const router = useRouter()
   const tasks = useTasksStore((state) => state.tasks)
-  const notes = useNotesStore((state) => state.notes)
-  const today = useMemo(() => {
-    const created = new Map(notes.map((note) => [note.id, note.createdAt]))
-    return groupTasksByDue(tasks.filter((task) => !task.done), created, new Date()).get('today') ?? []
-  }, [tasks, notes])
+  const created = useNoteCreatedMap()
+  const today = useMemo(
+    () => groupTasksByDue(tasks.filter((task) => !task.done), created, new Date()).get('today') ?? [],
+    [tasks, created],
+  )
   const next = today[0]
   if (!next) return null
   const time = next.due && !next.allDay
