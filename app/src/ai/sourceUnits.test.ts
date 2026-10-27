@@ -315,3 +315,13 @@ test('English unpunctuated speech cuts at "I" and connectives, not before names'
   expect(units.some(unit => unit.includes('meeting Julia on Monday'))).toBe(true);
   expect(units.some(unit => unit.startsWith('and I dropped'))).toBe(true);
 });
+
+test('an unpunctuated iOS transcript is cut before each timed event, not at stray capitals', () => {
+  const text = 'Przygotowuje testowe nagranie żeby zobaczyć czy Poprawione zostały błędy wizualne animacje i tym podobne jutro o 08:30 chyba Mam zajęcia i muszę pokazać moją część testów a o dziesiątej jakoś mamy zajęcia z projektu kompetencyjnego i pokazujemy że aplikacja działa na dwóch serwerach';
+  const plan = deterministicSourceUnitPlan(text);
+  expect(plan && sourceUnitsFromPlan(text, plan).map((unit) => unit.text)).toEqual([
+    'Przygotowuje testowe nagranie żeby zobaczyć czy Poprawione zostały błędy wizualne animacje i tym podobne',
+    'jutro o 08:30 chyba Mam zajęcia i muszę pokazać moją część testów',
+    'a o dziesiątej jakoś mamy zajęcia z projektu kompetencyjnego i pokazujemy że aplikacja działa na dwóch serwerach',
+  ]);
+});

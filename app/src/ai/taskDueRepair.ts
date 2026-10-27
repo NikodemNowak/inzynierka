@@ -157,10 +157,26 @@ const TITLE_PART_TAIL = /\s+(rano|wieczorem|po południu)$/u
 const DAY_PART_IN_DUE = /(?:rano|wieczor|południ)/u
 const TITLE_CLOCK_TAIL = /\s+(?:o|na|do|od)\s+(\d{1,2}:\d{2})$/u
 
+// "o dziesiątej" rendered by the model as the date-like "dziesiąte"/"dziesiątego":
+// an ordinal the sentence only states as an hour becomes that hour.
+export const ordinalHour = (due: string, cited: string, hourWords: HourSet): string => {
+  if (/\d{1,2}:\d{2}/u.test(due)) return due
+  const said = cited.toLowerCase()
+  const hours = hourWords(cited)
+  return due.replace(/(?:(?<=^|\s)o\s+)?(\p{L}+(?:e|ego|a|ej|ą))(?=\s|$)/giu, (match, word: string) => {
+    const lower = word.toLowerCase()
+    const value = numberWordValue(lower)
+    if (value === null || !Number.isInteger(value) || value < 1 || value > 24 || !hours.has(value)) return match
+    // The same form in the sentence ("do dziesiątego") is a day of the month.
+    if (new RegExp(`(?:^|\\s)${lower}(?=\\s|$)`, 'u').test(said)) return match
+    return `${value}:00`
+  })
+}
+
 // Rewrites an odd due into a clear one. `cited` = text of the cited sentences.
 export const repairDue = (title: string, due: string | null, cited: string, hourWords: HourSet, late = true): { title: string; due: string | null } => {
   if (!due) return { title, due }
-  let text = due.trim()
+  let text = ordinalHour(due.trim(), cited, hourWords)
   // 'Zadzwonić do Oli rano' + 'jutro', 'Wizyta o 8:00' + 'czwartek': the time of day belongs to the due.
   const partTail = TITLE_PART_TAIL.exec(title)
   if (partTail && late && !DAY_PART_IN_DUE.test(text) && !/\d{1,2}:\d{2}/u.test(text)) {

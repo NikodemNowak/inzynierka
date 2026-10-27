@@ -359,8 +359,12 @@ export const hedgeClock = (text: string, src: string): string => {
 };
 
 // "Poza tym O 18:00": a recognizer capital on a one-letter word mid-sentence.
+// iOS dictation capitalizes mid-sentence words ("chyba Mam zajęcia", "czy Poprawione zostały"):
+// verbs, participles and function words, never names, are lowered.
+const STRAY_WORD = /^(?:Mam|Mamy|Ma|Masz|Jest|Są|Był|Była|Było|Byli|Będzie|Będę|Muszę|Musimy|Trzeba|Chyba|Też|Jak|Czy|Że|Żeby|Się|Nie|Tak|Już|Jeszcze|Potem|Jutro|Dzisiaj|\p{Lu}\p{Ll}{2,}(?:ione|ane|one|any|ony|ały|ało|łem|łam|liśmy|ują|uje|ować|ać|ić|yć|eć))$/u;
 export const lowerStrayCapitals = (text: string): string =>
-  text.replace(/(?<=[\p{L}\d,]\s)([AIOUWZ])(?=\s)/gu, letter => letter.toLowerCase());
+  text.replace(/(?<=[\p{L}\d,]\s)([AIOUWZ])(?=\s)/gu, letter => letter.toLowerCase())
+    .replace(/(?<=[\p{Ll}\d,]\s)(\p{Lu}\p{Ll}+)(?=[\s,.;:!?]|$)/gu, word => (STRAY_WORD.test(word) ? word.toLowerCase() : word));
 
 const distance = (a: string, b: string): number => {
   let row = Array.from({ length: b.length + 1 }, (_, j) => j);

@@ -97,3 +97,11 @@ describe('inferDue', () => {
     expect(inferDue('Kupić kwiaty', 'W piątek lub w sobotę kupić kwiaty', hourValues)).toBeNull()
   })
 })
+
+test('an ordinal due that the sentence states as an hour becomes that hour', () => {
+  const cited = 'a o dziesiątej mamy zajęcia z projektu kompetencyjnego'
+  expect(repairDue('Zajęcia z projektu', 'dziesiąte', cited, hourValues).due).toBe('10:00')
+  expect(repairDue('Zajęcia z projektu', 'dziesiątego', cited, hourValues).due).toBe('10:00')
+  // "do dziesiątego" in the sentence is a day of the month.
+  expect(repairDue('Oddać raport', 'do dziesiątego', 'raport do dziesiątego a o dziesiątej zajęcia', hourValues).due).not.toBe('10:00')
+})

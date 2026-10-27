@@ -749,6 +749,8 @@ describe('final point polish', () => {
     expect(lowerStrayCapitals('Jutro O 18:00 psycholog')).toBe('Jutro o 18:00 psycholog');
     expect(lowerStrayCapitals('Format A1 i druk')).toBe('Format A1 i druk');
     expect(lowerStrayCapitals('O 18:00 psycholog')).toBe('O 18:00 psycholog');
+    expect(lowerStrayCapitals('Jutro o 8:30 chyba Mam zajęcia, czy Poprawione zostały błędy')).toBe('Jutro o 8:30 chyba mam zajęcia, czy poprawione zostały błędy');
+    expect(lowerStrayCapitals('Spotkanie z Michała bratem i Ewą w Krakowie')).toBe('Spotkanie z Michała bratem i Ewą w Krakowie');
   });
   it('treats "poza tym" as a lead filler', () => {
     expect(cleanLiteral('Poza tym o osiemnastej jutro jadę do psychologa')).toBe('O osiemnastej jutro jadę do psychologa.');

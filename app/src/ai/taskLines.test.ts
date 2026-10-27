@@ -554,7 +554,8 @@ describe('extractTaskLines', () => {
   test('guards drop invented and foreign tasks', async () => {
     model.mockResolvedValue(reply('[2] Oddać raport — do piątku\n[3] Przygotować prezentację\n[5] Zarezerwować hotel'));
     const result = await extractTaskLines(noteUnits, 'pl');
-    expect(result.rendered).toEqual(['Oddać raport — do czwartku']);
+    // The invented hotel is dropped; the duty the sentence states replaces it.
+    expect(result.rendered).toEqual(['Oddać raport — do czwartku', 'Zapłacić za internet 60 zł']);
   });
 
   test('an aborted run does not call the model', async () => {
@@ -907,3 +908,15 @@ test('a title cut at the word limit does not end on a preposition', () => {
   const t = (title: string) => ({ title, due: null, sourceIds: [1], modelIds: [] })
   expect(trimLongTitle(t('W przypadku gorączki albo bólu głowy brać paracetamol maksymalnie 4 gramy na dobę')).title).toBe('W przypadku gorączki albo bólu głowy brać paracetamol maksymalnie 4 gramy')
 })
+
+test('"część" is a noun, and a stated duty survives a non-action answer', () => {
+  const units = [
+    { id: 2, text: 'jutro o 08:30 chyba Mam zajęcia i muszę pokazać moją część testów' },
+    { id: 3, text: 'a o dziesiątej jakoś mamy zajęcia z projektu kompetencyjnego i pokazujemy że aplikacja działa na dwóch serwerach' },
+  ];
+  const raw = parseTaskLines('[2] Zajęcia — jutro o 08:30\n[3] Zajęcia z projektu kompetencyjnego — dziesiąte', new Set([2, 3]), 'pl');
+  expect(finishTaskLines(raw, units, units, [], 'pl').map((t) => [t.title, t.due])).toEqual([
+    ['Pokazać moją część testów', 'jutro 8:30'],
+    ['Zajęcia z projektu kompetencyjnego', '10:00'],
+  ]);
+});

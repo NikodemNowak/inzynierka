@@ -92,7 +92,7 @@ const STRONG_STARTS: readonly (readonly string[])[] = [
   ["i", "jeszcze"], ["kolejna", "rzecz"], ["kolejna", "sprawa"], ["tak", "czy", "inaczej"],
   ["uwaga"], ["jeszcze", "jedna", "rzecz"], ["ostatnia", "rzecz"],
 ];
-const DANGLING_END = /^(?:i|w|we|na|z|ze|do|od|po|za|o|u|nad|pod|przy|bez|dla|przez|oraz|albo|lub|a|ale|bo|więc|nie|że|jak|ten|ta|te|tę|to|ma|mam|mój|moje)$/iu;
+const DANGLING_END = /^(?:i|w|we|na|z|ze|do|od|po|za|o|u|nad|pod|przy|bez|dla|przez|oraz|albo|lub|a|ale|bo|więc|nie|że|czy|jak|ten|ta|te|tę|to|ma|mam|mój|moje)$/iu;
 const MAX_UNIT_WORDS = 30;
 // Speech recognizers capitalize where they hear a new phrase; a capital mid-text
 // is the strongest cue an unpunctuated transcript has.
@@ -162,6 +162,12 @@ const boundaryScore = (index: number, raw: readonly string[], norm: readonly str
   if (CAPITALIZED.test(raw[index]) && NAMED_AFTER.test(previous)) return 0;
   if (CAPITALIZED.test(raw[index]))
     return raw[index].length > 2 && !TIME_STARTS.has(norm[index]) && /\p{L}{2,}(?:ł|ła|ło|li|ły)$/u.test(previous) ? 0 : 4;
+  // "… część testów a o dziesiątej mamy zajęcia": "a" before a new time opens the next event.
+  // Not "a potem": a narrated sequence often carries a correction of the previous words.
+  const next = norm[index + 1] ?? "";
+  if (norm[index] === "a" && (next === "jutro" || next === "pojutrze" ||
+      ((next === "o" || next === "około") && NUMBER_WORD.test(norm[index + 2] ?? "")) ||
+      ((next === "w" || next === "we") && WEEKDAY.test(norm[index + 2] ?? "")))) return 3;
   // "o 10:30 spotkałem się": the time before the verb belongs to its clause.
   const afterTime = TIME_TAIL.test(previous) || NUMBER_WORD.test(previous) || WEEKDAY.test(previous);
   if ((FIRST_PAST.test(norm[index]) || FIRST_PRESENT.test(norm[index])) && !afterTime) return 3;

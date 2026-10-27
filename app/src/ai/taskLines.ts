@@ -5,7 +5,7 @@ import { throwIfProcessingAborted, type ProcessingExecutionContext } from './pro
 import { numberSpans, numberWordValue, promptView } from './polishNumbers'
 import { TASK_LINES_PROMPT_EN, englishPromptView, isTaskCandidateEn, postprocessTaskLinesEn } from './taskLinesEn'
 import { noteSourceSystem, sourceFirstPrompt } from './sharedSourcePrompt'
-import { digitView, inferDue, repairDue, whenOf } from './taskDueRepair'
+import { digitView, inferDue, ordinalHour, repairDue, whenOf } from './taskDueRepair'
 
 // Single-call task extractor: one batched pass over the candidate sentences of
 // a note, then deterministic guards. Polish only (the pre-filter, the numeral
@@ -1428,7 +1428,9 @@ export const postprocessTaskLines = (raw: readonly TaskDraft[], units: readonly 
     rejected.push(...step.rejected)
     return step.kept
   }
-  let tasks = raw.map((t) => ({ ...tidyTask(t), modelIds: [...t.sourceIds] }))
+  const citedOf = (t: TaskDraft): string => units.filter((u) => t.sourceIds.includes(u.id)).map((u) => u.text).join(' ')
+  // Before tidyTask, which would read an ordinal due ('dziesiąte') as a count.
+  let tasks = raw.map((t) => ({ ...tidyTask(t.due ? { ...t, due: ordinalHour(t.due, citedOf(t), hourValues) } : t), modelIds: [...t.sourceIds] }))
   // Odd model wording ('10 piątku') is rewritten first so the date guards judge a clear due.
   tasks = tasks.map((t) => (t.due ? cleanTaskDue(t, units, false) : t))
   tasks = tasks.flatMap((t) => {
@@ -1772,7 +1774,10 @@ const DUTY_PRONOUN = new Set(['to', 'go', 'ją', 'je', 'ich', 'tego'])
 const CHAIN_JOIN = new Set(['i', 'oraz', 'a', 'potem', 'później', 'też', 'następnie'])
 const CHAIN_STOP = new Set(['bo', 'ale', 'że', 'czy', 'ile', 'żeby', 'więc', 'jeśli', 'jeżeli', 'jak', 'kiedy', 'gdy', 'ponieważ', 'który', 'aby', 'chyba', 'albo', 'lub'])
 const NOT_DUTY_INF = new Set(['być', 'mieć', 'móc', 'musieć', 'chcieć', 'zacząć', 'zacznę'])
-const isInfinitive = (word: string): boolean => /^\p{L}{4,}ć$/u.test(word) && !NOT_DUTY_INF.has(word) && wordValue(word) === null
+// Nouns that end like an infinitive: "część", "jakość", "pamięć", "sieć".
+const NOUN_IN_C = /(?:ość|ęść|ęć)$/u
+const NOUNS_IN_C = new Set(['sieć', 'nić', 'płeć', 'maść', 'garść', 'kiść', 'pięść', 'cześć', 'teść', 'ćwierć', 'śmierć'])
+const isInfinitive = (word: string): boolean => /^\p{L}{4,}ć$/u.test(word) && !NOUN_IN_C.test(word) && !NOUNS_IN_C.has(word) && !NOT_DUTY_INF.has(word) && wordValue(word) === null
 const stripPunct = (word: string): string => word.replace(/[.,;:!?]+$/u, '')
 const FILLER_LEAD = new Map([['w', 'końcu'], ['na', 'pewno']])
 const isFiller = (word: string, next: string): boolean => DUTY_FILLER.has(word) || FILLER_LEAD.get(word) === next
@@ -2015,7 +2020,13 @@ export const finishTaskLines = (
   const raw = [...rawTasks]
   const answered = new Set(raw.flatMap((t) => t.sourceIds))
   if (!en) {
-    raw.push(...candidates.filter((unit) => !answered.has(unit.id)).flatMap((unit) => modalTask(unit) ?? []))
+    raw.push(...candidates.flatMap((unit) => {
+      const task = modalTask(unit)
+      if (!task || !answered.has(unit.id)) return task ?? []
+      // 'Mam zajęcia i muszę pokazać testy' answered as just 'Zajęcia': the stated duty still counts.
+      const verb = task.title.toLowerCase().slice(0, 5)
+      return raw.some((t) => t.sourceIds.includes(unit.id) && t.title.toLowerCase().includes(verb)) ? [] : [task]
+    }))
     raw.push(...completeDuties(raw, candidates))
   }
   const kept = (en ? postprocessTaskLinesEn(raw, units) : dedupeTasks(mergeSimilar(mergeVague([...postprocessTaskLines(raw, units).kept, ...nominal]))))
