@@ -2,7 +2,7 @@ import { Pressable, StyleSheet, Text } from 'react-native'
 import { useI18n } from '../i18n/useI18n'
 import { Icon } from '../ui/Icon'
 import { type, useTheme, fonts } from '../ui/theme'
-import { resolveDue, splitTaskText } from './taskDue'
+import { resolveDue, taskDuePhrase } from './taskDue'
 import { offerTaskExport } from './taskExport'
 
 // "czw. 15 paź · 18:00": the deadline as a date, relative to when the note was recorded.
@@ -19,7 +19,7 @@ export const formatResolvedDue = (due: string, recordedAt: Date, locale: string)
 export function TaskDueChip({ text, recordedAt, noteTitle, done }: { text: string; recordedAt: Date; noteTitle: string; done: boolean }) {
   const { colors } = useTheme()
   const { t, locale } = useI18n()
-  const { due } = splitTaskText(text)
+  const due = taskDuePhrase(text)
   const label = due ? formatResolvedDue(due, recordedAt, locale) : null
   if (done) return label ? <Text style={[styles.label, { color: colors.faint }]}>{label}</Text> : null
   // A task without a deadline can still go to Reminders or Calendar; the date is set there.

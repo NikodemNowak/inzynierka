@@ -161,14 +161,20 @@ export interface TaskDay {
   day: number
 }
 
-// A task's deadline as a calendar day, read relative to the note it came from.
-// The single place that turns "Title — due" into a day: lists, groups and the chat use it.
 const TITLE_DATE = /\b\d{1,2}\s+(?:stycznia|lutego|marca|kwietnia|maja|czerwca|lipca|sierpnia|września|października|listopada|grudnia|january|february|march|april|may|june|july|august|september|october|november|december)\b/iu
 
-export const resolveTaskDay =(taskText: string, noteCreatedAt: number | string | Date): TaskDay | null => {
+
+// The said deadline: the part after " — ", or a calendar date inside the text
+// ("Aneks do umowy do 15 czerwca").
+export const taskDuePhrase = (taskText: string): string | null => {
   const { title, due } = splitTaskText(taskText)
-  // "Aneks do umowy do 15 czerwca": a calendar date inside the text counts too.
-  const phrase = due ?? TITLE_DATE.exec(title)?.[0] ?? null
+  return due ?? TITLE_DATE.exec(title)?.[0] ?? null
+}
+
+// A task's deadline as a calendar day, read relative to the note it came from.
+// The single place that turns "Title — due" into a day: lists, groups and the chat use it.
+export const resolveTaskDay = (taskText: string, noteCreatedAt: number | string | Date): TaskDay | null => {
+  const phrase = taskDuePhrase(taskText)
   const resolved = phrase ? resolveDue(phrase, new Date(noteCreatedAt)) : null
   return resolved ? { date: resolved.date, allDay: resolved.allDay, day: startOfDay(resolved.date).getTime() } : null
 }
