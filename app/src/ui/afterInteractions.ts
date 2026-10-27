@@ -1,18 +1,7 @@
-import { InteractionManager } from 'react-native'
-
-// Resolves once interactions settle, or after `maxWaitMs` at the latest:
-// endless ambient Animated loops can otherwise keep the queue busy forever.
+// Resolves when the JS thread goes idle, or after `maxWaitMs` at the latest, so
+// startup chores never compete with the first frames and never wait forever.
 export const afterInteractions = (maxWaitMs = 1500): Promise<void> =>
   new Promise((resolve) => {
-    let settled = false
-    let task: { cancel: () => void } | null = null
-    const finish = (): void => {
-      if (settled) return
-      settled = true
-      clearTimeout(timer)
-      task?.cancel()
-      resolve()
-    }
-    const timer = setTimeout(finish, maxWaitMs)
-    task = InteractionManager.runAfterInteractions(finish)
+    if (typeof requestIdleCallback === 'function') requestIdleCallback(() => resolve(), { timeout: maxWaitMs })
+    else setTimeout(resolve, maxWaitMs)
   })
