@@ -35,3 +35,8 @@ test('"week" is the rest of the calendar week, up to Sunday', () => {
   expect(groups.get('week')!.map((item) => item.task.text)).toEqual(['A — sobota', 'B — niedziela'])
   expect(groups.get('later')!.map((item) => item.task.text)).toEqual(['C — poniedziałek'])
 })
+
+test('a calendar date inside the task text counts as its due date', () => {
+  const groups = groupTasksByDue([task('Przygotować aneks do umowy do 15 października')], created, now)
+  expect(groups.get('later')).toHaveLength(1)
+})
