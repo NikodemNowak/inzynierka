@@ -183,6 +183,7 @@ export default function NewNoteScreen() {
             setDraft((current) => ({ ...current, title }))
           }
           placeholder={t('Bez tytułu', 'Untitled')}
+          textStyle={styles.titleField}
         />
         <Field
           label={t('Treść', 'Content')}

@@ -40,6 +40,7 @@ import type { Note } from '../domain/note'
 import { BottomSheet } from '../ui/BottomSheet'
 import { Button } from '../ui/Button'
 import { ErrorCard } from '../ui/ErrorCard'
+import { NoteMark } from '../ui/NoteMark'
 import { PulseDot } from '../ui/PulseDot'
 import { radius, spacing, type, useTheme, fonts } from '../ui/theme'
 
@@ -595,9 +596,8 @@ export default function ImportAudioScreen() {
       >
         {!selectedAudio && (
           <View style={styles.intro}>
-            <View style={[styles.introIcon, { backgroundColor: colors.paper, borderColor: colors.line }]}>
-              <View style={[styles.introStroke, { backgroundColor: colors.marker }]} />
-              <AudioFileMark size={52} color={colors.ink} />
+            <View style={styles.introIcon}>
+              <NoteMark width={72} />
             </View>
             <Text style={[styles.title, { color: colors.ink }]}>
               {t('Zamień nagranie w notatkę', 'Turn a recording into a note')}
@@ -845,24 +845,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: spacing.sm,
   },
-  introIcon: {
-    width: 96,
-    height: 96,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: spacing.md,
-    overflow: 'hidden',
-  },
-  introStroke: {
-    position: 'absolute',
-    left: 10,
-    right: 10,
-    bottom: 22,
-    height: 14,
-    borderRadius: 4,
-  },
+  introIcon: { marginBottom: spacing.md },
   title: { ...type.display, textAlign: 'center' },
   subtitle: { ...type.body, textAlign: 'center' },
   statusRow: {
