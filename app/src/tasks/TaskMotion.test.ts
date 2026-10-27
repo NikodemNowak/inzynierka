@@ -1,8 +1,8 @@
 import { createElement } from 'react'
 import { act, create, type ReactTestRenderer } from 'react-test-renderer'
 import { Animated, AppState, StyleSheet, Text, type AppStateStatus } from 'react-native'
-import { TaskArrival, TaskCheck, TaskText, TaskPlaceholder, publishPersistedTaskText, taskEntranceTiming, useTaskMotionActive, useTaskTextReveal, useTaskRevealSequence } from './TaskMotion'
-import { RevealText } from '../ui/Motion'
+import { TaskArrival, TaskCheck, TaskText, publishPersistedTaskText, taskEntranceTiming, useTaskMotionActive, useTaskTextReveal, useTaskRevealSequence } from './TaskMotion'
+import { FadeText } from './FadeText'
 import TasksScreen from '../app/(tabs)/tasks'
 import type { Task } from '../domain/task'
 
@@ -32,12 +32,11 @@ jest.mock('react-native', () => {
 jest.mock('../state/tasksStore', () => ({ useTasksStore: (select: (state: typeof mockTaskState) => unknown) => select(mockTaskState) }))
 jest.mock('../state/notesStore', () => ({ useNotesStore: (select: (state: { notes: [] }) => unknown) => select({ notes: [] }) }))
 jest.mock('../i18n/useI18n', () => ({ useI18n: () => ({ t: (pl: string) => pl }) }))
-jest.mock('../ui/Motion', () => {
+jest.mock('../ui/Motion', () => ({ useReducedMotion: () => mockReducedMotion }))
+jest.mock('./FadeText', () => {
   const React = jest.requireActual<typeof import('react')>('react')
   const { Text } = jest.requireActual<typeof import('react-native')>('react-native')
-  return { useReducedMotion: () => mockReducedMotion,
-    RevealText: ({ text }: { text: string }) => React.createElement(Text, { accessibilityLabel: text }, text),
-  }
+  return { FadeText: ({ text }: { text: string }) => React.createElement(Text, { accessibilityLabel: text }, text) }
 })
 jest.mock('../notes/ModelDownloadBanner', () => ({ ModelDownloadBanner: () => null }))
 jest.mock('./TasksEmptyState', () => ({ TasksEmptyState: () => null }))
@@ -100,22 +99,6 @@ test('a missing text completion has a finite sequence watchdog and is cancelled 
   } finally { await act(async () => { tree!.unmount() }); jest.useRealTimers() }
 })
 
-test('surplus row fade uses the native driver and stops before a replaced source can collapse', async () => {
-  const stop = jest.fn()
-  const timing = jest.spyOn(Animated, 'timing').mockImplementation(() => ({ start: jest.fn(), stop, reset: jest.fn() }))
-  const row = (exiting: boolean) => createElement(TaskPlaceholder, { index: 2, count: 1, exiting, active: true, reducedMotion: false,
-    children: createElement(Text, {}, 'Waiting material') })
-  let tree: ReactTestRenderer
-  try {
-    await act(async () => { tree = create(row(false)) })
-    expect(timing).not.toHaveBeenCalled()
-    await act(async () => { tree!.update(row(true)) })
-    expect(timing.mock.calls[0][1]).toMatchObject({ delay: 200, duration: 180, useNativeDriver: true, isInteraction: false })
-    await act(async () => { tree!.update(row(false)) })
-    expect(stop).toHaveBeenCalled()
-  } finally { await act(async () => { tree!.unmount() }); timing.mockRestore() }
-})
-
 test('v34 gives the next task a perceptible stagger without making the list wait for text', () => {
   const first = taskEntranceTiming(0, true, false)!
   const second = taskEntranceTiming(1, true, false)!
@@ -133,7 +116,7 @@ test('task list keeps native typography and truncation without nesting a reveal 
   expect(task.props.numberOfLines).toBe(2)
   expect(StyleSheet.flatten(task.props.style)).toMatchObject({ fontSize: 16, lineHeight: 21, textDecorationLine: 'line-through' })
   for (let parent = task.parent; parent; parent = parent.parent) expect(parent.type).not.toBe(Text)
-  expect(task.findByType(RevealText).props).toMatchObject({ numberOfLines: 2, active: true })
+  expect(task.findByType(FadeText).props).toMatchObject({ numberOfLines: 2, active: true })
   await act(async () => { tree!.unmount() })
 })
 
@@ -327,7 +310,7 @@ test('completed native feedback is consumed before an active virtualized cell re
 test('global task text ignores initial hydration and rerenders and reveals only four confirmed new IDs once', async () => {
   const screen = await mountScreen()
   try {
-    const reveals = () => screen.tree.root.findAllByType(RevealText).filter((node) => node.props.animate === true)
+    const reveals = () => screen.tree.root.findAllByType(FadeText).filter((node) => node.props.animate === true)
     expect(reveals()).toHaveLength(0)
     const hydrated: Task = { id: 'hydrated-old', noteId: 'source-note', text: 'Old persisted source task', done: false, createdAt: 0 }
     mockTaskState.tasks = [...mockTaskState.tasks, hydrated]
@@ -352,13 +335,13 @@ test('global confirmed-save notifications received hidden or under Reduce Motion
     mockTaskState.tasks = [...mockTaskState.tasks, { id: 'hidden-confirmed', noteId: 'source-note', text: 'Task saved while hidden', done: false, createdAt: 2 }]
     await act(async () => { publishPersistedTaskText(['hidden-confirmed']); screen.tree.update(createElement(TasksScreen)) })
     await act(async () => { screen.listener('active') })
-    expect(screen.tree.root.findAllByType(RevealText).filter((node) => node.props.animate)).toHaveLength(0)
+    expect(screen.tree.root.findAllByType(FadeText).filter((node) => node.props.animate)).toHaveLength(0)
     mockReducedMotion = true
     await act(async () => { screen.tree.update(createElement(TasksScreen)) })
     await act(async () => { publishPersistedTaskText(['hidden-confirmed']) })
     mockReducedMotion = false
     await act(async () => { screen.tree.update(createElement(TasksScreen)) })
-    expect(screen.tree.root.findAllByType(RevealText).filter((node) => node.props.animate)).toHaveLength(0)
+    expect(screen.tree.root.findAllByType(FadeText).filter((node) => node.props.animate)).toHaveLength(0)
   } finally { await screen.dispose() }
 })
 
@@ -376,7 +359,7 @@ test('a captured reveal crossing a source revision is rejected and the complete 
   reveal = captured()
   await act(async () => { tree!.update(createElement(Harness, { scope: 'source-after' })) })
   await act(async () => { expect(reveal(['saved-id'])).toBe(false) })
-  expect(tree!.root.findByType(RevealText).props).toMatchObject({ text: 'Preserve the complete literal task', animate: false })
+  expect(tree!.root.findByType(FadeText).props).toMatchObject({ text: 'Preserve the complete literal task', animate: false })
   await act(async () => { tree!.unmount() })
 })
 

@@ -1,7 +1,6 @@
 import { useI18n } from '../../i18n/useI18n'
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import {
-  Alert,
   Animated,
   Easing,
   Modal,
@@ -11,23 +10,19 @@ import {
   StyleSheet,
   Text,
   View,
+  type StyleProp,
+  type ViewStyle,
 } from 'react-native'
-import { Stack, useLocalSearchParams, useNavigation, useRouter } from 'expo-router'
+import { Stack, useLocalSearchParams, useRouter } from 'expo-router'
 import { useIsFocused } from 'expo-router/react-navigation'
-import { LayoutEntry, useLayoutTransition } from '../../ui/LayoutMotion'
+import { useLayoutTransition } from '../../ui/LayoutMotion'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { BottomSheet } from '../../ui/BottomSheet'
 import { Button } from '../../ui/Button'
 import { Icon } from '../../ui/Icon'
 import { IconButton } from '../../ui/Icon'
-import {
-  ProcessingIndicator,
-  RevealText,
-  SkeletonText,
-  useReducedMotion,
-} from '../../ui/Motion'
+import { useReducedMotion } from '../../ui/Motion'
 import { radius, spacing, type, useTheme, fonts } from '../../ui/theme'
-import { processingPresentation } from '../../ui/processingPresentation'
 import { useNotesStore } from '../../state/notesStore'
 import { useTasksStore } from '../../state/tasksStore'
 import { useModelStore } from '../../state/modelStore'
@@ -36,6 +31,7 @@ import { getModelMissingMessage } from '../../ai/noteProcessing'
 import { localeForLanguage, type Language } from '../../i18n/language'
 import { AudioNotePlayer, type AudioMark, type AudioNotePlayerHandle } from '../../audio/AudioNotePlayer'
 import { timeForRanges } from '../../domain/audioTimeline'
+import type { Note } from '../../domain/note'
 import { NoteTasks } from '../../tasks/NoteTasks'
 import { NoteTags } from '../../tags/NoteTags'
 import { parseSummaryDocument, type SummaryPoint } from '../../domain/summary'
@@ -53,10 +49,12 @@ import {
 import { supportsBackgroundProcessing } from '../../processing/nativeProcessing'
 
 type ProposalField = keyof NoteProposalSelection
-type SheetMode = 'confirm' | 'choose' | null
+type SheetMode = 'confirm' | 'choose' | 'delete' | null
 
-// A title reveal longer than this is treated as stuck and replaced by plain text.
-const TITLE_REVEAL_DEADLINE_MS = 3000
+const CROSSFADE_MS = 200
+// The choice screen opens after the processing card has crossfaded away.
+const CHOICE_OPEN_DELAY_MS = 420
+const EMPTY_SPANS: readonly never[] = []
 
 const NO_SELECTION: NoteProposalSelection = {
   title: false,
@@ -89,14 +87,80 @@ const formatRecordedAt = (timestamp: number, language: Language): string => {
   return `${day}, ${time}`
 }
 
+// Fades the new content in over the previous one when `id` changes; the first
+// render and reduced motion swap instantly.
+function Crossfade({ id, active, reducedMotion, style, children }: {
+  id: string
+  active: boolean
+  reducedMotion: boolean
+  style?: StyleProp<ViewStyle>
+  children: ReactNode
+}) {
+  const progress = useRef(new Animated.Value(1)).current
+  const last = useRef({ id, node: children })
+  const [outgoing, setOutgoing] = useState<ReactNode>(null)
+  useLayoutEffect(() => {
+    const previous = last.current
+    last.current = { id, node: children }
+    if (previous.id === id) return
+    progress.stopAnimation()
+    if (!active || reducedMotion) {
+      progress.setValue(1)
+      setOutgoing(null)
+      return
+    }
+    progress.setValue(0)
+    setOutgoing(previous.node)
+    Animated.timing(progress, { toValue: 1, duration: CROSSFADE_MS, easing: Easing.out(Easing.quad), useNativeDriver: true })
+      .start(({ finished }) => { if (finished) setOutgoing(null) })
+  })
+  return (
+    <View style={[style, outgoing ? styles.clipped : undefined]}>
+      <Animated.View style={{ opacity: progress }}>{children}</Animated.View>
+      {outgoing ? (
+        <Animated.View
+          pointerEvents="none"
+          accessibilityElementsHidden
+          importantForAccessibility="no-hide-descendants"
+          style={[StyleSheet.absoluteFill, { opacity: progress.interpolate({ inputRange: [0, 1], outputRange: [1, 0] }) }]}
+        >
+          {outgoing}
+        </Animated.View>
+      ) : null}
+    </View>
+  )
+}
+
+function NewVersionBanner({ onOpen, onDiscard, busy, reducedMotion }: {
+  onOpen: () => void
+  onDiscard: () => void
+  busy: boolean
+  reducedMotion: boolean
+}) {
+  const { colors } = useTheme()
+  const { t } = useI18n()
+  const appear = useRef(new Animated.Value(reducedMotion ? 1 : 0)).current
+  useEffect(() => {
+    if (reducedMotion) return
+    Animated.timing(appear, { toValue: 1, duration: CROSSFADE_MS, useNativeDriver: true }).start()
+  }, [appear, reducedMotion])
+  return (
+    <Animated.View
+      accessibilityLiveRegion="polite"
+      style={[styles.banner, { backgroundColor: colors.markerSoft, opacity: appear }]}
+    >
+      <Text style={[styles.bannerText, { color: colors.ink }]}>{t('Nowa wersja jest gotowa', 'A new version is ready')}</Text>
+      <Button compact variant="quiet" label={t('Odrzuć', 'Discard')} onPress={onDiscard} disabled={busy} />
+      <Button compact variant="primary" label={t('Zobacz', 'View')} onPress={onOpen} disabled={busy} />
+    </Animated.View>
+  )
+}
+
 function ProposalChoice({
   label,
   value,
   selected,
   disabled = false,
-  reveal = false,
-  animate = false,
-  active = true,
   onPress,
   children,
   compareTo,
@@ -105,9 +169,6 @@ function ProposalChoice({
   value?: string
   selected: boolean
   disabled?: boolean
-  reveal?: boolean
-  animate?: boolean
-  active?: boolean
   onPress: () => void
   children?: ReactNode
   compareTo?: string
@@ -145,8 +206,6 @@ function ProposalChoice({
               <Text key={index} style={segment.added ? { color: colors.onMarker, backgroundColor: colors.marker } : undefined}>{segment.text}</Text>
             ))}
           </Text>
-        ) : reveal ? (
-          <RevealText text={value ?? ''} animate={animate} active={active} style={[styles.choiceValue, { color: colors.body }]} />
         ) : (
           <Text style={[styles.choiceValue, { color: colors.body }]}>
             {value}
@@ -176,10 +235,9 @@ function ProposalValue({ label, value, hint, children }: {
 }
 
 export default function NoteDetailScreen() {
-  const { id, recordingNotice, titlePending } = useLocalSearchParams<{
+  const { id, recordingNotice } = useLocalSearchParams<{
     id: string
     recordingNotice?: string
-    titlePending?: string
   }>()
   const { colors } = useTheme()
   const { t, language } = useI18n()
@@ -193,8 +251,8 @@ export default function NoteDetailScreen() {
   const processingPhase = useNotesStore((state) =>
     id ? state.processing[id]?.phase : undefined,
   )
-  const processingProgress = useNotesStore((state) =>
-    id ? state.processing[id] : undefined,
+  const processingLive = useNotesStore((state) =>
+    id ? state.processing[id]?.live : undefined,
   )
   const resumableProcessing = useNotesStore((state) =>
     id ? state.resumableProcessing[id] : undefined,
@@ -209,11 +267,8 @@ export default function NoteDetailScreen() {
   const applyProposal = useNotesStore((state) => state.applyProposal)
   const clearProposal = useNotesStore((state) => state.clearProposal)
   const remove = useNotesStore((state) => state.remove)
-  const allTasks = useTasksStore((state) => state.tasks)
-  const noteTasks = allTasks.filter((task) => task.noteId === id)
   const modelReady = useModelStore((state) => state.status === 'ready')
   const router = useRouter()
-  const navigation = useNavigation()
   const isFocused = useIsFocused()
   const isFocusedRef = useRef(isFocused)
   isFocusedRef.current = isFocused
@@ -224,12 +279,8 @@ export default function NoteDetailScreen() {
   const [error, setError] = useState<string | null>(null)
   const [discarding, setDiscarding] = useState(false)
   const discardInFlight = useRef(false)
+  const choiceTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [appliedNotice, setAppliedNotice] = useState(false)
-  const [revealTitle, setRevealTitle] = useState<string | null>(null)
-  const [revealSummary, setRevealSummary] = useState<string | null>(null)
-  const [readyFields, setReadyFields] = useState({ title: false, summary: false })
-  const [pendingTitle, setPendingTitle] = useState(titlePending === '1')
-  const titleMarker = useRef<{ id: string | undefined; accepted: boolean }>({ id, accepted: false })
   const processing = processingPhase !== undefined
   const proposalCurrent = Boolean(note && proposal && isNoteProposalCurrent(note, proposal))
   const proposalChanges = proposal ? getNoteProposalChanges(proposal) : NO_SELECTION
@@ -250,66 +301,29 @@ export default function NoteDetailScreen() {
     'Nie udało się przygotować tego pola. Obecna wartość pozostanie.',
     'This field could not be prepared. The current value will be kept.',
   )
-  const preparingModel =
-    processingPhase === 'queued' || processingPhase === 'loading'
-  const wasProcessing = useRef(false)
-  const processingSource = useRef({
-    id: note?.id,
-    title: note?.title ?? '',
-    summary: note?.summary ?? null,
-  })
-  // Store publication and job cleanup are separate updates. Animate the result
-  // in its first render, including when the processing entry is still present.
-  const observingResult = Boolean(note && processingSource.current.id === note.id && wasProcessing.current)
-  const titleResultChanged = observingResult && note?.title !== processingSource.current.title
-  const summaryResultChanged = observingResult && note?.summary !== processingSource.current.summary && Boolean(note?.summary?.trim())
-  const resultPublished = titleResultChanged || summaryResultChanged
-  const titleLoading = processing && !resultPublished && !readyFields.title && (pendingTitle || !note?.title.trim())
-  const summaryLoading = processing && !resultPublished && !readyFields.summary
-  // After its reveal (or a stuck one) the title remounts as plain text. On iOS an
-  // interrupted layout animation can leave the revealed view invisible until remount.
-  const [titleSettled, setTitleSettled] = useState({ text: '', epoch: 0 })
-  const titleRevealComplete = useCallback((value: string) => {
-    setRevealTitle(current => current === value ? null : current)
-    setTitleSettled(current => ({ text: value, epoch: current.epoch + 1 }))
-  }, [])
-  const summaryRevealComplete = useCallback((value: string) => setRevealSummary(current => current === value ? null : current), [])
-  const desiredPresentation = { title: note?.title ?? '', summary: note?.summary ?? null, tags: note?.tags ?? [], titleLoading, summaryLoading, processing }
-  const shown = useLayoutTransition(desiredPresentation, JSON.stringify(desiredPresentation), id ?? '', isFocused, reducedMotion)
-  const summaryDocument = note ? parseSummaryDocument(note.summaryDocument, note.content, note.summary) : null
+  // One staged flag drives every visual swap, so a single layout transition
+  // and one crossfade replace the processing card with the result.
+  const shownProcessing = useLayoutTransition(processing, String(processing), id ?? '', isFocused, reducedMotion)
+  // While the model works the note keeps its previous content; the result
+  // appears all at once when processing ends.
+  const stable = useRef<Note | undefined>(note)
+  if (note && (!shownProcessing || stable.current?.id !== note.id)) stable.current = note
+  const display: Note | undefined = note && shownProcessing && stable.current?.id === note.id ? stable.current : note
+  const provisionalTitle = shownProcessing && !display?.summary?.trim()
+  const summaryDocument = useMemo(
+    () => display ? parseSummaryDocument(display.summaryDocument, display.content, display.summary) : null,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [display?.summaryDocument, display?.content, display?.summary],
+  )
   const playerRef = useRef<AudioNotePlayerHandle>(null)
-  const audioSpans = note?.audioTimeline?.spans ?? []
+  const audioSpans = display?.audioTimeline?.spans ?? EMPTY_SPANS
   const pointTime = useCallback((point: SummaryPoint) => timeForRanges(audioSpans, point.sources), [audioSpans])
-  const audioMarks: AudioMark[] = summaryDocument && audioSpans.length > 0
-    ? summaryDocument.points.flatMap(point => pointTime(point) ?? [])
-    : []
-  const summaryRevealing = Boolean(note?.summary && (revealSummary === note.summary || summaryResultChanged))
-  // Metadata may arrive without changing the text. Stage its activation as a
-  // separate native layout transaction before publishing minimum44 source rows.
-  const sourceIdentity = note && summaryDocument && isFocused && !summaryLoading && !shown.summaryLoading
-    && shown.summary === note.summary && (reducedMotion || !summaryRevealing)
-    ? JSON.stringify({ noteId: note.id, revision: note.updatedAt, content: note.content, document: note.summaryDocument }) : null
-  const shownSourceIdentity = useLayoutTransition(sourceIdentity, sourceIdentity ?? '', id ?? '', isFocused, reducedMotion)
-  // Current canonical data always wins over a delayed presentation, including
-  // the first render after source, focus, revision or reveal state changes.
-  const showSummarySources = sourceIdentity !== null && shownSourceIdentity === sourceIdentity
-  const summaryPlaceholder = useRef({ id, lines: 3 })
-  if (summaryPlaceholder.current.id !== id) summaryPlaceholder.current = { id, lines: 3 }
-  if (shown.summaryLoading) summaryPlaceholder.current.lines = shown.summary?.trim() ? 2 : 3
-
-  useLayoutEffect(() => {
-    if (titleMarker.current.id !== id) {
-      titleMarker.current = { id, accepted: false }
-      setPendingTitle(false)
-    }
-    if (titlePending !== '1' || titleMarker.current.accepted) return
-    titleMarker.current.accepted = true
-    setPendingTitle(true)
-    // Keep the pending title only in this mounted screen; returning cannot
-    // hide a saved title behind a stale route parameter. The screen's own
-    // navigation works while the global router is still settling the replace.
-    navigation.setParams({ titlePending: undefined } as never)
-  }, [id, titlePending, navigation])
+  const audioMarks = useMemo<AudioMark[]>(
+    () => summaryDocument && audioSpans.length > 0 && !shownProcessing
+      ? summaryDocument.points.flatMap(point => pointTime(point) ?? [])
+      : [],
+    [summaryDocument, audioSpans, shownProcessing, pointTime],
+  )
 
   useEffect(() => {
     if (proposal) setSelection(NO_SELECTION)
@@ -319,45 +333,9 @@ export default function NoteDetailScreen() {
     if (!isFocused) setSheetMode(null)
   }, [isFocused])
 
-  useLayoutEffect(() => {
-    if (!note) return
-    if (processingSource.current.id !== note.id) {
-      processingSource.current = { id: note.id, title: note.title, summary: note.summary }
-      setRevealTitle(null)
-      setRevealSummary(null)
-      setReadyFields({ title: false, summary: false })
-      wasProcessing.current = processing
-      return
-    }
-    if (processing && !wasProcessing.current && note) {
-      processingSource.current = { id: note.id, title: note.title, summary: note.summary }
-      setRevealTitle(null)
-      setRevealSummary(null)
-      setReadyFields({ title: false, summary: false })
-    } else if (wasProcessing.current) {
-      if (titleResultChanged) setRevealTitle(note.title)
-      if (summaryResultChanged) setRevealSummary(note.summary)
-      // The store publishes title, summary and tags together before cleanup.
-      if (titleResultChanged || summaryResultChanged) setReadyFields({ title: true, summary: true })
-      if (titleResultChanged || summaryResultChanged || !processing) setPendingTitle(false)
-      processingSource.current = { id: note.id, title: note.title, summary: note.summary }
-    }
-    wasProcessing.current = processing
-  }, [note?.id, note?.title, note?.summary, processing, titleResultChanged, summaryResultChanged])
-
-  useEffect(() => {
-    if (!isFocused) {
-      setPendingTitle(false)
-      setRevealTitle(null)
-      setRevealSummary(null)
-    } else if (processError && !processing) setPendingTitle(false)
-  }, [isFocused, processError, processing])
-
-  useEffect(() => {
-    if (!revealTitle) return
-    const timeout = setTimeout(() => titleRevealComplete(revealTitle), TITLE_REVEAL_DEADLINE_MS)
-    return () => clearTimeout(timeout)
-  }, [revealTitle, titleRevealComplete])
+  useEffect(() => () => {
+    if (choiceTimer.current) clearTimeout(choiceTimer.current)
+  }, [])
 
   useEffect(() => {
     if (!appliedNotice) return
@@ -378,6 +356,7 @@ export default function NoteDetailScreen() {
     if (!note || processing) return
     setError(null)
     try {
+      const noteTasks = useTasksStore.getState().tasks.filter((task) => task.noteId === note.id)
       await Share.share({
         message: formatNoteAsText(note, noteTasks, language),
       })
@@ -386,35 +365,27 @@ export default function NoteDetailScreen() {
     }
   }
 
-  const confirmDelete = () => {
+  const confirmDelete = async () => {
     if (!note) return
-    Alert.alert(
-      t('Usunąć notatkę?', 'Delete note?'),
-      t('Tej operacji nie można cofnąć.', 'This action cannot be undone.'),
-      [
-        { text: t('Anuluj', 'Cancel'), style: 'cancel' },
-        {
-          text: t('Usuń', 'Delete'),
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await remove(note.id)
-              goToList()
-            } catch (cause) {
-              setError(cause instanceof Error ? cause.message : String(cause))
-            }
-          },
-        },
-      ],
-    )
+    setSheetMode(null)
+    try {
+      await remove(note.id)
+      goToList()
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause))
+    }
+  }
+
+  const openChoices = () => {
+    setSelection(NO_SELECTION)
+    setSheetMode('choose')
   }
 
   const startReprocessing = async (background?: boolean) => {
     if (!note || processing || taskAnalysisBusy) return
     if (note.transcriptionIncomplete) return
     if (proposal) {
-      setSelection(NO_SELECTION)
-      setSheetMode('choose')
+      openChoices()
       return
     }
     setError(null)
@@ -423,10 +394,14 @@ export default function NoteDetailScreen() {
       note.id,
       background === undefined ? undefined : { background },
     )
-    if (generated && isFocusedRef.current) {
-      setSelection(NO_SELECTION)
-      setSheetMode('choose')
+    if (!generated || !isFocusedRef.current) return
+    const noteId = note.id
+    const openWhenReady = () => {
+      choiceTimer.current = null
+      if (isFocusedRef.current && useNotesStore.getState().proposals[noteId]) openChoices()
     }
+    if (reducedMotion) openWhenReady()
+    else choiceTimer.current = setTimeout(openWhenReady, CHOICE_OPEN_DELAY_MS)
   }
 
   const applySelected = async () => {
@@ -448,14 +423,6 @@ export default function NoteDetailScreen() {
       } else {
         setSheetMode(null)
         setAppliedNotice(true)
-        setRevealTitle(
-          effectiveSelection.title && proposal.generated.title !== note.title ? proposal.generated.title : null,
-        )
-        setRevealSummary(
-          effectiveSelection.summary &&
-            Boolean(proposal.generated.summary.trim()) &&
-            proposal.generated.summary !== (note.summary ?? '') ? proposal.generated.summary : null,
-        )
       }
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause))
@@ -510,7 +477,7 @@ export default function NoteDetailScreen() {
           ? 'zmiany'
           : 'zmian'
 
-  if (!note) {
+  if (!note || !display) {
     return (
       <View style={[styles.empty, { backgroundColor: colors.canvas }]}>
         <Stack.Screen options={{ title: t('Notatka', 'Note') }} />
@@ -533,33 +500,44 @@ export default function NoteDetailScreen() {
   const reprocessDisabled = !modelReady || taskAnalysisBusy ||
     (note.transcriptionIncomplete ? !note.audioUri : !note.content.trim())
   const proposalChangeCount = Object.values(effectiveSelection).filter(Boolean).length
-  const presentation = processingPresentation(processingProgress, t)
-  const headerTitle = processing
-    ? () => <ProcessingIndicator active={isFocused} {...presentation} />
-    : t('Notatka', 'Note')
+
+  const finalSummary = display.summary?.trim() ? (
+    <SummaryWithSources
+      noteId={display.id}
+      revision={display.updatedAt}
+      content={display.content}
+      summary={display.summary}
+      document={display.summaryDocument}
+      active={isFocused}
+      pointTime={pointTime}
+      onPlayFrom={display.audioUri && audioSpans.length > 0 ? (ms) => playerRef.current?.playFrom(ms) : undefined}
+    />
+  ) : (
+    <Text style={[styles.body, { color: colors.muted }]}>{t('Brak podsumowania', 'No summary')}</Text>
+  )
 
   return (
     <>
       <Stack.Screen
         options={{
-          headerTitle,
+          headerTitle: t('Notatka', 'Note'),
           headerRight: () => (
             <View style={styles.headerActions}>
-              {!processing && (
-                <Pressable
-                  onPress={openEdit}
-                  accessibilityRole="button"
-                  accessibilityLabel={t('Edytuj notatkę', 'Edit note')}
-                  style={({ pressed }) => [
-                    styles.editAction,
-                    { borderColor: colors.line, backgroundColor: colors.paper, opacity: pressed ? 0.7 : 1 },
-                  ]}
-                >
-                  <Text style={[styles.editText, { color: colors.ink }]}>
-                    {t('Edytuj', 'Edit')}
-                  </Text>
-                </Pressable>
-              )}
+              <Pressable
+                onPress={openEdit}
+                disabled={processing}
+                accessibilityRole="button"
+                accessibilityLabel={t('Edytuj notatkę', 'Edit note')}
+                accessibilityState={{ disabled: processing }}
+                style={({ pressed }) => [
+                  styles.editAction,
+                  { borderColor: colors.line, backgroundColor: colors.paper, opacity: processing ? 0.4 : pressed ? 0.7 : 1 },
+                ]}
+              >
+                <Text style={[styles.editText, { color: colors.ink }]}>
+                  {t('Edytuj', 'Edit')}
+                </Text>
+              </Pressable>
               <IconButton
                 name="share"
                 label={t('Udostępnij notatkę', 'Share note')}
@@ -584,13 +562,13 @@ export default function NoteDetailScreen() {
         {recordingNotice && (
           <View
             style={[
-              styles.processingError,
-              { backgroundColor: colors.accentSoft },
+              styles.notePanel,
+              { backgroundColor: colors.paper, borderColor: colors.line },
             ]}
             accessibilityRole="alert"
           >
-            <Icon name="alert" size={20} color={colors.accent} />
-            <Text style={[styles.processingErrorText, { color: colors.body }]}>
+            <Icon name="alert" size={20} color={colors.muted} />
+            <Text style={[styles.notePanelText, { color: colors.body }]}>
               {recordingNotice}
             </Text>
             <IconButton
@@ -603,20 +581,14 @@ export default function NoteDetailScreen() {
         {error && (
           <Text style={[styles.error, { color: colors.danger }]}>{error}</Text>
         )}
-        {shown.titleLoading ? (
-          <SkeletonText title lines={1} animate={!preparingModel} active={isFocused} />
-        ) : (
-          <RevealText
-            key={`title-${titleSettled.epoch}`}
+        <Crossfade id={`${provisionalTitle ? 'draft' : 'final'}:${display.title}`} active={isFocused} reducedMotion={reducedMotion}>
+          <Text
             accessibilityRole="header"
-            active={isFocused}
-            text={shown.title.trim() || t('Bez tytułu', 'Untitled')}
-            animate={isFocused && titleSettled.text !== shown.title && (revealTitle === shown.title || titleResultChanged && shown.title === note.title)}
-            onRevealComplete={titleRevealComplete}
-            placeholderLines={1}
-            style={[styles.noteTitle, { color: colors.ink }]}
-          />
-        )}
+            style={[styles.noteTitle, { color: provisionalTitle ? colors.faint : colors.ink }]}
+          >
+            {display.title.trim() || t('Bez tytułu', 'Untitled')}
+          </Text>
+        </Crossfade>
 
         <View style={styles.metadata}>
           <Text style={[styles.meta, { color: colors.muted }]}>
@@ -629,15 +601,24 @@ export default function NoteDetailScreen() {
           )}
         </View>
 
-        <LayoutEntry eventKey={JSON.stringify(shown.tags)} visible={shown.tags.length > 0} active={isFocused} reducedMotion={reducedMotion}>
-          <NoteTags
-            tags={shown.tags}
-            onChange={() => undefined}
-            editable={false}
-            showLabel={false}
-            compact
-          />
-        </LayoutEntry>
+        {(display.tags.length > 0 || shownProcessing) && (
+          <Crossfade
+            id={`tags:${display.tags.join('|')}`}
+            active={isFocused}
+            reducedMotion={reducedMotion}
+            style={shownProcessing ? styles.tagsSlot : undefined}
+          >
+            {display.tags.length > 0 ? (
+              <NoteTags
+                tags={display.tags}
+                onChange={() => undefined}
+                editable={false}
+                showLabel={false}
+                compact
+              />
+            ) : null}
+          </Crossfade>
+        )}
 
         {note.audioUri && (
           <AudioNotePlayer
@@ -645,7 +626,16 @@ export default function NoteDetailScreen() {
             uri={note.audioUri}
             durationMs={note.durationMs}
             timeline={note.audioTimeline}
-            marks={showSummarySources ? audioMarks : []}
+            marks={audioMarks}
+          />
+        )}
+
+        {proposal && !shownProcessing && sheetMode !== 'choose' && (
+          <NewVersionBanner
+            onOpen={openChoices}
+            onDiscard={() => void discardSuggestions()}
+            busy={discarding || processing}
+            reducedMotion={reducedMotion}
           />
         )}
 
@@ -655,91 +645,73 @@ export default function NoteDetailScreen() {
             <Text style={[styles.sectionTitle, { color: colors.muted }]}>
               {t('Podsumowanie', 'Summary')}
             </Text>
-            {!shown.processing && (
-              <Pressable
-                onPress={() => {
-                  if (note.transcriptionIncomplete) {
-                    if (note.audioUri) router.push({ pathname: '/import', params: { noteId: note.id } })
-                    return
-                  }
-                  if (!reducedMotion) {
-                    reprocessSweep.setValue(0)
-                    Animated.timing(reprocessSweep, { toValue: 1, duration: 360, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start()
-                  }
-                  setSheetMode(proposal ? 'choose' : 'confirm')
-                }}
-                disabled={reprocessDisabled}
-                accessibilityLabel={note.transcriptionIncomplete ? t('Uzupełnij i przetwórz', 'Complete and process') : t('Opracuj na nowo', 'Process again')}
-                accessibilityRole="button"
-                accessibilityState={{
-                  disabled: reprocessDisabled,
-                }}
-                style={({ pressed }) => [
-                  styles.reprocessAction,
-                  {
-                    borderColor: colors.line,
-                    backgroundColor: colors.paper,
-                    opacity: reprocessDisabled ? 0.45 : 1,
-                    transform: [{ scale: pressed ? 0.97 : 1 }],
-                  },
-                ]}
-              >
-                {note.transcriptionIncomplete ? (
-                  <Text style={[styles.reprocessText, { color: colors.ink }]}>
-                    {t('Uzupełnij i przetwórz', 'Complete and process')}
-                  </Text>
-                ) : (
-                  <MarkedLabel lead={t('Opracuj', 'Process')} marked={t('na nowo', 'again')} sweep={reprocessSweep} />
-                )}
-              </Pressable>
-            )}
-          </View>
-          {(!shown.summaryLoading || Boolean(shown.summary?.trim())) && (
-            showSummarySources ? <SummaryWithSources
-              noteId={note.id}
-              revision={note.updatedAt}
-              content={note.content}
-              summary={note.summary ?? ''}
-              document={note.summaryDocument}
-              active={isFocused}
-              pointTime={pointTime}
-              onPlayFrom={note.audioUri && audioSpans.length > 0 ? (ms) => playerRef.current?.playFrom(ms) : undefined}
-            /> : <RevealText
-              active={isFocused}
-              text={shown.summary?.trim() || t('Brak podsumowania', 'No summary')}
-              animate={isFocused && Boolean(shown.summary?.trim()) && (revealSummary === shown.summary || summaryResultChanged && shown.summary === note.summary)}
-              onRevealComplete={summaryRevealComplete}
-              placeholderLines={summaryPlaceholder.current.lines}
-              style={[
-                styles.body,
-                { color: shown.summary ? colors.body : colors.muted },
+            <Pressable
+              onPress={() => {
+                if (note.transcriptionIncomplete) {
+                  if (note.audioUri) router.push({ pathname: '/import', params: { noteId: note.id } })
+                  return
+                }
+                if (!reducedMotion) {
+                  reprocessSweep.setValue(0)
+                  Animated.timing(reprocessSweep, { toValue: 1, duration: 360, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start()
+                }
+                setSheetMode(proposal ? 'choose' : 'confirm')
+              }}
+              disabled={reprocessDisabled || shownProcessing}
+              accessibilityElementsHidden={shownProcessing}
+              importantForAccessibility={shownProcessing ? 'no-hide-descendants' : 'auto'}
+              accessibilityLabel={note.transcriptionIncomplete ? t('Uzupełnij i przetwórz', 'Complete and process') : t('Opracuj na nowo', 'Process again')}
+              accessibilityRole="button"
+              accessibilityState={{
+                disabled: reprocessDisabled,
+              }}
+              style={({ pressed }) => [
+                styles.reprocessAction,
+                {
+                  borderColor: colors.line,
+                  backgroundColor: colors.paper,
+                  opacity: shownProcessing ? 0 : reprocessDisabled ? 0.45 : 1,
+                  transform: [{ scale: pressed ? 0.97 : 1 }],
+                },
               ]}
-            />
-          )}
-          {shown.summaryLoading && (
-            <View style={{ gap: spacing.sm, marginTop: shown.summary?.trim() ? spacing.md : 0 }}>
-              {Boolean(shown.summary?.trim()) && (
-                <Text style={[type.meta, { color: colors.muted }]}>
-                  {t('Nowa propozycja', 'New proposal')}
+            >
+              {note.transcriptionIncomplete ? (
+                <Text style={[styles.reprocessText, { color: colors.ink }]}>
+                  {t('Uzupełnij i przetwórz', 'Complete and process')}
                 </Text>
-              )}
-              {processingProgress?.live ? (
-                <ProcessingLive content={note.content} live={processingProgress.live} reducedMotion={reducedMotion} />
               ) : (
-                <SkeletonText lines={shown.summary?.trim() ? 2 : 3} animate={!preparingModel} active={isFocused} />
+                <MarkedLabel lead={t('Opracuj', 'Process')} marked={t('na nowo', 'again')} sweep={reprocessSweep} />
               )}
-            </View>
-          )}
+            </Pressable>
+          </View>
+          <Crossfade
+            id={shownProcessing ? 'live' : `final:${display.summary ?? ''}`}
+            active={isFocused}
+            reducedMotion={reducedMotion}
+          >
+            {shownProcessing ? (
+              <View style={{ gap: spacing.md }}>
+                <ProcessingLive content={note.content} live={processingLive} phase={processingPhase} reducedMotion={reducedMotion} />
+                <Button
+                  label={t('Wstrzymaj', 'Pause')}
+                  variant="secondary"
+                  onPress={() =>
+                    void useNotesStore.getState().pauseProcessing(note.id)
+                  }
+                />
+              </View>
+            ) : finalSummary}
+          </Crossfade>
           {processError && !processing && (
             <View
               style={[
-                styles.processingError,
-                { backgroundColor: colors.emberSoft },
+                styles.notePanel,
+                { backgroundColor: colors.paper, borderColor: colors.line },
               ]}
             >
-              <Icon name="alert" size={16} color={colors.ember} />
+              <Icon name="alert" size={16} color={colors.danger} />
               <Text
-                style={[styles.processingErrorText, { color: colors.ember }]}
+                style={[styles.notePanelText, { color: colors.body }]}
               >
                 {processError}
               </Text>
@@ -768,15 +740,6 @@ export default function NoteDetailScreen() {
               />
             </View>
           )}
-          {shown.processing && (
-            <Button
-              label={t('Wstrzymaj', 'Pause')}
-              variant="secondary"
-              onPress={() =>
-                void useNotesStore.getState().pauseProcessing(note.id)
-              }
-            />
-          )}
           {!processing && !modelReady && (
             <Text style={[styles.hint, { color: colors.muted }]}>
               {getModelMissingMessage()}
@@ -799,7 +762,7 @@ export default function NoteDetailScreen() {
           </Text>
           {note.transcriptionIncomplete && (
             <View style={{ gap: spacing.sm }}>
-              <Text accessibilityRole="alert" style={[styles.hint, { color: colors.ember }]}>
+              <Text accessibilityRole="alert" style={[styles.hint, { color: colors.danger }]}>
                 {t(
                   'Audio zostało zapisane. Transkrypcja może być niepełna.',
                   'Audio has been saved. The transcript may be incomplete.',
@@ -851,10 +814,22 @@ export default function NoteDetailScreen() {
         <Button
           label={t('Usuń notatkę', 'Delete note')}
           variant="danger"
-          onPress={confirmDelete}
+          onPress={() => setSheetMode('delete')}
           disabled={processing}
         />
       </ScrollView>
+
+      <BottomSheet
+        visible={sheetMode === 'delete' && isFocused}
+        onClose={() => setSheetMode(null)}
+        title={t('Usunąć notatkę?', 'Delete note?')}
+      >
+        <Text style={[styles.sheetMessage, { color: colors.muted }]}>
+          {t('Tej operacji nie można cofnąć.', 'This action cannot be undone.')}
+        </Text>
+        <Button label={t('Usuń', 'Delete')} variant="danger" onPress={() => void confirmDelete()} />
+        <Button label={t('Anuluj', 'Cancel')} variant="quiet" onPress={() => setSheetMode(null)} />
+      </BottomSheet>
 
       <BottomSheet
         visible={sheetMode === 'confirm' && isFocused}
@@ -876,7 +851,7 @@ export default function NoteDetailScreen() {
               {[
                 { label: t('Streszczenie', 'Summary'), detail: note.summary?.trim() ? t('zastąpi obecne, jeśli wybierzesz', 'replaces the current one if you choose') : t('notatka nie ma jeszcze streszczenia', 'the note has no summary yet') },
                 { label: t('Tytuł', 'Title'), detail: `„${note.title.trim() || t('Bez tytułu', 'Untitled')}”` },
-                { label: t('Kategorie', 'Categories'), detail: shown.tags.length ? t(`teraz: ${shown.tags.length}`, `now: ${shown.tags.length}`) : t('teraz brak', 'none yet') },
+                { label: t('Kategorie', 'Categories'), detail: note.tags.length ? t(`teraz: ${note.tags.length}`, `now: ${note.tags.length}`) : t('teraz brak', 'none yet') },
               ].map((row, index) => (
                 <View key={row.label} style={[styles.prepareRow, index < 2 && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line }]}>
                   <View style={[styles.prepareDot, { backgroundColor: colors.marker, borderColor: colors.markerLine }]} />
@@ -949,21 +924,15 @@ export default function NoteDetailScreen() {
               },
             ]}
           >
-            <Pressable
-              onPress={closeChoices}
-              disabled={discarding}
-              accessibilityRole="button"
-              accessibilityState={{ disabled: discarding }}
-              accessibilityLabel={t(
-                'Anuluj wybór zmian',
-                'Cancel choosing changes',
-              )}
-              style={styles.choiceCancel}
-            >
-              <Text style={[styles.headerCancelText, { color: colors.accent }]}>
-                {t('Anuluj', 'Cancel')}
-              </Text>
-            </Pressable>
+            <View style={styles.choiceCancel}>
+              <Button
+                compact
+                variant="quiet"
+                label={t('Anuluj', 'Cancel')}
+                onPress={closeChoices}
+                disabled={discarding}
+              />
+            </View>
             <Text
               accessibilityRole="header"
               numberOfLines={1}
@@ -1003,7 +972,7 @@ export default function NoteDetailScreen() {
                   <Text
                     key={index}
                     accessibilityRole="alert"
-                    style={[styles.choiceValue, { color: colors.ember }]}
+                    style={[styles.choiceValue, { color: colors.muted }]}
                   >
                     {warning}
                   </Text>
@@ -1011,7 +980,7 @@ export default function NoteDetailScreen() {
                 {error && (
                   <Text
                     accessibilityRole="alert"
-                    style={[styles.error, { color: colors.ember }]}
+                    style={[styles.error, { color: colors.danger }]}
                   >
                     {error}
                   </Text>
@@ -1040,9 +1009,6 @@ export default function NoteDetailScreen() {
                           ]}
                         />
                         <ProposalChoice
-                          reveal
-                          active={sheetMode === 'choose' && isFocused}
-                          animate={sheetMode === 'choose' && isFocused && !reducedMotion}
                           label={t('Nowy', 'New')}
                           value={proposal.generated.title}
                           compareTo={note.title}
@@ -1087,9 +1053,6 @@ export default function NoteDetailScreen() {
                           ]}
                         />
                         <ProposalChoice
-                          reveal
-                          active={sheetMode === 'choose' && isFocused}
-                          animate={sheetMode === 'choose' && isFocused && !reducedMotion}
                           label={t('Nowe', 'New')}
                           value={
                             proposal.generated.summary.trim() || t('Brak podsumowania', 'No summary')
@@ -1338,15 +1301,28 @@ const styles = StyleSheet.create({
   retranscribe: { ...type.label, textDecorationLine: 'underline', textDecorationStyle: 'solid' },
   hint: { ...type.meta },
   error: { ...type.body },
-  processingError: {
+  notePanel: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: spacing.sm,
     borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
   },
-  processingErrorText: { fontSize: 14, lineHeight: 20, flex: 1 },
+  notePanelText: { fontSize: 14, lineHeight: 20, flex: 1 },
+  banner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    borderRadius: radius.md,
+    paddingLeft: spacing.md,
+    paddingRight: spacing.sm,
+    paddingVertical: spacing.sm,
+  },
+  bannerText: { ...type.label, flex: 1 },
+  clipped: { overflow: 'hidden' },
+  tagsSlot: { minHeight: 28 },
   sheetIntro: {
     alignItems: 'center',
     gap: spacing.md,
@@ -1388,8 +1364,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  choiceCancel: { width: 72, minHeight: 44, justifyContent: 'center' },
-  headerCancelText: { ...type.label, fontFamily: fonts.medium },
+  choiceCancel: { width: 96, minHeight: 44, justifyContent: 'center', alignItems: 'flex-start' },
   choiceScreenTitle: { ...type.label, fontSize: 15, textAlign: 'center', flex: 1 },
   choiceScroll: { flex: 1 },
   choiceScrollContent: {

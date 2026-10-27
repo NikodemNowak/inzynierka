@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
-import { Animated, AppState, Easing, LayoutAnimation, type StyleProp, type TextStyle, type ViewStyle } from 'react-native'
+import { Animated, AppState, Easing, type StyleProp, type TextStyle, type ViewStyle } from 'react-native'
 import { Icon } from '../ui/Icon'
 import { useTheme } from '../ui/theme'
-import { RevealText } from '../ui/Motion'
+import { FadeText } from './FadeText'
 import { useLayoutTransition } from '../ui/LayoutMotion'
 
 const boundedTaskIds = (ids: readonly string[]): readonly string[] => {
@@ -55,7 +55,7 @@ export function useTaskTextReveal(active: boolean, reducedMotion: boolean, scope
   return { ids, prepare, consume }
 }
 
-export function TaskText({ text, reveal, active, reducedMotion, onRevealConsumed, onRevealComplete, style, numberOfLines, index = 0, placeholderLines = 0 }: {
+export function TaskText({ text, reveal, active, reducedMotion, onRevealConsumed, onRevealComplete, style, numberOfLines, index = 0 }: {
   text: string
   reveal: boolean
   active: boolean
@@ -65,7 +65,6 @@ export function TaskText({ text, reveal, active, reducedMotion, onRevealConsumed
   style?: StyleProp<TextStyle>
   numberOfLines?: number
   index?: number
-  placeholderLines?: number
 }) {
   const [animate, setAnimate] = useState(false)
   const previousText = useRef(text)
@@ -84,7 +83,7 @@ export function TaskText({ text, reveal, active, reducedMotion, onRevealConsumed
       consumed.current()
     } else if (changed) setAnimate(false)
   }, [text, reveal, active, reducedMotion])
-  return <RevealText text={text} animate={animate && active && !reducedMotion} active={active} style={style} numberOfLines={numberOfLines} delayMs={Math.max(0, Math.min(3, index)) * 140} placeholderLines={placeholderLines} onRevealComplete={onRevealComplete} />
+  return <FadeText text={text} animate={animate && active && !reducedMotion} active={active} style={style} numberOfLines={numberOfLines} delayMs={Math.max(0, Math.min(3, index)) * 140} onRevealComplete={onRevealComplete} />
 }
 
 // Presentation only: complete candidates remain available to selection/storage.
@@ -216,63 +215,6 @@ export function TaskArrival({ children, index, count = 0, active, reducedMotion,
       {children}
     </Animated.View>
   )
-}
-
-// Retain only the surplus visual placeholders, never candidate task data.
-// Their native frames collapse in order after the real result is available.
-export const placeholderExitTiming = (index: number, count: number) => ({
-  delay: Math.min(300, 100 + count * 100) + (2 - index) * 400,
-  duration: 180,
-  collapse: 220,
-})
-
-export function TaskPlaceholder({ children, index, count, exiting, active, reducedMotion }: {
-  children: ReactNode; index: number; count: number; exiting: boolean; active: boolean; reducedMotion: boolean
-}) {
-  const progress = useRef(new Animated.Value(0)).current
-  useLayoutEffect(() => {
-    progress.stopAnimation(); progress.setValue(0)
-    if (!exiting || !active || reducedMotion) return
-    const { delay, duration } = placeholderExitTiming(index, count)
-    const animation = Animated.timing(progress, { toValue: 1, delay, duration, easing: Easing.out(Easing.cubic), useNativeDriver: true, isInteraction: false })
-    animation.start()
-    return () => { animation.stop(); progress.setValue(0) }
-  }, [index, count, exiting, active, reducedMotion, progress])
-  return <Animated.View testID={`placeholder-exit-${index}`} style={{
-    opacity: Animated.subtract(1, progress),
-    transform: [{ translateY: progress.interpolate({ inputRange: [0, 1], outputRange: [0, -6] }) },
-      { scaleX: progress.interpolate({ inputRange: [0, 1], outputRange: [1, 0.965] }) }],
-  }}>{children}</Animated.View>
-}
-
-export function usePlaceholderExit(loading: boolean, count: number, scope: string, active: boolean, reducedMotion: boolean): readonly number[] {
-  const previous = useRef({ loading, scope })
-  const [tail, setTail] = useState<{ scope: string; indices: readonly number[] }>({ scope, indices: [] })
-  const epoch = useRef(0)
-  const current = useRef({ loading, scope, active, reducedMotion })
-  current.current = { loading, scope, active, reducedMotion }
-  const finishing = previous.current.scope === scope && previous.current.loading && !loading && active && !reducedMotion
-  const surplus = Array.from({ length: Math.max(0, 3 - count) }, (_, offset) => count + offset)
-  useLayoutEffect(() => {
-    const generation = ++epoch.current
-    const finish = previous.current.scope === scope && previous.current.loading && !loading && active && !reducedMotion
-    previous.current = { loading, scope }
-    if (!finish) { setTail({ scope, indices: [] }); return }
-    const indices = Array.from({ length: Math.max(0, 3 - count) }, (_, offset) => count + offset)
-    setTail({ scope, indices })
-    const timers = indices.map(index => {
-      const { delay, duration, collapse } = placeholderExitTiming(index, count)
-      return setTimeout(() => {
-      const owner = current.current
-      if (generation !== epoch.current || owner.scope !== scope || owner.loading || !owner.active || owner.reducedMotion) return
-      LayoutAnimation.configureNext({ duration: collapse, update: { type: 'easeInEaseOut' }, delete: { type: 'easeInEaseOut', property: 'opacity', duration: 1 } })
-      setTail(value => value.scope === scope ? { scope, indices: value.indices.filter(value => value !== index) } : value)
-      }, delay + duration)
-    })
-    return () => { ++epoch.current; for (const timer of timers) clearTimeout(timer) }
-  }, [loading, count, scope, active, reducedMotion])
-  if (!active || reducedMotion || loading || tail.scope !== scope) return []
-  return finishing ? surplus : tail.indices
 }
 
 export function TaskCheck({ checked, active, reducedMotion, style, size = 16, feedback = false, onFeedbackComplete }: {

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Pressable, StyleSheet, Text, View } from 'react-native'
 import { parseSummaryDocument, type SummaryDocument, type SummaryPoint } from '../domain/summary'
 import { useI18n } from '../i18n/useI18n'
@@ -33,8 +33,8 @@ export function SummaryWithSources({ noteId, revision, content, summary, documen
   const { colors } = useTheme()
   const { t } = useI18n()
   const [selection, setSelection] = useState<SourceSelection | null>(null)
-  const parsed = parseSummaryDocument(document, content, summary)
-  const documentSignature = JSON.stringify(document ?? null)
+  const parsed = useMemo(() => parseSummaryDocument(document, content, summary), [document, content, summary])
+  const documentSignature = useMemo(() => JSON.stringify(document ?? null), [document])
   // Validate in render: an effect alone could publish one frame of stale quotes.
   const currentSelection = active && parsed && selection && selection.noteId === noteId
     && selection.revision === revision && selection.content === content && selection.summary === summary

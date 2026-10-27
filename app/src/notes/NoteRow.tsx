@@ -1,5 +1,5 @@
 import { useI18n } from '../i18n/useI18n'
-import { useEffect, useRef } from 'react'
+import { memo, useEffect, useRef } from 'react'
 import { Animated, Easing, Pressable, StyleSheet, Text, View } from 'react-native'
 import type { Note } from '../domain/note'
 import { categoryLabel, isCategory } from '../domain/categories'
@@ -8,6 +8,16 @@ import { useReducedMotion } from '../ui/Motion'
 import { fonts, radius, type, useTheme } from '../ui/theme'
 import { useNotesStore } from '../state/notesStore'
 import { liveTrailFraction } from './ProcessingLive'
+
+const timeFormats = new Map<string, Intl.DateTimeFormat>()
+const formatTime = (timestamp: number, locale: string): string => {
+  let format = timeFormats.get(locale)
+  if (!format) {
+    format = new Intl.DateTimeFormat(locale, { hour: '2-digit', minute: '2-digit' })
+    timeFormats.set(locale, format)
+  }
+  return format.format(timestamp)
+}
 
 const formatDuration = (ms: number): string => {
   const seconds = Math.round(ms / 1000)
@@ -19,10 +29,10 @@ function ProcessingStrip({ noteId }: { noteId: string }) {
   const { colors } = useTheme()
   const { t } = useI18n()
   const reduced = useReducedMotion()
-  const progress = useNotesStore((s) => s.processing[noteId])
+  const phase = useNotesStore((s) => s.processing[noteId]?.phase)
+  const live = useNotesStore((s) => s.processing[noteId]?.live)
   const sweep = useRef(new Animated.Value(1)).current
   const fill = useRef(new Animated.Value(0)).current
-  const live = progress?.live
   const fraction = live ? liveTrailFraction(live) : 0
   useEffect(() => {
     if (reduced) return
@@ -34,13 +44,13 @@ function ProcessingStrip({ noteId }: { noteId: string }) {
     return () => loop.stop()
   }, [reduced, sweep])
   useEffect(() => {
-    Animated.timing(fill, { toValue: fraction, duration: reduced ? 0 : 500, useNativeDriver: false }).start()
+    Animated.timing(fill, { toValue: fraction, duration: reduced ? 0 : 500, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start()
   }, [fraction, fill, reduced])
-  const label = progress?.phase === 'loading'
+  const label = phase === 'loading'
     ? t('Wczytuję model', 'Loading the model')
-    : progress?.phase === 'queued'
+    : phase === 'queued'
       ? t('Czekam na model', 'Waiting for the model')
-      : progress?.phase === 'title' || progress?.phase === 'tags'
+      : phase === 'title' || phase === 'tags'
         ? t('Dobieram tytuł', 'Choosing a title')
         : t('Zakreślam', 'Highlighting')
   const points = live?.drafts.length ?? 0
@@ -57,16 +67,14 @@ function ProcessingStrip({ noteId }: { noteId: string }) {
           </Text>
         )}
       </View>
-      {live && (
-        <View style={[styles.track, { backgroundColor: colors.surface }]}>
-          <Animated.View style={[styles.trackInk, { backgroundColor: colors.ink, width: fill.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] }) }]} />
-        </View>
-      )}
+      <View style={[styles.track, { backgroundColor: colors.surface }]}>
+        <Animated.View style={[styles.trackInk, { backgroundColor: colors.ink, transform: [{ scaleX: fill }] }]} />
+      </View>
     </View>
   )
 }
 
-export function NoteRow({
+function NoteRowView({
   note,
   timestamp,
   onPress,
@@ -79,12 +87,20 @@ export function NoteRow({
   const { colors } = useTheme()
   const { t, language, locale } = useI18n()
   const processing = useNotesStore((s) => s.processing[note.id] !== undefined)
+  const hasProposal = useNotesStore((s) => s.proposals[note.id] !== undefined)
+  const reduced = useReducedMotion()
+  const swap = useRef(new Animated.Value(1)).current
+  const swapped = useRef(processing)
+  useEffect(() => {
+    if (swapped.current === processing) return
+    swapped.current = processing
+    if (reduced) return
+    swap.setValue(0)
+    Animated.timing(swap, { toValue: 1, duration: 200, useNativeDriver: true }).start()
+  }, [processing, reduced, swap])
   const categories = note.tags.filter(isCategory)
   const preview = note.summary?.trim() || note.content.trim()
-  const time = new Date(timestamp).toLocaleTimeString(locale, {
-    hour: '2-digit',
-    minute: '2-digit',
-  })
+  const time = formatTime(timestamp, locale)
   const untitled = !note.title.trim()
   return (
     <Pressable
@@ -101,6 +117,7 @@ export function NoteRow({
       >
         {note.title.trim() || t('Nowa notatka', 'New note')}
       </Text>
+      <Animated.View style={[styles.slot, { opacity: swap }]}>
       {processing ? (
         <ProcessingStrip noteId={note.id} />
       ) : preview ? (
@@ -112,6 +129,7 @@ export function NoteRow({
           {note.audioUri ? t('Nagranie bez transkrypcji', 'Recording without a transcript') : t('Pusta notatka', 'Empty note')}
         </Text>
       )}
+      </Animated.View>
       <View style={styles.meta}>
         <View style={[styles.chip, { backgroundColor: colors.surface }]}>
           <Icon name={note.audioUri ? 'waveform' : 'note'} size={12} color={colors.muted} />
@@ -129,11 +147,18 @@ export function NoteRow({
         {!processing && categories.length > 2 && (
           <Text style={[styles.chipText, { color: colors.muted }]}>+{categories.length - 2}</Text>
         )}
+        {hasProposal && (
+          <View style={[styles.chip, { backgroundColor: colors.marker }]}>
+            <Text style={[styles.chipText, { color: colors.onMarker }]}>{t('Nowa wersja', 'New version')}</Text>
+          </View>
+        )}
         <Text style={{ ...type.meta, color: colors.muted, marginLeft: 'auto', fontVariant: ['tabular-nums'] }}>{time}</Text>
       </View>
     </Pressable>
   )
 }
+
+export const NoteRow = memo(NoteRowView)
 
 const styles = StyleSheet.create({
   card: {
@@ -150,5 +175,6 @@ const styles = StyleSheet.create({
   labelMark: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 8, minHeight: 24, borderRadius: 12 },
   pulse: { width: 6, height: 6, borderRadius: 3 },
   track: { height: 3, borderRadius: 2, overflow: 'hidden' },
-  trackInk: { height: 3, borderRadius: 2 },
+  trackInk: { height: 3, borderRadius: 2, width: '100%', transformOrigin: 'left' },
+  slot: { minHeight: 40, justifyContent: 'center' },
 })

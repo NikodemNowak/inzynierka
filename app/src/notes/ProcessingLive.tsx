@@ -1,13 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
 import { Animated, Easing, StyleSheet, Text, View, type LayoutChangeEvent } from 'react-native'
 import * as Haptics from 'expo-haptics'
-import type { LiveSummaryProgress } from '../ai/noteProcessing'
+import type { LiveSummaryProgress, ProcessingPhase } from '../ai/noteProcessing'
 import { useI18n } from '../i18n/useI18n'
 import { radius, spacing, type, useTheme } from '../ui/theme'
 
 export type LiveSegmentKind = 'plain' | 'cited' | 'next'
 export interface LiveSegment { readonly text: string; readonly kind: LiveSegmentKind }
 
+const EMPTY_LIVE: LiveSummaryProgress = { units: [], drafts: [] }
 const NEXT_UNITS = 2
 const SLOW_AFTER_SECONDS = 40
 
@@ -96,69 +97,61 @@ function WaitingDot({ reducedMotion, label }: { reducedMotion: boolean; label: s
   )
 }
 
-// The bullet stretches into a highlighter stroke, writes the point and folds back.
+// A new point fades in and settles a few pixels up; the haptic marks the arrival.
 function DraftRow({ text, animate }: { text: string; animate: boolean }) {
-  const { colors, isDark } = useTheme()
-  const [width, setWidth] = useState(0)
-  const sweep = useRef(new Animated.Value(animate ? 0 : 1)).current
-  const fold = useRef(new Animated.Value(animate ? 0 : 1)).current
+  const { colors } = useTheme()
+  const enter = useRef(new Animated.Value(animate ? 0 : 1)).current
   useEffect(() => {
-    if (!animate || !width) return
+    if (!animate) return
     void Haptics.selectionAsync().catch(() => undefined)
-    Animated.sequence([
-      Animated.timing(sweep, { toValue: 1, duration: 520, easing: Easing.inOut(Easing.cubic), useNativeDriver: true }),
-      Animated.timing(fold, { toValue: 1, duration: 380, delay: 160, easing: Easing.inOut(Easing.cubic), useNativeDriver: true }),
-    ]).start()
-  }, [animate, width, sweep, fold])
-  const strokeScale = Animated.add(sweep, Animated.multiply(fold, -1)).interpolate({ inputRange: [0, 1], outputRange: [0.02, 1], extrapolate: 'clamp' })
+    Animated.timing(enter, { toValue: 1, duration: 260, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start()
+  }, [animate, enter])
   return (
-    <View style={styles.row} onLayout={(event: LayoutChangeEvent) => setWidth(event.nativeEvent.layout.width)}>
+    <Animated.View style={[styles.row, { opacity: enter, transform: [{ translateY: enter.interpolate({ inputRange: [0, 1], outputRange: [6, 0] }) }] }]}>
       <View style={styles.bulletSlot}>
-        <Animated.View style={[styles.dot, { backgroundColor: colors.marker, borderColor: colors.markerLine, transform: [{ scale: fold }] }]} />
+        <View style={[styles.dot, { backgroundColor: colors.marker, borderColor: colors.markerLine }]} />
       </View>
-      {animate && (
-        <Animated.View
-          pointerEvents="none"
-          style={[
-            styles.stroke,
-            { width, backgroundColor: colors.marker, opacity: isDark ? 0.4 : 1, transform: [{ scaleX: strokeScale }] },
-          ]}
-        />
-      )}
-      <View style={styles.clip}>
-        <Animated.View style={{ transform: [{ translateX: sweep.interpolate({ inputRange: [0, 1], outputRange: [-width, 0] }) }] }}>
-          <Animated.View style={{ transform: [{ translateX: sweep.interpolate({ inputRange: [0, 1], outputRange: [width, 0] }) }] }}>
-            <Text style={[type.body, { color: colors.ink }]}>{text}</Text>
-          </Animated.View>
-        </Animated.View>
-      </View>
-    </View>
+      <Text style={[type.body, { color: colors.ink, flex: 1 }]}>{text}</Text>
+    </Animated.View>
   )
 }
 
-export function ProcessingLive({ content, live, reducedMotion }: {
+type LivePhase = ProcessingPhase | undefined
+
+// The single source of phase text for the processing card.
+export const liveStatusLabel = (phase: LivePhase, t: (pl: string, en: string) => string): string =>
+  phase === 'queued' ? t('Czekam na model', 'Waiting for the model')
+    : phase === 'loading' ? t('Wczytuję model', 'Loading the model')
+      : phase === 'title' || phase === 'tags' ? t('Dobieram tytuł', 'Choosing a title')
+        : t('Zakreślam najważniejsze', 'Highlighting what matters')
+
+export function ProcessingLive({ content, live, phase, reducedMotion }: {
   content: string
-  live: LiveSummaryProgress
+  live?: LiveSummaryProgress
+  phase?: LivePhase
   reducedMotion: boolean
 }) {
   const { colors } = useTheme()
   const { t } = useI18n()
   const startedAt = useRef(Date.now()).current
   const [elapsed, setElapsed] = useState(0)
-  const seen = useRef(live.drafts.length)
+  const draftCount = live?.drafts.length ?? 0
+  const seen = useRef(draftCount)
   useEffect(() => {
     const timer = setInterval(() => setElapsed(Math.floor((Date.now() - startedAt) / 1000)), 1000)
     return () => clearInterval(timer)
   }, [startedAt])
-  // Drafts present on mount are shown without the reveal.
+  // Drafts present on mount are shown without the entrance.
   const firstAnimated = seen.current
-  useEffect(() => { seen.current = Math.max(seen.current, live.drafts.length) }, [live.drafts.length])
-  const segments = liveTranscriptSegments(content, live)
-  const fraction = liveTrailFraction(live)
+  useEffect(() => { seen.current = Math.max(seen.current, draftCount) }, [draftCount])
+  const source = live ?? EMPTY_LIVE
+  const segments = liveTranscriptSegments(content, source)
+  const fraction = liveTrailFraction(source)
+  const waiting = phase !== 'queued' && phase !== 'loading' && phase !== 'title' && phase !== 'tags'
   return (
     <View style={styles.container}>
       <View style={styles.status}>
-        <Text style={[type.label, { color: colors.ink }]}>{t('Zakreślam najważniejsze', 'Highlighting what matters')}</Text>
+        <Text style={[type.label, { color: colors.ink }]}>{liveStatusLabel(phase, t)}</Text>
         <Text style={[type.meta, { color: colors.muted }]}>{formatElapsed(elapsed)}</Text>
       </View>
       <View accessible accessibilityLabel={t(`Przeczytane ${Math.round(fraction * 100)}% notatki`, `${Math.round(fraction * 100)}% of the note read`)}>
@@ -179,23 +172,21 @@ export function ProcessingLive({ content, live, reducedMotion }: {
         </Text>
       </View>
       <View accessibilityLiveRegion="polite">
-        {live.drafts.map((draft, index) => (
+        {source.drafts.map((draft, index) => (
           <DraftRow key={index} text={draft.text} animate={!reducedMotion && index >= firstAnimated} />
         ))}
-        <WaitingDot reducedMotion={reducedMotion} label={live.drafts.length ? t('Następny punkt…', 'Next point…') : t('Pierwszy punkt…', 'First point…')} />
+        {waiting && <WaitingDot reducedMotion={reducedMotion} label={draftCount ? t('Następny punkt…', 'Next point…') : t('Pierwszy punkt…', 'First point…')} />}
       </View>
-      {elapsed >= SLOW_AFTER_SECONDS && (
-        <Text style={[type.meta, { color: colors.muted }]}>
-          {t('Dłuższe nagranie — to potrwa jeszcze chwilę. Możesz wrócić do listy, dokończę w tle.',
-            'A longer recording takes a little more time. You can go back to the list; it finishes in the background.')}
-        </Text>
-      )}
+      <Text style={[type.meta, { color: colors.muted, opacity: elapsed >= SLOW_AFTER_SECONDS ? 1 : 0 }]}>
+        {t('Dłuższe nagranie — to potrwa chwilę. Możesz wrócić do listy, dokończę w tle.',
+          'A longer recording takes a moment. You can go back to the list; it finishes in the background.')}
+      </Text>
     </View>
   )
 }
 
 const styles = StyleSheet.create({
-  container: { gap: spacing.md },
+  container: { gap: spacing.md, minHeight: 280 },
   status: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' },
   trail: { height: 10, borderRadius: 3, overflow: 'hidden' },
   trailInk: { ...StyleSheet.absoluteFill, borderTopRightRadius: 6, borderBottomRightRadius: 2 },
@@ -204,6 +195,4 @@ const styles = StyleSheet.create({
   bulletSlot: { width: 8, height: 8, alignItems: 'center', justifyContent: 'center' },
   dot: { width: 8, height: 8, borderRadius: 4, borderWidth: 1 },
   ring: { position: 'absolute', width: 8, height: 8, borderRadius: 4 },
-  stroke: { position: 'absolute', left: 0, top: 10, bottom: 10, borderRadius: 5, transformOrigin: 'left' },
-  clip: { flex: 1, overflow: 'hidden' },
 })

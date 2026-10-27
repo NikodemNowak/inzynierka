@@ -1,13 +1,13 @@
 import { createElement, Profiler } from 'react'
 import { act, create, type ReactTestInstance, type ReactTestRenderer } from 'react-test-renderer'
-import { AppState, LayoutAnimation, Text } from 'react-native'
+import { AppState, Text } from 'react-native'
 import { Stack } from 'expo-router'
 import type { Note } from '../domain/note'
 import type { SummaryDocument } from '../domain/summary'
 import type { NoteProcessingResult, ProcessingProgress } from '../ai/noteProcessing'
 import { createNoteProposal, type NoteProposal } from '../notes/noteProposals'
 import { Button } from '../ui/Button'
-import { ProcessingIndicator, RevealText, SkeletonText } from '../ui/Motion'
+import { ProcessingLive } from './ProcessingLive'
 import { SummaryWithSources } from './SummaryWithSources'
 import { BottomSheet } from '../ui/BottomSheet'
 import NoteDetailScreen from '../app/note/[id]'
@@ -26,7 +26,6 @@ const mockNotesState = {
 }
 let mockFocused = true
 let mockReducedMotion = true
-let mockTitlePending: string | undefined
 let mockRouteId = 'proposal-note'
 let mockCommitObserver: (() => void) | undefined
 const mockRouter = { canGoBack: () => false, back: jest.fn(), replace: jest.fn(), push: jest.fn(), setParams: jest.fn() }
@@ -35,14 +34,13 @@ jest.mock('../state/notesStore', () => ({
     getState: () => mockNotesState,
   }),
 }))
-jest.mock('../state/tasksStore', () => ({ useTasksStore: () => [] }))
+jest.mock('../state/tasksStore', () => ({ useTasksStore: { getState: () => ({ tasks: [] }) } }))
 jest.mock('../state/modelStore', () => ({ useModelStore: () => true }))
 jest.mock('../state/settingsStore', () => ({ useSettingsStore: () => 'light' }))
 jest.mock('../i18n/useI18n', () => ({ useI18n: () => ({ t: (pl: string) => pl, language: 'pl' }) }))
 jest.mock('expo-router', () => ({
-  Stack: { Screen: () => null }, useLocalSearchParams: () => ({ id: mockRouteId, titlePending: mockTitlePending }),
+  Stack: { Screen: () => null }, useLocalSearchParams: () => ({ id: mockRouteId }),
   useRouter: () => mockRouter,
-  useNavigation: () => ({ setParams: mockRouter.setParams }),
 }))
 jest.mock('expo-router/react-navigation', () => ({ useIsFocused: () => mockFocused }))
 jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0, bottom: 0 }) }))
@@ -51,14 +49,8 @@ jest.mock('../ui/theme', () => {
   return { ...theme, useTheme: () => ({ colors: theme.colors, isDark: false }) }
 })
 jest.mock('../ui/Icon', () => ({ Icon: () => null, IconButton: () => null }))
-jest.mock('../ui/Motion', () => {
-  const React = jest.requireActual('react') as typeof import('react')
-  const Native = jest.requireActual('react-native') as typeof import('react-native')
-  return {
-    RevealText: jest.fn(({ text }: { text: string }) => React.createElement(Native.Text, null, text)),
-    ProcessingIndicator: () => null, SkeletonText: () => React.createElement(Native.View), useReducedMotion: () => mockReducedMotion,
-  }
-})
+jest.mock('expo-haptics', () => ({ selectionAsync: jest.fn(() => Promise.resolve()) }))
+jest.mock('../ui/Motion', () => ({ useReducedMotion: () => mockReducedMotion }))
 jest.mock('../audio/AudioNotePlayer', () => ({ AudioNotePlayer: () => null }))
 jest.mock('../tasks/NoteTasks', () => ({ NoteTasks: () => null }))
 jest.mock('../tags/NoteTags', () => {
@@ -99,7 +91,6 @@ beforeEach(async () => {
   AppState.currentState = 'active'
   mockFocused = true
   mockReducedMotion = true
-  mockTitlePending = undefined
   mockRouteId = mockNote.id
   mockCommitObserver = undefined
   mockNotesState.notes = [{ ...mockNote, tags: [...mockNote.tags] }]
@@ -110,19 +101,6 @@ beforeEach(async () => {
   await act(async () => { tree = create(createElement(NoteDetailScreen)) })
 })
 afterEach(async () => { await act(async () => { tree.unmount() }) })
-
-test('v34 animates the layout when a generated category first arrives', async () => {
-  mockReducedMotion = false
-  mockNotesState.notes = [{ ...mockNote, tags: [] }]
-  mockNotesState.processing = { [mockNote.id]: { phase: 'summary' } }
-  await update()
-  const configure = jest.spyOn(LayoutAnimation, 'configureNext').mockImplementation(() => undefined)
-  mockNotesState.notes = [{ ...mockNotesState.notes[0], tags: ['Praca'], updatedAt: 2 }]
-  await update()
-  expect(configure).toHaveBeenCalledWith(expect.objectContaining({ duration: 320, update: expect.objectContaining({ type: 'easeInEaseOut' }) }))
-  expect(tree.root.findByProps({ testID: 'category-values' }).props.children).toBe('Praca')
-  configure.mockRestore()
-})
 
 test('completes an incomplete recording before offering any manual AI replacement', async () => {
   mockNotesState.notes = [{ ...mockNote, audioUri: 'file:///recording.wav', transcriptionIncomplete: true }]
@@ -210,174 +188,102 @@ test('retains the current-versus-new choice for actual category and summary chan
   expect(mockNotesState.applyProposal).toHaveBeenCalledWith(mockNote.id, { title: false, summary: true, tags: true })
 })
 
-test('shows proposals as static highlighted text and marks main reveals inactive after the note loses focus', async () => {
+test('shows the proposal as static text with the added words highlighted', async () => {
   setProposal({ title: 'Nowy temat', summary: 'Nowe podsumowanie.' })
   await update()
   await open()
-  expect(chooser().findAllByType(RevealText)).toHaveLength(0)
-  mockFocused = false
-  await update()
-  const mainReveals = tree.root.findAllByType(RevealText)
-  expect(mainReveals).toHaveLength(2)
-  expect(mainReveals.every((item) => item.props.active === false)).toBe(true)
+  expect(textNodes('Nowy temat').length).toBeGreaterThan(0)
+  expect(textNodes('Nowe podsumowanie.').length).toBeGreaterThan(0)
 })
 
-test('preserves saved fields during processing and stops decorative motion on lost focus', async () => {
+test('shows one processing card with one phase label from the first phase on, without skeletons or a header indicator', async () => {
+  const label = () => tree.root.findByType(ProcessingLive)
+  const texts = () => tree.root.findAllByType(Text).map(node => node.props.children).filter((child): child is string => typeof child === 'string')
+  const phases: [ProcessingProgress['phase'], string][] = [
+    ['queued', 'Czekam na model'], ['loading', 'Wczytuję model'], ['processing', 'Zakreślam najważniejsze'],
+    ['summary', 'Zakreślam najważniejsze'], ['title', 'Dobieram tytuł'],
+  ]
+  for (const [phase, expected] of phases) {
+    mockNotesState.processing = { [mockNote.id]: { phase } }
+    await update()
+    expect(label().props.phase).toBe(phase)
+    expect(texts()).toContain(expected)
+    expect(tree.root.findByType(Stack.Screen).props.options.headerTitle).toBe('Notatka')
+  }
+  expect(texts()).not.toContain('Pierwszy punkt…')
+  expect(texts()).not.toContain('Następny punkt…')
   mockNotesState.processing = { [mockNote.id]: { phase: 'summary' } }
-  mockFocused = false
   await update()
-  const skeletons = tree.root.findAllByType(SkeletonText)
-  expect(skeletons).toHaveLength(1)
-  expect(skeletons.every((item) => item.props.active === false)).toBe(true)
-  expect(tree.root.findAllByType(RevealText).map((item) => item.props.text)).toEqual(['Prezentacja pracy', 'Wyniki testów.'])
-  expect(tree.root.findByProps({ testID: 'category-values' }).props.children).toBe('Nauka')
-  const screen = tree.root.findByType(Stack.Screen)
-  const title = screen.props.options.headerTitle as () => ReturnType<typeof createElement>
-  const header = title()
-  expect(header.type).toBe(ProcessingIndicator)
-  expect(header.props).toMatchObject({ active: false, stage: 'processing', label: 'Tworzę podsumowanie…' })
+  expect(texts()).toContain('Pierwszy punkt…')
 })
 
-test('reflects model, speech structuring and result stages without erasing the note', async () => {
-  const header = () => (tree.root.findByType(Stack.Screen).props.options.headerTitle as () => ReturnType<typeof createElement>)()
-  mockNotesState.processing = { [mockNote.id]: { phase: 'loading' } }
+test('keeps the previous content while processing and publishes the result in one step', async () => {
+  const title = () => tree.root.findAll(node => node.props.accessibilityRole === 'header' && typeof node.props.children === 'string')
+    .map(node => node.props.children)
+  const hasText = (value: string) => tree.root.findAllByType(Text).some(node => node.props.children === value)
+  mockNotesState.processing = { [mockNote.id]: { phase: 'summary' } }
   await update()
-  expect(header().props).toMatchObject({ stage: 'loading', label: 'Wczytuję model…' })
-  expect(tree.root.findByType(SkeletonText).props.animate).toBe(false)
-  mockNotesState.processing = { [mockNote.id]: { phase: 'processing', detail: 'structure' } }
+  expect(title()).toContain('Prezentacja pracy')
+  expect(hasText('Wyniki testów.')).toBe(false)
+  mockNotesState.notes = [{ ...mockNotesState.notes[0], title: 'Testy aplikacji', summary: 'Gotowe podsumowanie.', updatedAt: 2 }]
   await update()
-  expect(header().props).toMatchObject({ stage: 'processing', label: 'Porządkuję wypowiedź…' })
-  expect(tree.root.findByType(SkeletonText).props.animate).toBe(true)
-  expect(tree.root.findAllByType(RevealText).find((item) => item.props.text === mockNote.title)?.props.accessibilityRole).toBe('header')
-  expect(mockNotesState.applyProposal).not.toHaveBeenCalled()
-})
-
-test('reveals a newly saved title before processing cleanup and removes its generation lettering', async () => {
-  mockReducedMotion = false
-  mockNotesState.processing = { [mockNote.id]: { phase: 'title' } }
-  await update()
-  mockNotesState.notes = [{ ...mockNotesState.notes[0], title: 'Testy aplikacji', updatedAt: 2 }]
-  await update()
-  const title = () => tree.root.findAllByType(RevealText).find((item) => item.props.accessibilityRole === 'header')!
-  expect(title().props).toMatchObject({ text: 'Testy aplikacji', animate: true, active: true })
-  expect(tree.root.findAllByType(SkeletonText).filter(item => item.props.title === true)).toHaveLength(0)
-  expect(tree.root.findAllByType(RevealText).find((item) => item.props.text === mockNote.summary)?.props.animate).toBe(false)
+  expect(title()).toContain('Prezentacja pracy')
+  expect(hasText('Gotowe podsumowanie.')).toBe(false)
   mockNotesState.processing = {}
   await update()
-  expect(title().props.animate).toBe(true)
+  expect(title()).toContain('Testy aplikacji')
+  expect(hasText('Gotowe podsumowanie.')).toBe(true)
+  expect(tree.root.findAllByType(ProcessingLive)).toHaveLength(0)
 })
 
-test('replaces summary loading with the ready source before processing cleanup and keeps it replaced', async () => {
-  mockReducedMotion = false
-  mockNotesState.processing = { [mockNote.id]: { phase: 'summary' } }
-  await update()
-  expect(tree.root.findAllByType(SkeletonText)).toHaveLength(1)
-  mockNotesState.notes = [{ ...mockNotesState.notes[0], summary: 'Gotowe podsumowanie źródła.', updatedAt: 2 }]
-  await update()
-  expect(tree.root.findAllByType(SkeletonText)).toHaveLength(0)
-  const result = () => tree.root.findAllByType(RevealText).find(item => item.props.text === 'Gotowe podsumowanie źródła.')!
-  expect(result().props.animate).toBe(true)
-  mockNotesState.processing = { [mockNote.id]: { phase: 'tags' } }
-  await update()
-  expect(tree.root.findAllByType(SkeletonText)).toHaveLength(0)
-  expect(result().props.animate).toBe(true)
-  await act(async () => { result().props.onRevealComplete('Gotowe podsumowanie źródła.') })
-  expect(tree.root.findAllByType(SkeletonText)).toHaveLength(0)
-  expect(result().props.animate).toBe(false)
-})
-
-test('keeps a summary reveal alive until its own native completion rather than a parent timer', async () => {
+test('crossfades from the processing card to the result and then drops the card', async () => {
   jest.useFakeTimers()
   try {
     mockReducedMotion = false
     mockNotesState.processing = { [mockNote.id]: { phase: 'summary' } }
     await update()
-    const summary = 'Anna przygotuje szczegółowe wyniki testów i porówna wszystkie długie nagrania. '.repeat(6).trim()
-    mockNotesState.notes = [{ ...mockNotesState.notes[0], summary, updatedAt: 2 }]
-    await update()
+    mockNotesState.notes = [{ ...mockNotesState.notes[0], summary: 'Gotowe podsumowanie.', updatedAt: 2 }]
     mockNotesState.processing = {}
     await update()
-    const result = () => tree.root.findAllByType(RevealText).find(item => item.props.text === summary)!
-    expect(result().props.animate).toBe(true)
-    await act(async () => { jest.advanceTimersByTime(3200) })
-    expect(result().props.animate).toBe(true)
-    await act(async () => { result().props.onRevealComplete(summary) })
-    expect(result().props.animate).toBe(false)
-    expect(result().props.text).toBe(summary)
+    await act(async () => { jest.advanceTimersByTime(50) })
+    await act(async () => { jest.advanceTimersByTime(1000) })
+    expect(tree.root.findAllByType(Text).some(node => node.props.children === 'Gotowe podsumowanie.')).toBe(true)
+    expect(tree.root.findAllByType(ProcessingLive)).toHaveLength(0)
   } finally { jest.useRealTimers() }
 })
 
-test('keeps one saved heading during title generation without a second ghost row', async () => {
-  mockNotesState.processing = { [mockNote.id]: { phase: 'title' } }
+test('a pending proposal stays visible as a banner that opens the choice or discards it', async () => {
+  setProposal({ title: 'Nowy temat' })
   await update()
-  const titleSkeleton = () => tree.root.findAllByType(SkeletonText).filter(item => item.props.title === true)
-  expect(titleSkeleton()).toHaveLength(0)
-  expect(tree.root.findAllByType(RevealText).find(item => item.props.accessibilityRole === 'header')?.props.text).toBe(mockNote.title)
+  const labels = () => tree.root.findAllByType(Button).map(node => node.props.label)
+  expect(labels()).toContain('Zobacz')
+  expect(tree.root.findAllByType(Text).some(node => node.props.children === 'Nowa wersja jest gotowa')).toBe(true)
+  await act(async () => { button('Zobacz').props.onPress() })
+  expect(tree.root.findAllByProps({ accessibilityViewIsModal: true }).length).toBeGreaterThan(0)
+  expect(labels()).not.toContain('Zobacz')
+  await act(async () => { await button('Anuluj').props.onPress() })
+  expect(labels()).toContain('Zobacz')
+  await act(async () => { await button('Odrzuć').props.onPress() })
+  expect(mockNotesState.clearProposal).toHaveBeenCalledWith(mockNote.id, mockNotesState.proposals[mockNote.id])
+})
+
+test('the banner is hidden while the note is processing and when no proposal exists', async () => {
   mockNotesState.processing = { [mockNote.id]: { phase: 'summary' } }
   await update()
-  expect(titleSkeleton()).toHaveLength(0)
-})
-
-test('an explicitly new capture loads title in its own place and consumes that marker at publication', async () => {
-  mockTitlePending = '1'
-  mockNotesState.notes = [{ ...mockNote, title: 'Nagranie 06.10.2026 16:00', summary: null, tags: [] }]
-  mockNotesState.processing = { [mockNote.id]: { phase: 'loading' } }
-  await update()
-  expect(tree.root.findAllByType(SkeletonText).filter(item => item.props.title === true)).toHaveLength(1)
-  expect(tree.root.findAllByType(RevealText).filter(item => item.props.accessibilityRole === 'header')).toHaveLength(0)
-  mockNotesState.notes = [{ ...mockNotesState.notes[0], title: 'Testy aplikacji', summary: 'Gotowe źródło.', updatedAt: 2 }]
-  await update()
-  expect(tree.root.findAllByType(SkeletonText)).toHaveLength(0)
-  expect(tree.root.findAllByType(RevealText).find(item => item.props.accessibilityRole === 'header')?.props).toMatchObject({ text: 'Testy aplikacji', animate: true })
-  expect(mockRouter.setParams).toHaveBeenCalledWith({ titlePending: undefined })
-})
-
-test('a stale new-title marker cannot mask a saved title without an active run', async () => {
-  mockTitlePending = '1'
-  await update()
-  expect(tree.root.findAllByType(SkeletonText)).toHaveLength(0)
-  expect(tree.root.findAllByType(RevealText).find(item => item.props.accessibilityRole === 'header')?.props.text).toBe(mockNote.title)
-})
-
-test('an unchanged failed title becomes visible when the other result fields are published', async () => {
-  mockTitlePending = '1'
-  mockNotesState.notes = [{ ...mockNote, title: 'Nagranie 06.10.2026 16:00', summary: null, tags: [] }]
-  mockNotesState.processing = { [mockNote.id]: { phase: 'summary' } }
-  await update()
-  mockNotesState.notes = [{ ...mockNotesState.notes[0], summary: 'Gotowe podsumowanie.', updatedAt: 2 }]
-  await update()
-  expect(tree.root.findAllByType(SkeletonText)).toHaveLength(0)
-  expect(tree.root.findAllByType(RevealText).find(item => item.props.accessibilityRole === 'header')?.props).toMatchObject({ text: 'Nagranie 06.10.2026 16:00', animate: false })
-})
-
-test('an explicitly pending title is released after failure and cannot hide a saved field after remount', async () => {
-  mockTitlePending = '1'
-  mockNotesState.processing = { [mockNote.id]: { phase: 'title' } }
-  await update()
-  expect(tree.root.findAllByType(SkeletonText).filter(item => item.props.title === true)).toHaveLength(1)
-  mockTitlePending = undefined
+  expect(tree.root.findAllByType(Button).map(node => node.props.label)).not.toContain('Zobacz')
   mockNotesState.processing = {}
+  mockNotesState.proposals = {}
   await update()
-  expect(tree.root.findAllByType(SkeletonText)).toHaveLength(0)
-  expect(tree.root.findAllByType(RevealText).find(item => item.props.accessibilityRole === 'header')?.props.text).toBe(mockNote.title)
-  await act(async () => { tree.unmount() })
-  mockNotesState.processing = { [mockNote.id]: { phase: 'title' } }
-  await act(async () => { tree = create(screenElement()) })
-  expect(tree.root.findAllByType(SkeletonText).filter(item => item.props.title === true)).toHaveLength(0)
+  expect(tree.root.findAllByType(Button).map(node => node.props.label)).not.toContain('Zobacz')
 })
 
-test('reveals changed result fields independently and keeps unchanged or manually edited fields plain', async () => {
-  mockReducedMotion = false
-  mockNotesState.notes = [{ ...mockNotesState.notes[0], title: 'Ręczna zmiana' }]
-  await update()
-  expect(tree.root.findAllByType(RevealText).every((item) => item.props.animate === false)).toBe(true)
-  mockNotesState.processing = { [mockNote.id]: { phase: 'summary' } }
-  await update()
-  mockNotesState.notes = [{ ...mockNotesState.notes[0], summary: 'Nowy zapis wyników.', updatedAt: 2 }]
-  await update()
-  const reveals = tree.root.findAllByType(RevealText)
-  expect(reveals.find((item) => item.props.text === 'Nowy zapis wyników.')?.props.animate).toBe(true)
-  expect(reveals.find((item) => item.props.text === 'Ręczna zmiana')?.props.animate).toBe(false)
+test('deleting asks in a bottom sheet instead of a system alert', async () => {
+  await act(async () => { button('Usuń notatkę').props.onPress() })
+  const sheet = tree.root.findAllByType(BottomSheet).find(item => item.props.title === 'Usunąć notatkę?')
+  expect(sheet?.props.visible).toBe(true)
+  await act(async () => { await button('Usuń').props.onPress() })
+  expect(mockNotesState.remove).toHaveBeenCalledWith(mockNote.id)
+  expect(mockRouter.replace).toHaveBeenCalledWith('/')
 })
 
 const sourceDocument: SummaryDocument = {
@@ -395,88 +301,24 @@ const pressSource = async () => {
   expect(tree.root.findByType(SummaryWithSources).findByType(BottomSheet).props.visible).toBe(true)
 }
 
-test('activates metadata-only sources after scheduling layout and opens literal saved content', async () => {
-  mockReducedMotion = false
-  mockNotesState.notes = [{ ...sourceNote, summaryDocument: null }]
-  await update()
-  expect(sourceActions()).toHaveLength(0)
-  const frames: { actions: number; scheduled: number }[] = []
-  const configure = jest.spyOn(LayoutAnimation, 'configureNext').mockImplementation(() => undefined)
-  mockCommitObserver = () => frames.push({ actions: sourceActions().length, scheduled: configure.mock.calls.length })
-  try {
-    mockNotesState.notes = [sourceNote]
-    await update()
-    expect(frames[0].actions).toBe(0)
-    expect(frames.some(frame => frame.actions === 1)).toBe(true)
-    expect(frames.filter(frame => frame.actions > 0).every(frame => frame.scheduled > 0)).toBe(true)
-    expect(configure).toHaveBeenCalledWith(expect.objectContaining({ duration: 320 }))
-    await pressSource()
-    expect(sourceQuotes().map(node => node.props.children)).toEqual(['Dosłowne źródło notatki.'])
-  } finally { mockCommitObserver = undefined; configure.mockRestore() }
-})
-
-test('waits for the matching native summary completion before switching to source rows', async () => {
-  mockReducedMotion = false
-  mockNotesState.processing = { [mockNote.id]: { phase: 'summary' } }
-  await update()
-  mockNotesState.notes = [{ ...sourceNote, updatedAt: 2 }]
-  await update()
-  expect(sourceActions()).toHaveLength(0)
-  const reveal = () => tree.root.findAllByType(RevealText).find(node => node.props.text === sourceNote.summary)!
-  expect(reveal().props.animate).toBe(true)
-  await act(async () => { reveal().props.onRevealComplete('Stary wynik.') })
-  expect(sourceActions()).toHaveLength(0)
-  mockNotesState.processing = {}
-  await update()
-  expect(reveal().props.animate).toBe(true)
-  const frames: { sources: number; scheduled: number }[] = []
-  const configure = jest.spyOn(LayoutAnimation, 'configureNext').mockImplementation(() => undefined)
-  mockCommitObserver = () => frames.push({ sources: sourceActions().length, scheduled: configure.mock.calls.length })
-  try {
-    await act(async () => { reveal().props.onRevealComplete(sourceNote.summary) })
-    expect(frames.some(frame => frame.sources === 1)).toBe(true)
-    expect(frames.filter(frame => frame.sources > 0).every(frame => frame.scheduled > 0)).toBe(true)
-    expect(tree.root.findAllByType(RevealText).filter(node => node.props.text === sourceNote.summary)).toHaveLength(0)
-  } finally { mockCommitObserver = undefined; configure.mockRestore() }
-})
-
-test('ReduceMotion makes saved sources immediately actionable without reveal choreography', async () => {
-  mockNotesState.processing = { [mockNote.id]: { phase: 'summary' } }
-  await update()
-  const configure = jest.spyOn(LayoutAnimation, 'configureNext').mockImplementation(() => undefined)
-  try {
-    mockNotesState.notes = [{ ...sourceNote, updatedAt: 2 }]
-    await update()
-    await pressSource()
-    expect(configure).not.toHaveBeenCalled()
-    expect(tree.root.findAllByType(RevealText).filter(node => node.props.text === sourceNote.summary)).toHaveLength(0)
-  } finally { configure.mockRestore() }
-})
-
-test('never attaches new metadata to a delayed old summary presentation', async () => {
-  mockReducedMotion = false
+test('opens literal saved content from a source row', async () => {
   mockNotesState.notes = [sourceNote]
   await update()
   await pressSource()
-  const frames: { actions: number; quotes: number; reveal: string[] }[] = []
-  mockCommitObserver = () => frames.push({ actions: sourceActions().length, quotes: sourceQuotes().length,
-    reveal: tree.root.findAllByType(RevealText).map(node => node.props.text) })
-  try {
-    mockNotesState.processing = { [mockNote.id]: { phase: 'summary' } }
-    await update()
-    frames.length = 0
-    mockNotesState.notes = [{ ...sourceNote, summary: '• Nowe wyniki.', updatedAt: 2,
-      summaryDocument: { ...sourceDocument, points: [{ ...sourceDocument.points[0], text: 'Nowe wyniki.' }] } }]
-    await update()
-    expect(frames.length).toBeGreaterThan(0)
-    expect(frames.every(frame => frame.actions === 0 && frame.quotes === 0)).toBe(true)
-    expect(frames[0].reveal).toContain('• Wyniki testów.')
-    expect(tree.root.findAllByType(RevealText).find(node => node.props.text === '• Nowe wyniki.')?.props.animate).toBe(true)
-  } finally { mockCommitObserver = undefined }
+  expect(sourceQuotes().map(node => node.props.children)).toEqual(['Dosłowne źródło notatki.'])
+})
+
+test('shows no source rows while a linked summary is being replaced', async () => {
+  mockNotesState.notes = [sourceNote]
+  await update()
+  expect(sourceActions()).toHaveLength(1)
+  mockNotesState.processing = { [mockNote.id]: { phase: 'summary' } }
+  await update()
+  expect(sourceActions()).toHaveLength(0)
+  expect(tree.root.findAllByType(ProcessingLive)).toHaveLength(1)
 })
 
 test.each(['focus', 'revision', 'content', 'document', 'route'] as const)('removes an open source panel in the first screen commit after %s changes', async change => {
-  mockReducedMotion = false
   mockNotesState.notes = [sourceNote]
   await update(); await pressSource()
   const frames: number[] = []
@@ -498,23 +340,14 @@ test.each(['focus', 'revision', 'content', 'document', 'route'] as const)('remov
   } finally { mockCommitObserver = undefined }
 })
 
-test('preserves the saved reveal and skeleton while a linked summary is waiting for replacement', async () => {
-  mockNotesState.notes = [sourceNote]
-  await update()
-  mockNotesState.processing = { [mockNote.id]: { phase: 'summary' } }
-  await update()
-  expect(sourceActions()).toHaveLength(0)
-  expect(tree.root.findAllByType(RevealText).find(node => node.props.text === sourceNote.summary)?.props.animate).toBe(false)
-  expect(tree.root.findAllByType(SkeletonText)).toHaveLength(1)
-})
-
-test('keeps invalid canonical metadata and legacy summaries in the incumbent plain renderer', async () => {
+test('keeps invalid canonical metadata and legacy summaries in the plain renderer', async () => {
+  const plain = (value: string) => tree.root.findAllByType(Text).some(node => node.props.children === value)
   mockNotesState.notes = [{ ...mockNote, summaryDocument: sourceDocument }]
   await update()
   expect(sourceActions()).toHaveLength(0)
-  expect(tree.root.findAllByType(RevealText).find(node => node.props.text === mockNote.summary)).toBeDefined()
+  expect(plain(mockNote.summary!)).toBe(true)
   mockNotesState.notes = [{ ...sourceNote, summaryDocument: null }]
   await update()
   expect(sourceActions()).toHaveLength(0)
-  expect(tree.root.findAllByType(RevealText).find(node => node.props.text === sourceNote.summary)).toBeDefined()
+  expect(plain(sourceNote.summary!)).toBe(true)
 })

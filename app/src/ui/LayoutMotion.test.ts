@@ -1,8 +1,7 @@
 import { createElement, useLayoutEffect } from 'react'
 import { act, create, type ReactTestRenderer } from 'react-test-renderer'
-import { Animated, AppState, LayoutAnimation, Text, type AppStateStatus } from 'react-native'
+import { Animated, AppState, LayoutAnimation, Text } from 'react-native'
 import { LayoutEntry, useLayoutTransition } from './LayoutMotion'
-import { usePlaceholderExit } from '../tasks/TaskMotion'
 
 test('makes room for the category before starting its native entrance', async () => {
   AppState.currentState = 'active'
@@ -49,50 +48,4 @@ test('schedules native layout before publishing a changed display value and neve
     expect(tree!.root.findByType(Text).props.children).toBe('reduced result')
     expect(configure).not.toHaveBeenCalled()
   } finally { await act(async () => { tree!.unmount() }); configure.mockRestore() }
-})
-
-test.each([0, 1, 2, 3])('collapses only the surplus of three placeholders for an actual %s-task result', async count => {
-  jest.useFakeTimers()
-  const configure = jest.spyOn(LayoutAnimation, 'configureNext').mockImplementation(() => undefined)
-  function Tail({ loading, scope = 'a', active = true }: { loading: boolean; scope?: string; active?: boolean }) {
-    return createElement(Text, {}, usePlaceholderExit(loading, count, scope, active, false).join(','))
-  }
-  let tree: ReactTestRenderer
-  try {
-    await act(async () => { tree = create(createElement(Tail, { loading: true })) })
-    await act(async () => { tree!.update(createElement(Tail, { loading: false })) })
-    const expected = [['0,1,2', '0,1', '0', ''], ['1,2', '1', '', ''], ['2', '', '', ''], ['', '', '', '']][count]
-    expect(tree!.root.findByType(Text).props.children).toBe(expected[0])
-    await act(async () => { jest.advanceTimersByTime(279 + count * 100) })
-    expect(tree!.root.findByType(Text).props.children).toBe(expected[0])
-    for (let index = 1; index <= 3; index++) {
-      await act(async () => { jest.advanceTimersByTime(index === 1 ? 1 : 400) })
-      expect(tree!.root.findByType(Text).props.children).toBe(expected[index])
-    }
-    expect(configure).toHaveBeenCalledTimes(3 - count)
-  } finally { await act(async () => { tree!.unmount() }); configure.mockRestore(); jest.useRealTimers() }
-})
-
-test('a hidden or replaced note cancels old placeholder callbacks instead of animating the current screen', async () => {
-  jest.useFakeTimers()
-  const configure = jest.spyOn(LayoutAnimation, 'configureNext').mockImplementation(() => undefined)
-  const listeners = new Set<(state: AppStateStatus) => void>()
-  const subscription = jest.spyOn(AppState, 'addEventListener').mockImplementation((_event, listener) => {
-    listeners.add(listener); return { remove: () => { listeners.delete(listener) } }
-  })
-  function Screen({ loading, scope, active }: { loading: boolean; scope: string; active: boolean }) {
-    const value = useLayoutTransition('value', scope, scope, active, false)
-    return createElement(Text, {}, value + ':' + usePlaceholderExit(loading, 0, scope, active, false).join(','))
-  }
-  let tree: ReactTestRenderer
-  try {
-    AppState.currentState = 'active'
-    await act(async () => { tree = create(createElement(Screen, { loading: true, scope: 'a', active: true })) })
-    await act(async () => { tree!.update(createElement(Screen, { loading: false, scope: 'a', active: true })) })
-    expect(tree!.root.findByType(Text).props.children).toBe('value:0,1,2')
-    await act(async () => { tree!.update(createElement(Screen, { loading: false, scope: 'b', active: false })) })
-    await act(async () => { jest.advanceTimersByTime(1000) })
-    expect(configure).not.toHaveBeenCalled()
-    expect(tree!.root.findByType(Text).props.children).toBe('value:')
-  } finally { await act(async () => { tree!.unmount() }); subscription.mockRestore(); configure.mockRestore(); jest.useRealTimers() }
 })

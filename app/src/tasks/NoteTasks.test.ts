@@ -1,13 +1,13 @@
 import { createElement } from 'react'
 import { act, create, type ReactTestRenderer } from 'react-test-renderer'
-import { Animated, AppState, Modal, Text, type AppStateStatus } from 'react-native'
+import { AppState, Modal, Text, type AppStateStatus } from 'react-native'
 import { NoteTasks } from './NoteTasks'
 import { TaskArrival } from './TaskMotion'
 import type { Note } from '../domain/note'
 import type { TaskProposal } from '../ai/taskProposal'
 import { createTaskProposal } from '../ai/taskProposal'
 import { Button } from '../ui/Button'
-import { ProcessingIndicator, RevealText, SkeletonText } from '../ui/Motion'
+import { FadeText } from './FadeText'
 import { ensureModelReady } from '../ai/noteProcessing'
 import type { Task } from '../domain/task'
 import { discardPendingProcessingResult } from '../data/processingJobsRepository'
@@ -32,17 +32,16 @@ jest.mock('./TaskMotion', () => {
   } }
 })
 
-jest.mock('../ui/Motion', () => {
+jest.mock('../ui/Motion', () => ({ useReducedMotion: () => mockReducedMotion }))
+jest.mock('../ui/PulseDot', () => ({ PulseDot: () => null }))
+jest.mock('./FadeText', () => {
   const React = jest.requireActual<typeof import('react')>('react')
-  const { Text, View } = jest.requireActual<typeof import('react-native')>('react-native')
+  const { Text } = jest.requireActual<typeof import('react-native')>('react-native')
   return {
-    useReducedMotion: () => mockReducedMotion,
-    RevealText: ({ text, animate, onRevealComplete }: { text: string; animate?: boolean; onRevealComplete?: (text: string) => void }) => {
+    FadeText: ({ text, animate, onRevealComplete }: { text: string; animate?: boolean; onRevealComplete?: (text: string) => void }) => {
       React.useEffect(() => { if (mockRevealCompletes && animate) onRevealComplete?.(text) }, [text, animate, onRevealComplete])
       return React.createElement(Text, { accessibilityLabel: text }, text)
     },
-    SkeletonText: () => React.createElement(View),
-    ProcessingIndicator: ({ label }: { label: string }) => React.createElement(Text, {}, label),
   }
 })
 
@@ -88,6 +87,7 @@ const deferred = <T,>() => {
   return { promise, resolve }
 }
 let tree: ReactTestRenderer
+const lineTexts = (): string[] => tree.root.findAllByType(Text).map((node) => node.props.children).filter((child): child is string => typeof child === 'string')
 const press = async (label: string) => {
   const node = tree.root.findAllByType(Button).find((item) => item.props.label === label)
   expect(node).toBeDefined()
@@ -112,36 +112,28 @@ beforeEach(async () => {
 afterEach(async () => { await act(async () => { tree.unmount() }); jest.restoreAllMocks() })
 
 test('announces the real current extraction status only after the user starts analysis', async () => {
-  expect(tree.root.findAllByType(ProcessingIndicator)).toHaveLength(0)
+  expect(lineTexts()).not.toContain('Sprawdzam rzeczywiste zadania…')
   const generation = deferred<TaskProposal>()
   jest.mocked(createTaskProposal).mockImplementationOnce((_source, onStatus) => {
     onStatus('Sprawdzam rzeczywiste zadania…')
     return generation.promise
   })
   await press('Zaproponuj zadania')
-  expect(tree.root.findByType(ProcessingIndicator).props.label).toBe('Sprawdzam rzeczywiste zadania…')
+  expect(lineTexts()).toContain('Sprawdzam rzeczywiste zadania…')
   await act(async () => { generation.resolve({ tasks: [], warnings: [] }) })
-  expect(tree.root.findAllByType(ProcessingIndicator)).toHaveLength(0)
+  expect(lineTexts()).not.toContain('Sprawdzam rzeczywiste zadania…')
 })
 
-test('v34 collapses surplus placeholders after a one-task result without treating them as real proposals', async () => {
-  jest.useFakeTimers()
+test('v34 shows one quiet status line, no placeholder rows, and only the real result afterwards', async () => {
   const generation = deferred<TaskProposal>()
   jest.mocked(createTaskProposal).mockReturnValueOnce(generation.promise)
   await press('Zaproponuj zadania')
-  expect(tree.root.findAllByType(SkeletonText)).toHaveLength(3)
-  const waitingRows = tree.root.findAllByType(SkeletonText)
+  expect(lineTexts()).toContain('Opracowuję tekst…')
+  expect(tree.root.findAll((node) => node.props.accessibilityRole === 'checkbox')).toHaveLength(0)
   await act(async () => { generation.resolve({ tasks: ['Sprawdzić tabelę'], warnings: [] }) })
-  expect(tree.root.findAllByType(RevealText).map(node => node.props.text)).toEqual(['Sprawdzić tabelę'])
-  expect(tree.root.findAllByType(SkeletonText)).toHaveLength(2)
-  // Preserve the measured widths and prepared ink of the unused rows until
-  // their own collapse. Remounting would restart capture and visibly blink.
-  expect(tree.root.findAllByType(SkeletonText)[0]).toBe(waitingRows[1])
-  expect(tree.root.findAllByType(SkeletonText)[1]).toBe(waitingRows[2])
+  expect(tree.root.findAllByType(FadeText).map(node => node.props.text)).toEqual(['Sprawdzić tabelę'])
+  expect(lineTexts()).not.toContain('Opracowuję tekst…')
   expect(mockTasksState.addForNote).not.toHaveBeenCalled()
-  await act(async () => { jest.advanceTimersByTime(800) })
-  expect(tree.root.findAllByType(SkeletonText)).toHaveLength(0)
-  jest.useRealTimers()
 })
 
 test('v35 releases task text strictly from top to bottom after the preceding reveal completes', async () => {
@@ -149,16 +141,15 @@ test('v35 releases task text strictly from top to bottom after the preceding rev
   const proposals = ['Pierwsze zadanie', 'Drugie zadanie', 'Trzecie zadanie']
   jest.mocked(createTaskProposal).mockResolvedValueOnce({ tasks: proposals, warnings: [] })
   await press('Zaproponuj zadania')
-  expect(tree.root.findAllByType(RevealText).map(node => node.props.text)).toEqual(proposals.slice(0, 1))
-  expect(tree.root.findAllByType(SkeletonText)).toHaveLength(2)
+  expect(tree.root.findAllByType(FadeText).map(node => node.props.text)).toEqual(proposals.slice(0, 1))
   expect(tree.root.findAll(item => item.props.accessibilityRole === 'checkbox' && typeof item.props.onPress === 'function')).toHaveLength(3)
-  const first = tree.root.findByType(RevealText).props.onRevealComplete
+  const first = tree.root.findByType(FadeText).props.onRevealComplete
   await act(async () => { first(proposals[0]) })
-  expect(tree.root.findAllByType(RevealText).map(node => node.props.text)).toEqual(proposals.slice(0, 2))
+  expect(tree.root.findAllByType(FadeText).map(node => node.props.text)).toEqual(proposals.slice(0, 2))
   await act(async () => { first(proposals[0]) })
-  expect(tree.root.findAllByType(RevealText)).toHaveLength(2)
-  await act(async () => { tree.root.findAllByType(RevealText)[1].props.onRevealComplete(proposals[1]) })
-  expect(tree.root.findAllByType(RevealText).map(node => node.props.text)).toEqual(proposals)
+  expect(tree.root.findAllByType(FadeText)).toHaveLength(2)
+  await act(async () => { tree.root.findAllByType(FadeText)[1].props.onRevealComplete(proposals[1]) })
+  expect(tree.root.findAllByType(FadeText).map(node => node.props.text)).toEqual(proposals)
   expect(mockTasksState.addForNote).not.toHaveBeenCalled()
 })
 
@@ -173,9 +164,8 @@ test.each(['focus', 'motion'])('a generation crossing %s loss and return shows e
   mockFocused = true; mockReducedMotion = false
   await act(async () => { tree.update(createElement(NoteTasks, { noteId: mockNote.id, content: mockNote.content })) })
   await act(async () => { generation.resolve({ tasks, warnings: [] }) })
-  expect(tree.root.findAllByType(RevealText).map(node => node.props.text)).toEqual(tasks)
-  expect(tree.root.findAllByType(RevealText).every(node => !node.props.animate)).toBe(true)
-  expect(tree.root.findAllByType(SkeletonText)).toHaveLength(0)
+  expect(tree.root.findAllByType(FadeText).map(node => node.props.text)).toEqual(tasks)
+  expect(tree.root.findAllByType(FadeText).every(node => !node.props.animate)).toBe(true)
   expect(mockTasksState.addForNote).not.toHaveBeenCalled()
 })
 
@@ -190,7 +180,7 @@ test.each([6, 100])('keeps a %s-task result immediately selectable and lets ever
   expect(entering.map(row => row.props.index)).toEqual(tasks.map((_, index) => index))
   // A long list skips the slow letter reveal.
   expect(revealed()).toHaveLength(0)
-  expect(tree.root.findAllByType(RevealText).map(node => node.props.text)).toEqual(tasks)
+  expect(tree.root.findAllByType(FadeText).map(node => node.props.text)).toEqual(tasks)
   expect(mockTasksState.addForNote).not.toHaveBeenCalled()
 })
 
@@ -199,39 +189,17 @@ test('even immediate plain text waits for the row entrance, then does not replay
   const tasks = ['Pierwsze zadanie', 'Drugie zadanie', 'Trzecie zadanie']
   jest.mocked(createTaskProposal).mockResolvedValueOnce({ tasks, warnings: [] })
   await press('Zaproponuj zadania')
-  const first = tree.root.findByType(RevealText)
+  const first = tree.root.findByType(FadeText)
   await act(async () => { first.props.onRevealComplete(tasks[0]) })
-  expect(tree.root.findAllByType(RevealText)).toHaveLength(1)
+  expect(tree.root.findAllByType(FadeText)).toHaveLength(1)
   await act(async () => { tree.root.findAllByType(TaskArrival).find(row => row.props.enter)!.props.onArrivalComplete() })
-  expect(tree.root.findAllByType(RevealText)).toHaveLength(2)
+  expect(tree.root.findAllByType(FadeText)).toHaveLength(2)
   mockFocused = false
   await act(async () => { tree.update(createElement(NoteTasks, { noteId: mockNote.id, content: mockNote.content })) })
   mockFocused = true
   await act(async () => { tree.update(createElement(NoteTasks, { noteId: mockNote.id, content: mockNote.content })) })
-  expect(tree.root.findAllByType(RevealText).map(row => row.props.text)).toEqual(tasks)
+  expect(tree.root.findAllByType(FadeText).map(row => row.props.text)).toEqual(tasks)
   expect(tree.root.findAllByType(TaskArrival).some(row => row.props.enter)).toBe(false)
-})
-
-test('v35 fades the lowest surplus row before collapsing its space, preserving the upper waiting row', async () => {
-  jest.useFakeTimers()
-  const generation = deferred<TaskProposal>()
-  jest.mocked(createTaskProposal).mockReturnValueOnce(generation.promise)
-  try {
-    await press('Zaproponuj zadania')
-    const waiting = tree.root.findAllByType(SkeletonText)
-    await act(async () => { generation.resolve({ tasks: ['Jedno rzeczywiste zadanie'], warnings: [] }) })
-    expect(tree.root.findAllByType(SkeletonText)[0]).toBe(waiting[1])
-    expect(tree.root.findAllByType(SkeletonText)[1]).toBe(waiting[2])
-    expect(tree.root.findAllByType(Animated.View).some(row => row.props.testID === 'placeholder-exit-2')).toBe(true)
-    await act(async () => { jest.advanceTimersByTime(370) })
-    expect(tree.root.findAllByType(SkeletonText)).toHaveLength(2)
-    await act(async () => { jest.advanceTimersByTime(20) })
-    expect(tree.root.findAllByType(SkeletonText)).toHaveLength(1)
-    expect(tree.root.findAllByType(SkeletonText)[0]).toBe(waiting[1])
-    await act(async () => { jest.advanceTimersByTime(410) })
-    expect(tree.root.findAllByType(SkeletonText)).toHaveLength(0)
-    expect(mockTasksState.addForNote).not.toHaveBeenCalled()
-  } finally { jest.useRealTimers() }
 })
 
 test('derives loading and processing from real readiness callbacks rather than translated status text', async () => {
@@ -246,11 +214,9 @@ test('derives loading and processing from real readiness callbacks rather than t
     return generation.promise
   })
   await press('Zaproponuj zadania')
-  expect(tree.root.findByType(ProcessingIndicator).props).toEqual(expect.objectContaining({ stage: 'loading', label: 'Wczytuję model…', active: true }))
-  expect(tree.root.findAllByType(SkeletonText).every((node) => node.props.animate === false)).toBe(true)
+  expect(lineTexts()).toContain('Wczytuję model…')
   await act(async () => { loaded.resolve(5); await loaded.promise })
-  expect(tree.root.findByType(ProcessingIndicator).props).toEqual(expect.objectContaining({ stage: 'processing', label: 'Nieporównywany napis z rzeczywistego callbacku' }))
-  expect(tree.root.findAllByType(SkeletonText).every((node) => node.props.animate === true)).toBe(true)
+  expect(lineTexts()).toContain('Nieporównywany napis z rzeczywistego callbacku')
   const action = tree.root.findAllByType(Button).find((item) => item.props.label === 'Zaproponuj zadania')!
   expect(action.props.disabled).toBe(true)
   expect(action.props.busy).toBeUndefined()
@@ -263,8 +229,7 @@ test('shows saving only during the actual awaited write and keeps the selection 
   const write = deferred<void>()
   mockTasksState.addForNote.mockReturnValueOnce(write.promise)
   await press('Dodaj zaznaczone (2)')
-  const status = tree.root.findByType(ProcessingIndicator)
-  expect(status.props).toEqual(expect.objectContaining({ stage: 'saving', label: 'Zapisuję zadania…', active: true }))
+  expect(lineTexts()).toContain('Zapisuję zadania…')
   const buttons = tree.root.findAllByType(Button).filter((item) => item.props.label === 'Zapisuję zadania…')
   expect(buttons).toHaveLength(1)
   expect(buttons[0].props.disabled).toBe(true)
@@ -272,7 +237,7 @@ test('shows saving only during the actual awaited write and keeps the selection 
   expect(mockTasksState.addForNote).toHaveBeenCalledTimes(1)
   expect(mockTasksState.tasks).toHaveLength(0)
   await act(async () => { write.resolve(); await write.promise })
-  expect(tree.root.findAllByType(ProcessingIndicator)).toHaveLength(0)
+  expect(lineTexts()).not.toContain('Zapisuję zadania…')
 })
 
 test('makes selection available immediately and rejects duplicate add taps while the actual write is pending', async () => {
@@ -305,20 +270,20 @@ test('keeps completed proposals inline without opening a modal when focus was lo
   mockFocused = false
   await act(async () => { tree.update(createElement(NoteTasks, { noteId: mockNote.id, content: mockNote.content })) })
   await act(async () => { generation.resolve({ tasks: ['Daniel ma sprawdzić tabelę'], warnings: [] }) })
-  expect(tree.root.findAllByType(Modal)).toHaveLength(0)
+  expect(tree.root.findAllByType(Modal).filter((node) => node.props.visible)).toHaveLength(0)
   expect(revealed()).toHaveLength(0)
   expect(mockTasksState.addForNote).not.toHaveBeenCalled()
 })
 
 const sixTasks = Array.from({ length: 6 }, (_, index) => `Daniel ma sprawdzić tabelę numer ${index + 1}`)
-const revealed = () => tree.root.findAllByType(RevealText).filter((node) => node.props.animate === true)
+const revealed = () => tree.root.findAllByType(FadeText).filter((node) => node.props.animate === true)
 
 test('fresh long proposals enter without letter reveals, select immediately and do not replay after hiding', async () => {
   jest.mocked(createTaskProposal).mockResolvedValueOnce({ tasks: sixTasks, warnings: [] })
   await press('Zaproponuj zadania')
   expect(tree.root.findAll((item) => item.props.accessibilityRole === 'checkbox' && typeof item.props.onPress === 'function')).toHaveLength(6)
   expect(revealed()).toHaveLength(0)
-  expect(tree.root.findAllByType(RevealText).map((item) => item.props.text)).toEqual(sixTasks)
+  expect(tree.root.findAllByType(FadeText).map((item) => item.props.text)).toEqual(sixTasks)
   mockFocused = false
   await act(async () => { tree.update(createElement(NoteTasks, { noteId: mockNote.id, content: mockNote.content })) })
   mockFocused = true
@@ -342,7 +307,7 @@ test('reveals only IDs confirmed by a completed durable Add and never pending op
   // Six saved rows fade in on a fast stagger instead of four letter reveals.
   expect(revealed()).toHaveLength(0)
   expect(tree.root.findAllByType(TaskArrival).filter((row) => row.props.count === 6)).toHaveLength(6)
-  expect(tree.root.findAllByType(RevealText).map((item) => item.props.text)).toEqual(sixTasks)
+  expect(tree.root.findAllByType(FadeText).map((item) => item.props.text)).toEqual(sixTasks)
 })
 
 test('a deferred durable Add crossing hide and return saves tasks without stale text reveal', async () => {
@@ -370,10 +335,10 @@ test('initial saved tasks and Reduce Motion never start letter clocks', async ()
   await act(async () => { tree.update(createElement(NoteTasks, { noteId: mockNote.id, content: mockNote.content })) })
   await press('Zaproponuj zadania')
   expect(revealed()).toHaveLength(0)
-  expect(tree.root.findAllByType(RevealText).some((item) => item.props.text === 'Norah ma przygotować wykres')).toBe(true)
+  expect(tree.root.findAllByType(FadeText).some((item) => item.props.text === 'Norah ma przygotować wykres')).toBe(true)
 })
 
-test('shows a bounded live loading skeleton only while actual task processing is visible', async () => {
+test('shows the quiet status line only while actual task processing is visible', async () => {
   const listeners = new Set<(state: AppStateStatus) => void>()
   const stateChanged = (state: AppStateStatus) => { AppState.currentState = state; for (const listener of listeners) listener(state) }
   const subscription = jest.spyOn(AppState, 'addEventListener').mockImplementation((_event, listener) => {
@@ -382,30 +347,28 @@ test('shows a bounded live loading skeleton only while actual task processing is
   })
   try {
     await act(async () => { tree.unmount(); tree = create(createElement(NoteTasks, { noteId: mockNote.id, content: mockNote.content })) })
-    expect(tree.root.findAllByType(SkeletonText)).toHaveLength(0)
+    expect(lineTexts()).not.toContain('Sprawdzam rzeczywiste zadania…')
     const generation = deferred<TaskProposal>()
     jest.mocked(createTaskProposal).mockImplementationOnce((_source, onStatus) => {
       onStatus('Sprawdzam rzeczywiste zadania…')
       return generation.promise
     })
     await press('Zaproponuj zadania')
-    expect(tree.root.findAllByType(SkeletonText).map((item) => item.props.lines)).toEqual([2, 1, 2])
-    expect(tree.root.findByType(ProcessingIndicator).props.label).toBe('Sprawdzam rzeczywiste zadania…')
+    expect(lineTexts()).toContain('Sprawdzam rzeczywiste zadania…')
     await act(async () => { stateChanged('background') })
-    expect(tree.root.findAllByType(SkeletonText)).toHaveLength(0)
+    expect(lineTexts()).not.toContain('Sprawdzam rzeczywiste zadania…')
     await act(async () => { generation.resolve({ tasks: [], warnings: [] }) })
   } finally { subscription.mockRestore() }
 })
 
-test('replaces the inline task placeholders with selectable results in the same section', async () => {
+test('replaces the status line with selectable results in the same section', async () => {
   const generation = deferred<TaskProposal>()
   jest.mocked(createTaskProposal).mockReturnValueOnce(generation.promise)
   await press('Zaproponuj zadania')
-  expect(tree.root.findAllByType(Modal)).toHaveLength(0)
-  expect(tree.root.findAllByType(SkeletonText)).toHaveLength(3)
+  expect(tree.root.findAllByType(Modal).filter((node) => node.props.visible)).toHaveLength(0)
+  expect(lineTexts()).toContain('Opracowuję tekst…')
   await act(async () => { generation.resolve({ tasks: ['Daniel ma sprawdzić tabelę'], warnings: [] }) })
-  expect(tree.root.findAllByType(SkeletonText)).toHaveLength(2)
-  expect(tree.root.findAllByType(Modal)).toHaveLength(0)
+  expect(tree.root.findAllByType(Modal).filter((node) => node.props.visible)).toHaveLength(0)
   expect(tree.root.findAll((node) => node.props.accessibilityRole === 'checkbox' && typeof node.props.onPress === 'function')).toHaveLength(1)
   expect(tree.root.findAllByType(Button).some((node) => node.props.label === 'Dodaj zaznaczone (1)')).toBe(true)
   expect(mockTasksState.addForNote).not.toHaveBeenCalled()
@@ -430,10 +393,10 @@ test('cannot publish or clear another note analysis when an old extraction finis
   await act(async () => { tree.update(createElement(NoteTasks, { noteId: nextNote.id, content: nextNote.content })) })
   await press('Zaproponuj zadania')
   await act(async () => { first.resolve({ tasks: ['Daniel ma sprawdzić tabelę'], warnings: [] }) })
-  expect(tree.root.findAllByType(RevealText)).toHaveLength(0)
-  expect(tree.root.findAllByType(ProcessingIndicator)).toHaveLength(1)
+  expect(tree.root.findAllByType(FadeText)).toHaveLength(0)
+  expect(lineTexts()).toContain('Opracowuję tekst…')
   await act(async () => { second.resolve({ tasks: ['Anna ma wysłać raport'], warnings: [] }) })
-  expect(tree.root.findAllByType(RevealText).map((node) => node.props.text)).toEqual(['Anna ma wysłać raport'])
+  expect(tree.root.findAllByType(FadeText).map((node) => node.props.text)).toEqual(['Anna ma wysłać raport'])
 })
 
 test('does not extract tasks from an incomplete recording until transcription is completed', async () => {
@@ -454,11 +417,11 @@ test('keeps selection after a failed discard and ignores duplicate discard taps'
   expect(discardPendingProcessingResult).toHaveBeenCalledTimes(1)
   expect(mockTasksState.addForNote).not.toHaveBeenCalled()
   await act(async () => { discard.resolve() })
-  expect(tree.root.findAllByType(RevealText)).toHaveLength(0)
+  expect(tree.root.findAllByType(FadeText)).toHaveLength(0)
   await press('Zaproponuj zadania')
   jest.mocked(discardPendingProcessingResult).mockRejectedValueOnce(new Error('storage failed'))
   await press('Odrzuć propozycje')
-  expect(tree.root.findAllByType(RevealText)).toHaveLength(2)
+  expect(tree.root.findAllByType(FadeText)).toHaveLength(2)
   expect(tree.root.findAllByType(Text).filter((node) => node.props.accessibilityRole === 'alert' && node.props.children === 'storage failed')).toHaveLength(1)
   await press('Dodaj zaznaczone (2)')
   expect(mockTasksState.addForNote).toHaveBeenCalledTimes(1)
@@ -475,7 +438,7 @@ test('an old task write cannot clear a different note selection after navigation
   await act(async () => { tree.update(createElement(NoteTasks, { noteId: nextNote.id, content: nextNote.content })) })
   await press('Zaproponuj zadania')
   await act(async () => { write.resolve() })
-  expect(tree.root.findAllByType(RevealText).map((node) => node.props.text)).toEqual(['Anna ma wysłać raport'])
+  expect(tree.root.findAllByType(FadeText).map((node) => node.props.text)).toEqual(['Anna ma wysłać raport'])
   expect(tree.root.findAllByType(Button).find((node) => node.props.label === 'Dodaj zaznaczone (1)')!.props.disabled).toBe(false)
 })
 

@@ -1,17 +1,20 @@
 import { useI18n } from '../i18n/useI18n'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
-  Alert,
+  Animated,
+  Easing,
   Pressable,
   StyleSheet,
   Text,
   View,
 } from 'react-native'
 import { useIsFocused } from 'expo-router/react-navigation'
+import { BottomSheet } from '../ui/BottomSheet'
 import { Button } from '../ui/Button'
 import { SwipeToDelete } from '../ui/SwipeToDelete'
-import { ProcessingIndicator, SkeletonText, useReducedMotion } from '../ui/Motion'
-import { TaskArrival, TaskCheck, TaskText, TaskPlaceholder, isFastReveal, publishPersistedTaskText, useTaskMotionActive, useTaskTextReveal, usePlaceholderExit, useTaskRevealSequence } from './TaskMotion'
+import { PulseDot } from '../ui/PulseDot'
+import { useReducedMotion } from '../ui/Motion'
+import { TaskArrival, TaskCheck, TaskText, isFastReveal, publishPersistedTaskText, useTaskMotionActive, useTaskTextReveal, useTaskRevealSequence } from './TaskMotion'
 import { useLayoutTransition } from '../ui/LayoutMotion'
 import { radius, spacing, type, useTheme } from '../ui/theme'
 import { useTasksStore } from '../state/tasksStore'
@@ -38,6 +41,27 @@ import {
   isTaskProposalResult,
   parseSavedProcessingResult,
 } from '../processing/savedResults'
+
+// One quiet line while suggestions are prepared; the marker dot breathes.
+function SearchLine({ label, reducedMotion }: { label: string; reducedMotion: boolean }) {
+  const { colors } = useTheme()
+  const pulse = useRef(new Animated.Value(1)).current
+  useEffect(() => {
+    if (reducedMotion) return
+    const loop = Animated.loop(Animated.sequence([
+      Animated.timing(pulse, { toValue: 0.35, duration: 800, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+      Animated.timing(pulse, { toValue: 1, duration: 800, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+    ]))
+    loop.start()
+    return () => loop.stop()
+  }, [reducedMotion, pulse])
+  return (
+    <View style={styles.searchLine} accessibilityLiveRegion="polite">
+      <Animated.View style={[styles.searchDot, { backgroundColor: colors.marker, borderColor: colors.markerLine, opacity: pulse }]} />
+      <Text style={[type.meta, { color: colors.muted }]}>{label}</Text>
+    </View>
+  )
+}
 
 export function NoteTasks({
   noteId,
@@ -78,7 +102,6 @@ export function NoteTasks({
   const suggestionVersion = useRef(0)
   const generationInFlight = useRef<number | null>(null)
   const [status, setStatus] = useState<string | null>(null)
-  const [statusStage, setStatusStage] = useState<'queued' | 'loading' | 'processing'>('queued')
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [discarding, setDiscarding] = useState(false)
@@ -88,7 +111,7 @@ export function NoteTasks({
   const prefetching = useTaskPrefetchStore((state) => Boolean(state.running[noteId]))
   const prefetchSettled = useTaskPrefetchStore((state) => state.settled[noteId] ?? 0)
   const seenPrefetch = useRef(prefetchSettled)
-  const shownStatus = status ?? (prefetching ? t('Przygotowuję propozycje zadań…', 'Preparing task suggestions…') : null)
+  const shownStatus = status ?? (prefetching ? t('Szukam zadań w notatce…', 'Looking for tasks in the note…') : null)
   const busy = shownStatus !== null || saving || discarding
   const currentIdentity = note ? taskSourceIdentity(note) : null
   const proposalReveal = useTaskTextReveal(motionActive, reducedMotion, `${noteId}:${currentIdentity}`)
@@ -229,7 +252,6 @@ export function NoteTasks({
       if (ownsView() && sourceIsCurrent()) setStatus(label)
     }
     setStatus(t('Przygotowuję propozycje…', 'Preparing suggestions…'))
-    setStatusStage('queued')
     const requestedAt = Date.now()
     let queueMs = 0
     let modelLoadMs: number | null = null
@@ -250,7 +272,6 @@ export function NoteTasks({
           async (execution) => {
             await ensureModelReady(
               () => {
-                if (ownsView() && sourceIsCurrent()) setStatusStage('loading')
                 reportStatus(t('Wczytuję model…', 'Loading model…'))
               },
               (durationMs) => {
@@ -258,7 +279,6 @@ export function NoteTasks({
               },
               execution,
             )
-            if (ownsView() && sourceIsCurrent()) setStatusStage('processing')
             reportStatus(t('Opracowuję tekst…', 'Processing text…'))
             return createTaskProposal(
               snapshot.trim(),
@@ -453,30 +473,16 @@ export function NoteTasks({
   const desiredView = { tasks, proposals, loading: Boolean(shownStatus) && proposals.length === 0, noteProcessing, addedCount, proposalWarnings }
   const viewScope = currentIdentity ?? noteId
   const shown = useLayoutTransition(desiredView, JSON.stringify(desiredView), viewScope, motionActive, reducedMotion)
-  const exitingPlaceholders = usePlaceholderExit(shown.loading, shown.proposals.length, viewScope, motionActive, reducedMotion)
   const proposalSequence = useTaskRevealSequence(shown.proposals, proposalBatch > 0 ? String(proposalBatch) : null, viewScope, motionActive, reducedMotion)
-  const proposalSlots = [...new Set([
-    ...shown.proposals.map((_, index) => index),
-    ...(shown.loading && motionActive ? [0, 1, 2] : exitingPlaceholders),
-  ])].sort((left, right) => left - right)
+  const [pendingDelete, setPendingDelete] = useState<{ id: string; text: string } | null>(null)
 
-  const confirmRemove = (id: string, text: string) => {
-    Alert.alert(
-      t('Usunąć zadanie?', 'Delete task?'),
-      text,
-      [
-        { text: t('Anuluj', 'Cancel'), style: 'cancel' },
-        {
-          text: t('Usuń', 'Delete'),
-          style: 'destructive',
-          onPress: () => {
-            void remove(id).catch((cause: unknown) =>
-              setError(cause instanceof Error ? cause.message : String(cause)),
-            )
-          },
-        },
-      ],
-      { cancelable: true },
+  const confirmRemove = (id: string, text: string) => setPendingDelete({ id, text })
+  const deletePending = () => {
+    const target = pendingDelete
+    setPendingDelete(null)
+    if (!target) return
+    void remove(target.id).catch((cause: unknown) =>
+      setError(cause instanceof Error ? cause.message : String(cause)),
     )
   }
 
@@ -579,7 +585,7 @@ export function NoteTasks({
       {error && (
         <Text accessibilityRole="alert" style={[styles.error, { color: colors.danger }]}>{error}</Text>
       )}
-      {shown.addedCount > 0 && <Text accessibilityLiveRegion="polite" style={[styles.status, { color: colors.accent }]}>
+      {shown.addedCount > 0 && <Text accessibilityLiveRegion="polite" style={[styles.status, { color: colors.muted }]}>
         {t(`Dodano zadania (${shown.addedCount})`, `Tasks added (${shown.addedCount})`)}
       </Text>}
       {shown.proposalWarnings.map((warning) => (
@@ -587,65 +593,59 @@ export function NoteTasks({
           {warning}
         </Text>
       ))}
-      {proposalSlots.length > 0 && (
+      {shown.loading && motionActive && <SearchLine label={shownStatus ?? ''} reducedMotion={reducedMotion} />}
+      {shown.proposals.length > 0 && (
         <View style={styles.proposalList}>
-          {shown.loading && motionActive && <ProcessingIndicator label={shownStatus ?? undefined} stage={status ? statusStage : 'processing'} active={motionActive} />}
           {shown.proposals.length > 0 && <Text accessibilityLiveRegion="polite" style={[styles.description, { color: colors.muted }]}>
             {t('Zaznacz zadania, które chcesz dodać.', 'Select the tasks you want to add.')}
           </Text>}
-          {proposalSlots.map(index => {
-            const text = shown.proposals[index]
+          {shown.proposals.map((text, index) => {
             const checked = selected.has(text)
             const disabled = busy || noteProcessing || Boolean(note?.transcriptionIncomplete)
-            const ready = Boolean(text) && proposalSequence.ready(index)
+            const ready = proposalSequence.ready(index)
             return (
               <TaskArrival key={`proposal-slot-${index}`} index={proposalSequence.fast ? index : 0} count={proposalSequence.fast ? shown.proposals.length : 0} active={motionActive} reducedMotion={reducedMotion}
                 enter={proposalSequence.enter(index)} eventKey={ready ? `${proposalBatch}:${text}` : undefined}
                 onArrivalComplete={() => proposalSequence.arrivalComplete(text)}>
-                <TaskPlaceholder index={index} count={shown.proposals.length} exiting={!shown.loading && !text} active={motionActive} reducedMotion={reducedMotion}>
                 <Pressable
-                  onPress={text ? () => toggleProposal(text) : undefined}
-                  disabled={!text || disabled}
-                  pointerEvents={text ? 'auto' : 'none'}
-                  accessibilityRole={text ? 'checkbox' : undefined}
+                  onPress={() => toggleProposal(text)}
+                  disabled={disabled}
+                  accessibilityRole="checkbox"
                   accessibilityLabel={text}
-                  accessibilityElementsHidden={!text}
-                  importantForAccessibility={text ? 'auto' : 'no-hide-descendants'}
-                  accessibilityState={text ? { checked, disabled } : undefined}
+                  accessibilityState={{ checked, disabled }}
                   style={({ pressed }) => [styles.proposalRow, { borderBottomColor: colors.line, opacity: pressed ? 0.72 : 1 }]}
                 >
-                  {text ? <TaskCheck
+                  <TaskCheck
                     checked={checked}
                     active={motionActive}
                     reducedMotion={reducedMotion}
                     style={[styles.proposalCheckbox, { borderColor: checked ? colors.brand : colors.faint, backgroundColor: checked ? colors.brand : 'transparent' }]}
-                  /> : <View style={[styles.proposalCheckbox, { borderColor: colors.faint }]} />}
+                  />
                   <View style={styles.placeholderText}>
                   {ready ? <TaskText
                     key={`${proposalBatch}:${text}`}
                     text={text}
                     index={0}
-                    placeholderLines={index === 1 ? 1 : 2}
                     reveal={!proposalSequence.fast && proposalReveal.ids.has(text)}
                     active={motionActive}
                     reducedMotion={reducedMotion}
                     onRevealConsumed={() => proposalReveal.consume(text)}
                     onRevealComplete={proposalSequence.textComplete}
                     style={[styles.proposalText, { color: colors.ink }]}
-                  /> : <SkeletonText lines={index === 1 ? 1 : 2} animate={shown.loading && motionActive && statusStage === 'processing'} active={motionActive} />}
+                  /> : <View style={styles.proposalSpacer} />}
                   </View>
                 </Pressable>
-                </TaskPlaceholder>
               </TaskArrival>
             )
           })}
           {shown.proposals.length > 0 && <View style={styles.proposalActions}>
             {(saving || discarding) && motionActive && (
-              <ProcessingIndicator
-                label={saving ? t('Zapisuję zadania…', 'Saving tasks…') : t('Odrzucam propozycje…', 'Discarding suggestions…')}
-                stage="saving"
-                active={motionActive}
-              />
+              <View style={styles.searchLine} accessibilityLiveRegion="polite">
+                <PulseDot color={colors.marker} />
+                <Text style={[type.meta, { color: colors.muted }]}>
+                  {saving ? t('Zapisuję zadania…', 'Saving tasks…') : t('Odrzucam propozycje…', 'Discarding suggestions…')}
+                </Text>
+              </View>
             )}
             <Button
               label={saving ? t('Zapisuję zadania…', 'Saving tasks…') : t(`Dodaj zaznaczone (${selected.size})`, `Add selected (${selected.size})`)}
@@ -672,6 +672,11 @@ export function NoteTasks({
           {t('Najpierw uzupełnij transkrypcję z zachowanego audio.', 'Complete the transcript from the saved audio first.')}
         </Text>
       )}
+      <BottomSheet visible={pendingDelete !== null} onClose={() => setPendingDelete(null)} title={t('Usunąć zadanie?', 'Delete task?')}>
+        <Text style={[type.body, { color: colors.muted }]}>{pendingDelete?.text}</Text>
+        <Button label={t('Usuń', 'Delete')} variant="danger" onPress={deletePending} />
+        <Button label={t('Anuluj', 'Cancel')} variant="quiet" onPress={() => setPendingDelete(null)} />
+      </BottomSheet>
     </View>
   )
 }
@@ -729,5 +734,8 @@ const styles = StyleSheet.create({
     marginTop: 1,
   },
   proposalText: { ...type.body, flex: 1, lineHeight: 23 },
+  proposalSpacer: { minHeight: 23 },
+  searchLine: { minHeight: 24, flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  searchDot: { width: 8, height: 8, borderRadius: 4, borderWidth: 1 },
   proposalActions: { gap: spacing.sm, paddingTop: spacing.md },
 })
