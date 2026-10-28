@@ -39,3 +39,6 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# LLM regression results (npm run test:llm)
+.llm-regression/
