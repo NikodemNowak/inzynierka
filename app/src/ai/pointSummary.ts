@@ -1778,6 +1778,109 @@ export interface PointSummaryDetail extends PointSummaryResult {
 const documentFor = (content: string, points: readonly SummaryPoint[], units: readonly SummarySourceUnit[]): SummaryDocument | null =>
   points.length ? documentFromSummaryDraft(content, { format: 'bullets', points }, units) : null;
 
+// ---------------------------------------------------------------- shortening
+// With one sentence per point (short notes, unpunctuated iOS dictation) the model
+// often copies the sentence: the summary then reads as long as the transcript.
+const COPIED_MIN_WORDS = 9;
+export const isCopiedPoint = (text: string, cited: string): boolean => {
+  const own = words(text);
+  if (own.length < COPIED_MIN_WORDS || own.length < 0.7 * words(cited).length) return false;
+  const pointStems = stems(text);
+  const citedStems = new Set(stems(cited));
+  return pointStems.length > 0 && pointStems.filter(stem => citedStems.has(stem)).length >= 0.85 * pointStems.length;
+};
+
+const SHORTEN_PL = `ZADANIE: skróć punkty streszczenia notatki.
+
+Zasady:
+1. Każdy punkt przepisz w stylu telegraficznym, 4–10 słów: zadania bezokolicznikiem, fakty równoważnikiem zdania.
+2. Zachowaj dokładnie liczby, godziny, daty, kwoty, nazwy, zaprzeczenia („nie”, „bez”) i niepewność („chyba”).
+3. Pomiń wypełniacze, powtórzenia i dopowiedzenia („i tym podobne”, „jakoś”, „żeby zobaczyć”). Nie dodawaj niczego, czego nie ma w punkcie.
+4. Bez pierwszej osoby: zamiast „mam zajęcia i muszę oddać raport” napisz „Zajęcia – oddać raport”.
+
+Przykład:
+1. Robię szybką notatkę żeby nie zapomnieć czy dobrze działa nowy projektor w sali i takie tam
+2. W piątek o 09:15 chyba mam spotkanie z zarządem i muszę przedstawić budżet na przyszły rok
+Wynik:
+1. Sprawdzenie nowego projektora w sali
+2. Piątek 09:15 (chyba) spotkanie z zarządem – przedstawić budżet na przyszły rok
+
+Zwróć wyłącznie linie „N. skrócony punkt”, tyle samo i w tej samej kolejności.`;
+
+const parseNumbered = (text: string, count: number): Map<number, string> => {
+  const found = new Map<number, string>();
+  for (const line of text.split('\n')) {
+    const match = /^\s*(\d+)[.)]\s*(.+?)\s*$/u.exec(line);
+    const index = match ? Number(match[1]) : 0;
+    if (match && index >= 1 && index <= count && !found.has(index)) found.set(index, match[2].replace(/\s*\[[\d,\s]*\]\s*$/u, ''));
+  }
+  return found;
+};
+
+const editDistance = (a: string, b: string): number => {
+  let row = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i += 1) {
+    const next = [i];
+    for (let j = 1; j <= b.length; j += 1) next[j] = Math.min(row[j] + 1, next[j - 1] + 1, row[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    row = next;
+  }
+  return row[b.length];
+};
+const fold = (word: string): string => word.normalize('NFD').replace(/\p{M}/gu, '').replace(/ł/gu, 'l');
+const NEGATION = rx(String.raw`(?<![^\W\d_])(?:nie|bez|brak)(?![^\W\d_])`, 'i');
+
+// A short rewrite may drop words but not the negation, and may not bend a word of the
+// note into a form that does not exist ("sobaty" for "soboty", "bole" for "bólu").
+export const rewriteKeepsFacts = (rewrite: string, original: string, cited: string): boolean => {
+  if (NEGATION.test(original) && !NEGATION.test(rewrite)) return false;
+  const known = [...new Set([...words(original), ...words(cited)].map(fold))];
+  const knownSet = new Set(known);
+  // An inflected ending ("błędy" → "błędów") is fine; a change inside the stem is not.
+  const commonPrefix = (a: string, b: string): number => {
+    let n = 0;
+    while (n < a.length && a[n] === b[n]) n += 1;
+    return n;
+  };
+  return words(rewrite).map(fold).every(word => word.length < 4 || knownSet.has(word)
+    || !known.some(source => source.slice(0, 3) === word.slice(0, 3) && editDistance(source, word) <= 2
+      && commonPrefix(source, word) < Math.min(source.length, word.length) - 2));
+};
+
+// One call rewrites the copied points; a rewrite replaces a point only when it is
+// clearly shorter and passes the same checks as any generated point.
+export const shortenCopiedPoints = async (
+  points: readonly WorkPoint[], units: readonly Unit[], execution?: ProcessingExecutionContext,
+): Promise<WorkPoint[]> => {
+  const byId = new Map(units.map(unit => [unit.id, unit]));
+  const copied = points.flatMap((point, index) => (isCopiedPoint(point.text, citedText(point.sourceIds, byId)) ? [index] : []));
+  if (!copied.length) return [...points];
+  throwIfProcessingAborted(execution);
+  const listed = copied.map((index, n) => `${n + 1}. ${points[index].text}`).join('\n');
+  const prompt = `${SHORTEN_PL}\n\nPunkty:\n${listed}\nWynik:`;
+  const result = await generate(prompt, () => undefined, {
+    system: pointSummarySystem('pl', DEFAULT_POINT_SUMMARY_OPTIONS.promptVariant), nPredict: Math.min(320, 32 * copied.length + 24),
+    temperature: 0.1, topP: 0.8, topK: 20, minP: 0, ...(execution?.signal ? { signal: execution.signal } : {}),
+  });
+  recordGeneration('summary-shorten', prompt.length, result, listed.length);
+  throwIfProcessingAborted(execution);
+  if (result.completion?.interrupted) return [...points];
+  const rewrites = parseNumbered(result.text, copied.length);
+  const noteWords = new Set(units.flatMap(unit => words(unit.text)));
+  const next = [...points];
+  copied.forEach((index, n) => {
+    const rewrite = rewrites.get(n + 1);
+    if (!rewrite) return;
+    const point = points[index];
+    const cited = citedText(point.sourceIds, byId);
+    const text = polishPoint(capitalize(impersonalize(convert(tidy(rewrite.replace(/^(?:N\.|-)\s*/u, ''), 'pl'), 'pl'), noteWords)), cited, noteWords);
+    if (words(text).length > 0.8 * words(point.text).length || words(text).length < 3) return;
+    if (!rewriteKeepsFacts(text, point.text, cited)) return;
+    if (checkPoint({ text, sourceIds: point.sourceIds }, byId, units, 'pl').length) return;
+    next[index] = { ...point, text };
+  });
+  return next;
+};
+
 export const generatePointSummaryDetailed = async (
   units: readonly SummarySourceUnit[], content: string, language: Language, execution?: ProcessingExecutionContext,
   options: PointSummaryOptions = DEFAULT_POINT_SUMMARY_OPTIONS,
@@ -1853,6 +1956,7 @@ export const generatePointSummaryDetailed = async (
     }
     rejected = finalized.rejected;
   }
+  if (language === 'pl') finalPoints = await shortenCopiedPoints(finalPoints, units, execution);
   const points = finalPoints.map(point => ({ text: point.text, sourceIds: point.sourceIds }));
   const document = documentFor(content, points, units);
   if (points.length && !document) warnings.push('Summary points could not be linked to the note source.');

@@ -16,6 +16,8 @@ export type Check =
   | { kind: 'task'; all: string[] }
   | { kind: 'noTask'; all: string[] }
   | { kind: 'maxTasks'; count: number }
+  // Points must be summaries, not the transcript copied sentence by sentence.
+  | { kind: 'maxBulletWords'; count: number }
 
 export type RegressionCase = {
   id: string
@@ -55,6 +57,7 @@ export const bulletNot = (...all: string[]): Check => ({ kind: 'bulletNot', all 
 export const task = (...all: string[]): Check => ({ kind: 'task', all })
 export const noTask = (...all: string[]): Check => ({ kind: 'noTask', all })
 export const maxTasks = (count: number): Check => ({ kind: 'maxTasks', count })
+export const maxBulletWords = (count: number): Check => ({ kind: 'maxBulletWords', count })
 
 export const fold = (text: string): string =>
   text
@@ -101,6 +104,7 @@ export const checkLabel = (check: Check): string => {
     case 'task': return `task: ${check.all.join(' + ')}`
     case 'noTask': return `no task: ${check.all.join(' + ')}`
     case 'maxTasks': return `at most ${check.count} tasks`
+    case 'maxBulletWords': return `every bullet at most ${check.count} words`
   }
 }
 
@@ -115,6 +119,7 @@ export const runCheck = (check: Check, output: RunOutput): boolean => {
     case 'task': return output.tasks.some((line) => allFound(check.all, line))
     case 'noTask': return !output.tasks.some((line) => allFound(check.all, line))
     case 'maxTasks': return output.tasks.length <= check.count
+    case 'maxBulletWords': return bulletsOf(output.summary).every((line) => (line.match(/[\p{L}\d]+/gu) ?? []).length <= check.count)
   }
 }
 

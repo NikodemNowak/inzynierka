@@ -31,6 +31,9 @@ import {
   splitMergedEvents,
   trimUnsupportedTail,
   repairPoint,
+  isCopiedPoint,
+  shortenCopiedPoints,
+  rewriteKeepsFacts,
   type SummaryPoint,
 } from './pointSummary';
 import { pointNumbers, statedNumbers } from './polishNumbers';
@@ -895,4 +898,44 @@ test('a spoken clause split never separates "nie" from its verb', () => {
 
 test('"na koniec najważniejsze" is a lead filler', () => {
   expect(cleanLiteral('na koniec najważniejsze w piątek nie mam zajęć')).toBe('W piątek nie mam zajęć.');
+});
+
+describe('shortenCopiedPoints', () => {
+  const units = [
+    { id: 1, start: 0, end: 0, text: 'jutro o 08:30 chyba Mam zajęcia i muszę pokazać moją część testów na zajęciach' },
+    { id: 2, start: 0, end: 0, text: 'Kupić mleko.' },
+  ];
+  const copied = { text: 'Jutro o 08:30 mam zajęcia i pokazać moją część testów na zajęciach', sourceIds: [1] };
+
+  beforeEach(() => model.mockReset());
+
+  test('detects a sentence copied into a point', () => {
+    expect(isCopiedPoint(copied.text, units[0].text)).toBe(true);
+    expect(isCopiedPoint('Jutro 08:30 – pokazać testy', units[0].text)).toBe(false);
+  });
+
+  test('replaces a copied point with a checked shorter rewrite', async () => {
+    model.mockResolvedValue(reply('1. Jutro 08:30 zajęcia – pokazać swoją część testów'));
+    const points = await shortenCopiedPoints([copied, { text: 'Kupić mleko', sourceIds: [2] }], units);
+    expect(points.map(point => point.text)).toEqual(['Jutro 08:30 zajęcia – pokazać swoją część testów', 'Kupić mleko']);
+    expect(model).toHaveBeenCalledTimes(1);
+  });
+
+  test('keeps the point when the rewrite changes a fact', async () => {
+    model.mockResolvedValue(reply('1. Jutro 09:30 zajęcia – pokazać testy'));
+    const points = await shortenCopiedPoints([copied], units);
+    expect(points[0].text).toBe(copied.text);
+  });
+
+  test('rejects a rewrite that drops a negation or bends a word', () => {
+    const original = 'Nie kupuję tego podręcznika do fizyki, w bibliotece jest dostępny';
+    expect(rewriteKeepsFacts('Podręcznik fizyki – zarezerwować w bibliotece', original, original)).toBe(false);
+    expect(rewriteKeepsFacts('Grupy: wieczorna wtorki, weekendowa sobaty', 'Grupy wieczorna we wtorki i weekendowa w soboty', '')).toBe(false);
+    expect(rewriteKeepsFacts('Sprawdzenie błędów wizualnych w animacjach', 'Przygotowuje nagranie żeby zobaczyć błędy wizualne animacje', '')).toBe(true);
+  });
+
+  test('makes no call without copied points', async () => {
+    await shortenCopiedPoints([{ text: 'Kupić mleko', sourceIds: [2] }], units);
+    expect(model).not.toHaveBeenCalled();
+  });
 });

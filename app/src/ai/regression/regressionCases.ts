@@ -1,4 +1,4 @@
-import { bullet, bulletNot, noTask, summary, summaryNot, task, type RegressionCase, type Variant } from './regressionScore'
+import { bullet, bulletNot, maxBulletWords, noTask, summary, summaryNot, task, type RegressionCase, type Variant } from './regressionScore'
 
 // Notes with punctuation run twice: as written and as iOS dictation delivers them.
 const BOTH: Variant[] = ['raw', 'stripped']
@@ -22,6 +22,8 @@ export const REGRESSION_CASES: RegressionCase[] = [
       task('kompetencyj|serwer', '10:00'),
       noTask('test', '10:00'),
       noTask('kompetencyj', '8:30'),
+      // On the phone each point was its sentence copied.
+      maxBulletWords(12),
     ],
   },
   {
@@ -351,6 +353,7 @@ export const REGRESSION_CASES: RegressionCase[] = [
       task('link', 'repozytor'),
       noTask('ola'),
       noTask('bilet'),
+      maxBulletWords(14),
     ],
   },
   {
@@ -380,6 +383,7 @@ export const REGRESSION_CASES: RegressionCase[] = [
       summary('18:00'),
       task('plan|test', '8:30'),
       task('psycholog', '18:00'),
+      maxBulletWords(14),
     ],
   },
   {
