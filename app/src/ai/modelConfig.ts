@@ -21,21 +21,22 @@ export interface ModelConfig {
 
 export type ModelExecutionProfile = 'foreground' | 'background-cpu'
 
-// The reference device (iPhone 17 Pro, 12 GB RAM) runs the target Qwen3-4B.
-// The emulator runs 1.7B: 4B on CPU-only inference is too slow to iterate on,
-// and the emulator's memory budget is far below the reference device.
-// Both are hybrid Qwen3 checkpoints, so the `/no_think` prefix the prompts rely
-// on keeps the same meaning on either platform.
+// The reference device (iPhone 17 Pro, 12 GB RAM) runs Qwen3.5-4B: against
+// Qwen3-4B on the same prompts it answered more chat questions right (0.65 vs
+// 0.56) and found more tasks, at about the same size.
+// The emulator runs Qwen3-1.7B: 4B on CPU-only inference is too slow to iterate
+// on, and the emulator's memory budget is far below the reference device.
+// Thinking is switched off through the chat template on both.
 const IOS_MODEL: ModelConfig = {
-  url: 'https://huggingface.co/unsloth/Qwen3-4B-GGUF/resolve/22c9fc8a8c7700b76a1789366280a6a5a1ad1120/Qwen3-4B-Q4_K_M.gguf',
-  filename: 'Qwen3-4B-Q4_K_M.gguf',
-  displayName: 'Qwen3-4B (Q4_K_M)',
-  approxSizeMb: 2500,
+  url: 'https://huggingface.co/unsloth/Qwen3.5-4B-GGUF/resolve/e87f176479d0855a907a41277aca2f8ee7a09523/Qwen3.5-4B-Q4_K_M.gguf',
+  filename: 'Qwen3.5-4B-Q4_K_M.gguf',
+  displayName: 'Qwen3.5-4B (Q4_K_M)',
+  approxSizeMb: 2740,
   nGpuLayers: 99,
   nCtx: 8192,
-  revision: '22c9fc8a8c7700b76a1789366280a6a5a1ad1120',
-  sizeBytes: 2497281312,
-  sha256: 'f6f851777709861056efcdad3af01da38b31223a3ba26e61a4f8bf3a2195813a',
+  revision: 'e87f176479d0855a907a41277aca2f8ee7a09523',
+  sizeBytes: 2740937888,
+  sha256: '00fe7986ff5f6b463e62455821146049db6f9313603938a70800d1fb69ef11a4',
 }
 
 const ANDROID_MODEL: ModelConfig = {
