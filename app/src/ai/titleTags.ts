@@ -515,6 +515,18 @@ export const titleProblems = (title: string, sources: readonly string[], languag
   return problems
 }
 
+// "Testy animacji i dwusercowy serwer" from "działa na dwóch serwerach": a word the
+// note never says in any form is invented. Category labels may stay.
+export const unsupportedTitleWord = (title: string, sources: readonly string[], language: Language): string | undefined => {
+  const vocabulary = VOCABULARY[language]
+  // Words naming a kind of note ("lista zakupów", "obowiązki domowe") are labels,
+  // not claims about the content.
+  const labels = [...vocabulary.generic, ...TITLE_TAG_CATEGORIES.flatMap((tag) => [tag.id, tag[language]])]
+  const stems = new Set([...sources, ...labels].flatMap((source) => wordsOf(source.toLowerCase())).map((word) => stemOf(word, 4)))
+  return wordsOf(title.toLowerCase()).find((word) => word.length >= 4 && !vocabulary.stop.has(word) &&
+    !vocabulary.generic.has(word) && !vocabulary.isAbstract(word) && !stems.has(stemOf(word, 4)))
+}
+
 // A title whose content words appear in none of the summary points names something the summary
 // does not mention (the long opening of a diary is the usual source: "Spotkanie z sąsiadką").
 const GENRE_WORDS = new Set(['dziennik', 'diary', 'journal', 'plan', 'notatka', 'note', 'wieczór', 'evening', 'week', 'tygodnia', 'tydzień', 'weekly'])
@@ -547,6 +559,7 @@ const REASONS: readonly ReasonText[] = [
   { keys: ['words='], pl: 'ma złą liczbę słów (wymagane 2-6 słów, bez cyfr)', en: 'has the wrong number of words (2-6 words required, no digits)' },
   { keys: ['digits', 'date-word', 'bad-chars'], pl: 'zawiera cyfry, datę lub niedozwolone znaki – użyj samych słów, bez liczb', en: 'contains digits, a date or disallowed characters – use words only, no numbers' },
   { keys: ['unknown-name'], pl: 'zawiera nazwę spoza notatki', en: 'contains a name that is not in the note' },
+  { keys: ['unsupported-word'], pl: 'zawiera słowo, którego nie ma w notatce – użyj słów z notatki', en: 'contains a word that is not in the note – use words from the note' },
   { keys: ['invented-form'], pl: 'zawiera zmyślone słowo – pomiń je i nazwij temat innymi słowami z notatki', en: 'contains an invented word form – leave it out' },
   { keys: ['prompt-example'], pl: 'kopiuje przykład z instrukcji', en: 'copies an example from the instructions' },
   { keys: ['verbatim'], pl: 'kopiuje zdanie z notatki', en: 'copies a sentence from the note' },
@@ -575,7 +588,7 @@ export const titleRepairPrompt = (
 ): string => {
   const reason = repairReason(problems, language)
   // Name the offending words so the model does not repeat them.
-  const banned = problems.flatMap((problem) => /^(?:invented-form|unknown-name):(.+)$/u.exec(problem)?.[1] ?? [])
+  const banned = problems.flatMap((problem) => /^(?:invented-form|unknown-name|unsupported-word):(.+)$/u.exec(problem)?.[1] ?? [])
   const avoidPl = banned.length > 0 ? ` Nie używaj słowa: ${banned.map((word) => `„${word}”`).join(', ')}.` : ''
   const avoidEn = banned.length > 0 ? ` Do not use the word: ${banned.map((word) => `"${word}"`).join(', ')}.` : ''
   return language === 'pl'
@@ -866,6 +879,8 @@ export const generateTitleAndTags = async (
   const categories = adjustCategories(modelCategories, input.content)
   const checkTitle = (candidate: string): string[] => {
     const found = titleProblems(candidate, sources, language)
+    const unsupported = unsupportedTitleWord(candidate, sources, language)
+    if (unsupported) found.push(`unsupported-word:${unsupported}`)
     if (found.length === 0 && isOffPoints(candidate, points, language)) found.push('off-points')
     return found
   }

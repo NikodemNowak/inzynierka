@@ -16,6 +16,7 @@ import {
   titleRepairPrompt,
   titleTagsPrompt,
   titleTagsSystem,
+  unsupportedTitleWord,
 } from './titleTags'
 import { NOTE_CATEGORIES, categoryLabel, isCategory } from '../domain/categories'
 
@@ -196,6 +197,14 @@ describe('title validation rules', () => {
     expect(titleProblems('Zrobiłem remont', en, 'en')).not.toContain('personal-verb')
     expect(titleProblems('Visit with Walmart', en, 'en')).toContain('unknown-name:Walmart')
     expect(titleProblems('Plumber And Kitchen Repairs', en, 'en')).toEqual([])
+  })
+
+  test('a title word the note never says in any form is flagged', () => {
+    const note = ['na zajęciach testowaliśmy animacje i błędy aplikacja działa na dwóch serwerach']
+    expect(unsupportedTitleWord('Testy animacji i dwusercowy serwer', note, 'pl')).toBe('dwusercowy')
+    expect(unsupportedTitleWord('Testy animacji i serwery', note, 'pl')).toBeUndefined()
+    // A category label does not have to be said.
+    expect(unsupportedTitleWord('Plan i zadania na zajęcia', note, 'pl')).toBeUndefined()
   })
 })
 
