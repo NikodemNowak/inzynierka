@@ -22,6 +22,7 @@ import { useVectorIndexStore } from '../ask/vectorStore'
 import { BottomSheet } from '../ui/BottomSheet'
 import { Button } from '../ui/Button'
 import { useI18n } from '../i18n/useI18n'
+import { ModelDownloadBanner } from '../notes/ModelDownloadBanner'
 import { useNotesStore } from '../state/notesStore'
 import { useTasksStore } from '../state/tasksStore'
 import { Icon, IconButton } from '../ui/Icon'
@@ -388,10 +389,12 @@ export default function AskScreen() {
                 ))}
               </View>
             ) : null}
+            {notes.length ? <ModelDownloadBanner inset={0} /> : null}
             {notes.length ? <SearchModelCard compact={false} /> : null}
           </View>
         ) : (
           <>
+            <ModelDownloadBanner inset={0} />
             <SearchModelCard compact />
             {messages.map((message) => <Message key={message.id} message={message} onOpen={open} titles={titles} onFollowUp={message.id === last?.id && !pending ? send : undefined} />)}
           </>

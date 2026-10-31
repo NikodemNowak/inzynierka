@@ -1,6 +1,6 @@
 import { translate, getAppLanguage } from '../i18n/translate'
 import * as FileSystem from 'expo-file-system/legacy'
-import { MODEL_CONFIG } from './modelConfig'
+import { MODEL_CONFIG, PREVIOUS_MODEL_FILENAMES } from './modelConfig'
 import {
   nativeModelDownload,
   downloadStateMatches,
@@ -41,6 +41,14 @@ export const isModelDownloaded = async (): Promise<boolean> => {
     info.size > 0 &&
     (!MODEL_CONFIG.sizeBytes || info.size === MODEL_CONFIG.sizeBytes)
   )
+}
+
+export const hasPreviousModel = async (): Promise<boolean> => {
+  for (const filename of PREVIOUS_MODEL_FILENAMES) {
+    const info = await FileSystem.getInfoAsync(`${FileSystem.documentDirectory}${filename}`)
+    if (info.exists) return true
+  }
+  return false
 }
 
 export const getModelSizeBytes = async (): Promise<number> => {

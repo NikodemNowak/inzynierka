@@ -28,6 +28,7 @@ import { useTasksStore } from '../../state/tasksStore'
 import { useModelStore } from '../../state/modelStore'
 import { formatNoteAsText } from '../../export/noteText'
 import { getModelMissingMessage } from '../../ai/noteProcessing'
+import { ModelDownloadBanner } from '../../notes/ModelDownloadBanner'
 import { localeForLanguage, type Language } from '../../i18n/language'
 import { AudioNotePlayer, type AudioMark, type AudioNotePlayerHandle } from '../../audio/AudioNotePlayer'
 import { timeForRanges } from '../../domain/audioTimeline'
@@ -740,11 +741,7 @@ export default function NoteDetailScreen() {
               />
             </View>
           )}
-          {!processing && !modelReady && (
-            <Text style={[styles.hint, { color: colors.muted }]}>
-              {getModelMissingMessage()}
-            </Text>
-          )}
+          {!processing && !modelReady && <ModelDownloadBanner inset={0} />}
         </View>
 
         <View style={{ height: spacing.sm }} />

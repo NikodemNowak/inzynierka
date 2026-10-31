@@ -53,3 +53,8 @@ const ANDROID_MODEL: ModelConfig = {
 
 export const MODEL_CONFIG: ModelConfig =
   Platform.OS === 'ios' ? IOS_MODEL : ANDROID_MODEL
+
+// Files of models this app used before. One still on the phone means the app
+// switched models, so the missing model is an update rather than a first setup.
+export const PREVIOUS_MODEL_FILENAMES: readonly string[] =
+  Platform.OS === 'ios' ? ['Qwen3-4B-Q4_K_M.gguf'] : []

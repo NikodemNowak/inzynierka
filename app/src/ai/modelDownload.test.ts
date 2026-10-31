@@ -1,5 +1,5 @@
 import * as FileSystem from 'expo-file-system/legacy'
-import { downloadModel, isModelDownloaded } from './modelDownload'
+import { downloadModel, hasPreviousModel, isModelDownloaded } from './modelDownload'
 import { MODEL_CONFIG } from './modelConfig'
 
 jest.mock('expo-file-system/legacy', () => ({
@@ -15,6 +15,7 @@ jest.mock('./modelConfig', () => ({
     filename: 'model.gguf',
     url: 'https://example.test/model.gguf',
   },
+  PREVIOUS_MODEL_FILENAMES: ['old.gguf'],
 }))
 
 const mockGetInfo = jest.mocked(FileSystem.getInfoAsync)
@@ -323,4 +324,11 @@ test('an empty temporary file is not promoted as a model', async () => {
     'file:///documents/model.gguf.part',
     { idempotent: true },
   )
+})
+
+test('a file of the model the app used before is noticed', async () => {
+  mockGetInfo.mockImplementation(async (uri: string) => ({ exists: uri === 'file:///documents/old.gguf', isDirectory: false, uri }) as never)
+  await expect(hasPreviousModel()).resolves.toBe(true)
+  mockGetInfo.mockResolvedValue({ exists: false, isDirectory: false, uri: 'file:///missing' })
+  await expect(hasPreviousModel()).resolves.toBe(false)
 })
