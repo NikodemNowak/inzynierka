@@ -9,11 +9,20 @@ export interface SummaryPoint {
   readonly sources: readonly SummarySourceRange[]
 }
 
+// A value the speaker changed mid-note ("cztery, nie, sześć"), as found at processing.
+export interface SummaryCorrection {
+  readonly old: string
+  readonly new: string
+  // A few words from where the new value was said, to find that place again.
+  readonly context?: string
+}
+
 export interface SummaryDocument {
   readonly version: 1
   readonly source: string
   readonly format: 'bullets' | 'grouped' | 'paragraph'
   readonly points: readonly SummaryPoint[]
+  readonly corrections?: readonly SummaryCorrection[]
 }
 
 export const renderSummaryDocument = (document: SummaryDocument): string => {
@@ -66,6 +75,11 @@ const parseRanges = (value: unknown, source: string): SummarySourceRange[] | nul
   return ranges
 }
 
+// Corrections only help the chat; a malformed list is dropped, not the document.
+const parseCorrections = (value: unknown): SummaryCorrection[] => Array.isArray(value)
+  ? value.flatMap((item: unknown) => isRecord(item) && typeof item.old === 'string' && typeof item.new === 'string' ? [{ old: item.old, new: item.new, ...(typeof item.context === 'string' ? { context: item.context } : {}) }] : [])
+  : []
+
 export const parseSummaryDocument = (
   value: unknown,
   content: string,
@@ -98,7 +112,8 @@ export const parseSummaryDocument = (
     }
   }
 
-  const document: SummaryDocument = { version: 1, source: content, format: candidate.format, points }
+  const corrections = parseCorrections(candidate.corrections)
+  const document: SummaryDocument = { version: 1, source: content, format: candidate.format, points, ...(corrections.length ? { corrections } : {}) }
   return renderSummaryDocument(document) === summary ? document : null
 }
 

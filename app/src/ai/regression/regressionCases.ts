@@ -398,4 +398,42 @@ export const REGRESSION_CASES: RegressionCase[] = [
       task('stanowisk'),
     ],
   },
+  {
+    id: 'poprawka-okulista',
+    why: '"do dermatologa, znaczy nie, do okulisty": the summary and task kept the dermatologist.',
+    source: { text: 'Dobra, yyy, przypomnij mi, żeby jutro rano zadzwonić do przychodni na Grunwaldzkiej i zapisać się do dermatologa, znaczy nie, do okulisty, do okulisty, bo dermatolog to było w zeszłym roku. Najlepiej zaraz po ósmej, bo potem tam nikt nie odbiera, wiesz, jak to jest. No i w sumie zapytać, czy mają coś jeszcze wolnego w listopadzie. Tyle.' },
+    variants: BOTH,
+    checks: [
+      bullet('okulist'),
+      bulletNot('zapis', 'dermatolog'),
+      task('okulist'),
+      noTask('dermatolog'),
+    ],
+  },
+  {
+    id: 'poprawka-kolokwium',
+    why: '"dwunastego listopada, nie, czekaj, trzynastego": the chat answered the 12th.',
+    source: { text: 'Dobra, notatka po wykładzie z sieci komputerowych, bo zaraz zapomnę. Więc tak. Doktor Wiśniewski powiedział, że pierwsze kolokwium jest dwunastego listopada, nie, czekaj, trzynastego, w piątek, trzynastego listopada, na wykładzie, o dziesiątej piętnaście. Drugie kolokwium piętnastego stycznia. Na pierwszym materiał do warstwy sieciowej włącznie, czyli adresacja, podsieci, routing statyczny. Projekt robimy w parach, termin oddania czwartego grudnia do dwudziestej trzeciej pięćdziesiąt dziewięć, przez Moodle\'a. I mówił wyraźnie, że nie trzeba żadnego sprawozdania na papierze, nie trzeba dokumentacji w LaTeX-u, wystarczy README w repo. Obecność na wykładach też nie jest obowiązkowa, sprawdza tylko na labach. Aha, i protokołów dynamicznych, OSPF i tak dalej, nie będzie na pierwszym kolosie, to dopiero na drugim. No to co ja muszę. Muszę napisać do Kuby, czy robimy razem ten projekt, najlepiej dzisiaj, zanim się ktoś inny do niego zapisze. Muszę się zapisać w USOS-ie na termin obrony projektu, do przyszłego piątku, bo potem zamykają zapisy. No i muszę w końcu zacząć się uczyć do kolosa, bo podsieci to ja w ogóle nie ogarniam, wiesz, te maski. No i oddać ten projekt do czwartego, wiadomo. Dobra, to tyle.' },
+    variants: BOTH,
+    checks: [
+      summary('13 listopad|trzynast'),
+      summaryNot('12 listopad|dwunast'),
+      task('kub'),
+      task('obron'),
+      task('projekt', '4 grud|czwart'),
+      noTask('latex|sprawozdan'),
+    ],
+  },
+  {
+    id: 'poprawka-zakupy',
+    why: '"piwo, cztery, nie, sześć" and coffee struck off the list mid-sentence.',
+    source: { text: 'Dobra, lista, szybko: mleko dwa litry, jajka dziesięć, chleb jakiś razowy, masło, pomidory tak z kilo, ser żółty w plastrach, makaron dwie paczki, penne najlepiej, kawa, a nie, kawy nie, jeszcze mam pół paczki, to skreśl. Banany, sześć sztuk, yyy, płyn do naczyń, papier toaletowy, ten duży, osiem rolek. Jeszcze piwo na sobotę, cztery, nie, sześć, bo Kuba przychodzi. I cebula. Dwie cebule. Kupuję dziś po drodze z uczelni w Lidlu, to musi być wszystko, bo drugi raz nie pójdę.' },
+    variants: BOTH,
+    checks: [
+      bullet('piw', '6|szesc'),
+      bulletNot('piw', '4|cztery'),
+      noTask('kaw'),
+      bulletNot('kawa,|kawe'),
+    ],
+  },
 ]

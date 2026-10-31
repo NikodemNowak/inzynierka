@@ -3,12 +3,17 @@ import { generatePointSummary } from './pointSummary';
 import { generateTitleAndTags } from './titleTags';
 import { prepareSpokenSource } from './spokenSource';
 import { extractTaskLines } from './taskLines';
+import { findSpokenCorrections } from './spokenCorrections';
 import type { SummaryDocument } from '../domain/summary';
 
 jest.mock('./pointSummary', () => ({ generatePointSummary: jest.fn() }));
 jest.mock('./titleTags', () => ({ generateTitleAndTags: jest.fn() }));
 jest.mock('./spokenSource', () => ({ prepareSpokenSource: jest.fn() }));
 jest.mock('./taskLines', () => ({ extractTaskLines: jest.fn() }));
+jest.mock('./spokenCorrections', () => ({
+  ...jest.requireActual('./spokenCorrections'),
+  findSpokenCorrections: jest.fn(),
+}));
 jest.mock('../domain/summary', () => ({
   renderSummaryDocument: (doc: any) => doc ? `summary: ${JSON.stringify(doc)}` : '',
 }));
@@ -17,11 +22,13 @@ const mockGeneratePointSummary = jest.mocked(generatePointSummary);
 const mockGenerateTitleAndTags = jest.mocked(generateTitleAndTags);
 const mockPrepareSpokenSource = jest.mocked(prepareSpokenSource);
 const mockExtractTaskLines = jest.mocked(extractTaskLines);
+const mockFindSpokenCorrections = jest.mocked(findSpokenCorrections);
 
 describe('processNoteQuality', () => {
   beforeEach(() => {
     jest.resetAllMocks();
     mockPrepareSpokenSource.mockResolvedValue(null);
+    mockFindSpokenCorrections.mockResolvedValue([]);
   });
 
   it('returns title, categories as tags, and summary from document in happy path', async () => {
@@ -178,6 +185,7 @@ describe('processNoteQuality', () => {
 describe('createQualityTaskLines', () => {
   beforeEach(() => {
     jest.resetAllMocks();
+    mockFindSpokenCorrections.mockResolvedValue([]);
     mockPrepareSpokenSource.mockResolvedValue(null);
   });
 
@@ -206,5 +214,16 @@ describe('createQualityTaskLines', () => {
     expect(mockExtractTaskLines).toHaveBeenCalledTimes(1);
     const units = mockExtractTaskLines.mock.calls[0][0];
     expect(Array.isArray(units)).toBe(true);
+  });
+
+  it('extracts tasks from the note with the corrections applied', async () => {
+    mockFindSpokenCorrections.mockResolvedValueOnce([{ old: 'cztery', new: 'sześć' }]);
+    mockExtractTaskLines.mockResolvedValueOnce({ tasks: [], rendered: [], warnings: [] });
+
+    await createQualityTaskLines('Kupić piwo, cztery, nie, sześć, na sobotę.', 'pl', undefined);
+
+    const units = mockExtractTaskLines.mock.calls[0][0];
+    expect(units.map(unit => unit.text).join(' ')).toContain('piwo, sześć, na sobotę');
+    expect(units.map(unit => unit.text).join(' ')).not.toContain('cztery');
   });
 });

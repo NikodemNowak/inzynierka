@@ -927,6 +927,12 @@ describe('shortenCopiedPoints', () => {
     expect(points[0].text).toBe(copied.text);
   });
 
+  test('rejects a rewrite that drops a stated hour or number', () => {
+    const original = 'Ustalono imprezę na 28 listopada o 16:00 w Zajeździe';
+    expect(rewriteKeepsFacts('Impreza 28 listopada w Zajeździe', original, original)).toBe(false);
+    expect(rewriteKeepsFacts('Impreza 28 listopada o 16:00 w Zajeździe', original, original)).toBe(true);
+  });
+
   test('rejects a rewrite that drops a negation or bends a word', () => {
     const original = 'Nie kupuję tego podręcznika do fizyki, w bibliotece jest dostępny';
     expect(rewriteKeepsFacts('Podręcznik fizyki – zarezerwować w bibliotece', original, original)).toBe(false);

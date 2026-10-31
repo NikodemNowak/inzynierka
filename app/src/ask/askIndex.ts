@@ -1,5 +1,8 @@
 import { deterministicSourceUnitPlan } from '../ai/sourceUnits'
+import { resolveSelfCorrections } from '../ai/selfCorrection'
+import { applySpokenCorrections } from '../ai/spokenCorrections'
 import { createSummarySources } from '../ai/summarySources'
+import type { SummaryCorrection } from '../domain/summary'
 import type { Language } from '../i18n/language'
 import { resolveDue, resolveTaskDay } from '../tasks/taskDue'
 import { terms } from './askText'
@@ -15,6 +18,8 @@ export interface AskNote {
   summary: string | null
   createdAt: number
   language?: Language
+  // Values the speaker changed, found when the note was processed.
+  corrections?: readonly SummaryCorrection[]
 }
 
 export interface AskTask {
@@ -66,7 +71,8 @@ const noteCache = new Map<string, NoteEntry>()
 const taskCache = new Map<string, ChunkBase | null>()
 
 const sameNote = (left: AskNote, right: AskNote): boolean =>
-  left.title === right.title && left.content === right.content && left.summary === right.summary && left.createdAt === right.createdAt
+  left.title === right.title && left.content === right.content && left.summary === right.summary && left.createdAt === right.createdAt &&
+  JSON.stringify(left.corrections ?? []) === JSON.stringify(right.corrections ?? [])
 
 const base = (chunk: Omit<ChunkBase, 'terms'>): ChunkBase | null => {
   const found = terms(chunk.text)
@@ -87,7 +93,8 @@ const chunksOfNote = (note: AskNote): ChunkBase[] => {
     if (made) chunks.push(made)
   }
   if (note.title.trim()) push({ noteId: note.id, kind: 'title', text: note.title, order: -1, day: null, done: false })
-  sentencesOf(note.content).forEach((text, order) => push({ noteId: note.id, kind: 'sentence', text, order, day: dayOf(text), done: false }))
+  // The chat quotes the final version of a changed value, like the summary.
+  applySpokenCorrections(sentencesOf(note.content).map((text) => resolveSelfCorrections(text, note.language ?? 'pl')), note.corrections ?? []).forEach((text, order) => push({ noteId: note.id, kind: 'sentence', text, order, day: dayOf(text), done: false }))
   pointsOf(note.summary).forEach((text, order) => push({ noteId: note.id, kind: 'point', text, order, day: dayOf(text), done: false }))
   noteCache.set(note.id, { note: { ...note }, chunks })
   return chunks

@@ -173,3 +173,11 @@ test('compares document values and treats null and undefined as absent metadata'
     points: [{ text: 'Brak zajęć.', sources: [{ start: 3, end: 14 }] }],
   })).toBe(false)
 })
+
+test('keeps the speaker corrections found at processing and drops a malformed list', () => {
+  const corrected = { ...document, corrections: [{ old: 'cztery', new: 'sześć' }] }
+  expect(parseSummaryDocument(corrected, source, summary)).toEqual(corrected)
+  expect(parseSummaryDocument(JSON.stringify(corrected), source, summary)).toEqual(corrected)
+  expect(parseSummaryDocument({ ...document, corrections: 'cztery' }, source, summary)).toEqual(document)
+  expect(parseSummaryDocument({ ...document, corrections: [{ old: 4 }] }, source, summary)).toEqual(document)
+})

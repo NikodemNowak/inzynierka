@@ -25,7 +25,7 @@ let cached: { notes: readonly Note[]; tasks: readonly Task[]; index: AskIndex } 
 export const indexFor = (notes: readonly Note[], tasks: readonly Task[]): AskIndex => {
   if (cached && cached.notes === notes && cached.tasks === tasks) return cached.index
   const index = buildAskIndex(
-    notes.map((note) => ({ id: note.id, title: note.title, content: note.content, summary: note.summary, createdAt: note.createdAt, ...(note.language ? { language: note.language } : {}) })),
+    notes.map((note) => ({ id: note.id, title: note.title, content: note.content, summary: note.summary, createdAt: note.createdAt, ...(note.language ? { language: note.language } : {}), ...(note.summaryDocument?.corrections ? { corrections: note.summaryDocument.corrections } : {}) })),
     tasks.map((task) => ({ noteId: task.noteId, text: task.text, done: task.done })),
   )
   cached = { notes, tasks, index }

@@ -271,3 +271,11 @@ test('splits a recognizer-merged amount and percent for the model', () => {
   expect(mergedPercentForPrompt('stałych 25% czyli')).toBe('stałych 25% czyli');
   expect(mergedPercentForPrompt('kosztuje 3 000 zł')).toBe('kosztuje 3 000 zł');
 });
+
+test('a half belongs to the thousand it precedes', () => {
+  expect(wordsToDigits('czynsz bliżej centrum to dwa i pół tysiąca')).toBe('czynsz bliżej centrum to 2500')
+  expect(wordsToDigits('półtora tysiąca złotych')).toBe('1500 zł')
+  expect(wordsToDigits('pół tysiąca')).toBe('500')
+  expect(wordsToDigits('pięć i pół miliona')).toBe('5500000')
+  expect(wordsToDigits('dwa i pół roku')).toBe('dwa i pół roku')
+})

@@ -110,7 +110,8 @@ export const relativeMarker = (day: number, now: Date, language: Language): stri
 
 const passageLine = (chunk: AskChunk, index: AskIndex, language: Language, now: Date): string => {
   const note = index.notes.get(chunk.noteId)
-  if (chunk.kind !== 'task') return note ? withDays(readable(chunk.text, note), note, now, language) : chunk.text
+  const shorthand = chunk.kind === 'point' ? (language === 'pl' ? 'Skrót: ' : 'Summary: ') : ''
+  if (chunk.kind !== 'task') return shorthand + (note ? withDays(readable(chunk.text, note), note, now, language) : chunk.text)
   const { title, due } = splitTaskText(chunk.text)
   const resolved = due && note ? resolveDue(due, new Date(note.createdAt)) : null
   const dayStart = resolved ? new Date(resolved.date.getFullYear(), resolved.date.getMonth(), resolved.date.getDate()).getTime() : 0
@@ -131,7 +132,20 @@ const withNeighbours = (note: RetrievedNote, index: AskIndex): AskChunk[] => {
   }
   const context = sentences.filter((chunk) => wanted.has(chunk.order))
   const others = note.passages.filter((passage) => passage.kind !== 'sentence')
-  return [...context, ...others]
+  // The shorthand first, the note's own sentences after it in recording order.
+  return [...others, ...context]
+}
+
+// In a long note the chat must tell which of two values came later.
+const PLACED_FROM = 12
+const placeOf = (chunk: AskChunk, index: AskIndex, language: Language): string => {
+  if (chunk.kind !== 'sentence') return ''
+  const total = index.chunks.filter((other) => other.noteId === chunk.noteId && other.kind === 'sentence').length
+  if (total < PLACED_FROM) return ''
+  const third = Math.min(2, Math.floor((3 * chunk.order) / total))
+  const pl = ['(początek nagrania) ', '(środek nagrania) ', '(koniec nagrania) ']
+  const en = ['(start of recording) ', '(middle of recording) ', '(end of recording) ']
+  return (language === 'pl' ? pl : en)[third]
 }
 
 // Rough token count for Polish/English text on a Qwen tokenizer.
@@ -152,7 +166,7 @@ export const buildAskContext = (
     const info = index.notes.get(note.noteId)
     const title = info?.title.trim() || (language === 'pl' ? 'Bez tytułu' : 'Untitled')
     const recorded = info ? formatDay(info.createdAt, language) : ''
-    const lines = (neighbours ? withNeighbours(note, index) : note.passages).map((chunk) => `- ${passageLine(chunk, index, language, now)}`)
+    const lines = (neighbours ? withNeighbours(note, index) : note.passages).map((chunk) => `- ${placeOf(chunk, index, language)}${passageLine(chunk, index, language, now)}`)
     return { noteId: note.noteId, title, recorded, lines }
   })
   const render = (): string =>
@@ -184,8 +198,8 @@ const rules = (language: Language, today: string): string =>
         '1. Odpowiedz tylko na podstawie fragmentów. Nie dodawaj niczego, czego w nich nie ma.',
         '2. Po każdej informacji wpisz numer notatki w nawiasie kwadratowym, np. [1].',
         '3. Daty w notatkach są już przeliczone na kalendarz („20 października (dziś)”). Podawaj je tak, jak są we fragmentach.',
-        '4. Gdy notatka się poprawia („nie, czekaj”, „jednak”, „przesunięte na”), obowiązuje późniejsza wersja.',
-        '5. Zachowaj zaprzeczenia i warunki („nie kupować”, „tylko jeśli”). Linie „Zadanie:” są skrótem notatki; gdy zdanie notatki mówi co innego, obowiązuje zdanie.',
+        '4. Zdania jednej notatki są w kolejności nagrania. Gdy notatka się poprawia albo późniejsze zdanie podaje inną wartość w tej samej sprawie („nie, czekaj”, „jednak”, „przełożyli”, „zmiana planów”, „realnie wyjdzie”), obowiązuje późniejsze: podaj je jako odpowiedź.',
+        '5. Zachowaj zaprzeczenia i warunki („nie kupować”, „tylko jeśli”). Linie „Skrót:” i „Zadanie:” to skrót notatki zrobiony wcześniej; gdy zdanie notatki mówi co innego, obowiązuje zdanie (a z kilku zdań późniejsze).',
         '6. Notatki to zapis mowy, więc słowa bywają przekręcone („pen” zamiast „pendrive”, „Krakoff” zamiast „Kraków”). Odpowiadaj tylko wtedy, gdy fragment wyraźnie mówi o tej sprawie. Gdy brakuje szczegółu z pytania, napisz krótko, czego notatka nie podaje. Gdy żaden fragment nie mówi o tej sprawie, napisz: „Nie znalazłem tego w notatkach.”',
         '7. Liczby i godziny pisz cyframi.',
         '8. Gdy pytanie dotyczy rzeczy do zrobienia, wypisz każdą z fragmentów jako listę z myślnikami. W innym wypadku najwyżej 3 zdania.',
@@ -199,8 +213,8 @@ const rules = (language: Language, today: string): string =>
         '1. Answer only from the excerpts. Do not add anything they do not say.',
         '2. After each piece of information write the note number in square brackets, e.g. [1].',
         '3. Dates in the notes are already turned into calendar days ("October 20 (today)"). Give them as they appear in the excerpts.',
-        '4. When a note corrects itself ("no, wait", "actually", "moved to"), the later version counts.',
-        '5. Keep negations and conditions ("don\'t buy", "only if"). "Task:" lines are shorthand; when a sentence of the note says otherwise, the sentence counts.',
+        '4. The sentences of one note are in recording order. When a note corrects itself or a later sentence gives another value for the same matter ("no, wait", "actually", "moved to", "change of plans"), the later one counts: give it as the answer.',
+        '5. Keep negations and conditions ("don\'t buy", "only if"). "Summary:" and "Task:" lines are shorthand made earlier; when a sentence of the note says otherwise, the sentence counts (and of several sentences, the later one).',
         '6. The notes are transcribed speech, so words can be garbled ("pen" for "pendrive", "Krakoff" for "Krakow"). Answer only when an excerpt clearly talks about the matter. When a detail of the question is missing, briefly say what the note does not give. When no excerpt talks about it, write: "I couldn\'t find that in your notes."',
         '7. Write numbers and times with digits.',
         '8. When the question is about things to do, list every one from the excerpts with dashes. Otherwise at most 3 sentences.',

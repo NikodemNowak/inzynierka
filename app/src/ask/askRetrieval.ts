@@ -1,3 +1,4 @@
+import { wordsToDigits } from '../ai/polishNumbers'
 import { resolveDue } from '../tasks/taskDue'
 import type { AskChunk, AskIndex } from './askIndex'
 import { plain, terms } from './askText'
@@ -101,6 +102,12 @@ export const asksForTasks = (question: string, now: Date = new Date()): boolean 
 export { HAVE_QUESTION }
 
 const WHEN_QUESTION = /\b(?:kiedy|kiedys|o\s+ktorej|na\s+kiedy|do\s+kiedy|ktorego|when|what\s+time|which\s+day|by\s+when)\b/u
+
+// A question after a value: when, what time, how much, which one.
+const VALUE_QUESTION = /\b(?:kiedy|o\s+ktorej|na\s+kiedy|do\s+kiedy|ktorego\s+dnia|ile|jaki|jaka|jakie|jakiego|ktory|ktora|ktore|budzet\w*|koszt\w*|cen\w*|kwot\w*|when|what\s+time|which|how\s+much|how\s+many|budget|cost|price)\b/u
+// Later sentences of the best note that may change the value; a few, latest first.
+const LATER_VALUES = 3
+const carriesValue = (chunk: AskChunk): boolean => chunk.day !== null || /\d/u.test(wordsToDigits(chunk.text))
 
 const DUTY = /\b(?:musze|trzeba|mam\s+\w+c|mam\s+do|nalezy|przypomnij|oddac|zaplacic|kupic|zadzwonic|odebrac|have\s+to|need\s+to|must|remind|should|pick\s+up|pay|buy|call)\b/u
 
@@ -222,6 +229,21 @@ export const retrieve = (question: string, index: AskIndex, options: RetrieveOpt
     const have = new Set(top.passages.map((chunk) => chunk.id))
     const duties = index.chunks.filter((chunk) => chunk.noteId === top.noteId && !have.has(chunk.id) && (chunk.kind === 'task' ? !chunk.done : chunk.kind === 'sentence' && DUTY.test(plain(chunk.text))))
     top.passages.push(...duties.slice(0, 8))
+  }
+  // "Kiedy jest prezentacja?" can be answered early in a long note and changed much later
+  // in words the question does not share ("przełożyli na piątek"). The note holding the
+  // answer also gives its later sentences that carry a value; the model picks the one in force.
+  if (top && !wantsTasks && VALUE_QUESTION.test(plain(question))) {
+    const have = new Set(top.passages.map((chunk) => chunk.id))
+    const first = Math.min(...top.passages.filter((chunk) => chunk.kind === 'sentence').map((chunk) => chunk.order))
+    const later = index.chunks.filter((chunk) => chunk.noteId === top.noteId && chunk.kind === 'sentence' && !have.has(chunk.id) && chunk.order > first && carriesValue(chunk))
+    // The ones closest to the question first, then the latest: a long meeting ends on
+    // other matters, while a change often shares no word with the question.
+    const relevance = new Map(scored.map((item) => [item.chunk.id, item.score]))
+    const picked = [...later]
+      .sort((a, b) => (relevance.get(b.id) ?? 0) - (relevance.get(a.id) ?? 0) || b.order - a.order)
+      .slice(0, LATER_VALUES)
+    top.passages.push(...picked)
   }
   let budget = maxPassages + (top ? Math.max(0, top.passages.length - 6) : 0)
   for (const note of kept) {

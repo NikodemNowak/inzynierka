@@ -109,11 +109,21 @@ const MONTH_AFTER = /^\s*(?:stycz|lut|mar|kwie|maj|czerw|lip|sierp|wrze|paździe
 const WEEKDAY_BEFORE = /(?:poniedziałk|wtork|środ|czwartk|piątk|sobot|niedziel|weekend)[\p{L}]*\s*,?\s*$/iu;
 const COUNT_UNIT_AFTER = /^\s*(?:zł|złot|euro|osob|osób|godzin|minut|dni|dzień|tygodn|noc|kilo|kg|litr|stopni|sztuk|procent|%|raz)/iu;
 
+// "dwa i pół tysiąca", "półtora tysiąca": the half belongs to the thousand, not to a
+// separate small number ("dwa i pół 1000" read to the model as anything).
+const HALF_LARGE = /(?<![\p{L}\p{N}_])(?:(\p{L}+)\s+i\s+pół|(półtora)|(pół))\s+(tysi[ąę]c\p{L}*|milion\p{L}*)(?![\p{L}\p{N}_])/giu;
+const halfLarge = (match: string, count: string | undefined, oneAndHalf: string | undefined, half: string | undefined, unit: string): string => {
+  const whole = count ? numberWordValue(count) : oneAndHalf ? 1 : half ? 0 : null;
+  if (whole === null || !Number.isInteger(whole)) return match;
+  return String((whole + 0.5) * (/^milion/iu.test(unit) ? 1_000_000 : 1000));
+};
+
 // Dates ("dwudziestego ósmego listopada" -> "28 listopada"), clock times
 // ("o szesnastej trzydzieści" -> "o 16:30", "wpół do ósmej" -> "7:30") and
 // amounts/counts ("pięćset złotych" -> "500 zł"). Ordinals that are neither
 // dates nor times ("rozdział drugi") stay words.
-export const wordsToDigits = (text: string): string => {
+export const wordsToDigits = (spoken: string): string => {
+  const text = spoken.replace(HALF_LARGE, halfLarge);
   const spans = numberSpans(text);
   const out: string[] = [];
   let pos = 0;

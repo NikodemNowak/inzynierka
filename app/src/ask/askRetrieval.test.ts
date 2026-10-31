@@ -140,3 +140,22 @@ test('toggling one task does not rebuild the other notes', () => {
   expect(edited.chunks.some((chunk) => chunk.text.includes('zupełnie inny'))).toBe(true)
   expect(edited.chunks.some((chunk) => chunk.text.includes('przegląd'))).toBe(false)
 })
+
+describe('later values in a long note', () => {
+  const sentences = [
+    'Prezentacja dla klienta z Bydgoszczy w czwartek o jedenastej.',
+    ...Array.from({ length: 12 }, (_, index) => `Zupełnie inna sprawa numer ${index + 1} bez dat.`.replace(/\d+/u, 'x')),
+    'Pisał Darek, że prezes nie może, więc przełożyli na piątek, ta sama godzina.',
+  ]
+  const index = buildAskIndex([{ id: 'n', title: 'Plan', content: sentences.join(' '), summary: null, createdAt: new Date(2026, 9, 19, 9).getTime(), language: 'pl' }], [])
+
+  test('a question after a value also gets the later sentences that carry one', () => {
+    const found = retrieve('Kiedy jest prezentacja dla klienta?', index, { now: new Date(2026, 9, 19, 12) })
+    expect(found[0].passages.map((chunk) => chunk.text).join(' ')).toContain('przełożyli na piątek')
+  })
+
+  test('a question about something else does not', () => {
+    const found = retrieve('Z kim jest prezentacja?', index, { now: new Date(2026, 9, 19, 12) })
+    expect(found[0].passages.map((chunk) => chunk.text).join(' ')).not.toContain('przełożyli')
+  })
+})

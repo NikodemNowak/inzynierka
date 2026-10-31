@@ -1828,11 +1828,19 @@ const editDistance = (a: string, b: string): number => {
 };
 const fold = (word: string): string => word.normalize('NFD').replace(/\p{M}/gu, '').replace(/ł/gu, 'l');
 const NEGATION = rx(String.raw`(?<![^\W\d_])(?:nie|bez|brak)(?![^\W\d_])`, 'i');
+const CLOCK = /(?<![\d:])(\d{1,2}):(\d{2})(?!\d)/gu;
+const clockTimes = (text: string): string[] =>
+  [...text.matchAll(CLOCK)].map(([, hour, minute]) => `${Number(hour)}:${minute}`);
 
 // A short rewrite may drop words but not the negation, and may not bend a word of the
 // note into a form that does not exist ("sobaty" for "soboty", "bole" for "bólu").
+// checkPoint only rejects values a point adds, so dropping a stated one is guarded here.
 export const rewriteKeepsFacts = (rewrite: string, original: string, cited: string): boolean => {
   if (NEGATION.test(original) && !NEGATION.test(rewrite)) return false;
+  const rewriteClocks = new Set(clockTimes(rewrite));
+  if (clockTimes(original).some(clock => !rewriteClocks.has(clock))) return false;
+  const rewriteNumbers = pointNumbers(rewrite);
+  if ([...pointNumbers(original)].some(value => !rewriteNumbers.has(value))) return false;
   const known = [...new Set([...words(original), ...words(cited)].map(fold))];
   const knownSet = new Set(known);
   // An inflected ending ("błędy" → "błędów") is fine; a change inside the stem is not.
@@ -1885,6 +1893,8 @@ export const generatePointSummaryDetailed = async (
   units: readonly SummarySourceUnit[], content: string, language: Language, execution?: ProcessingExecutionContext,
   options: PointSummaryOptions = DEFAULT_POINT_SUMMARY_OPTIONS,
   onLive?: (live: LiveSummaryProgress) => void,
+  // The units as recorded when `units` carry corrected text: source ranges point there.
+  recordedUnits: readonly SummarySourceUnit[] = units,
 ): Promise<PointSummaryDetail> => {
   const liveUnits = units.map(unit => ({ id: unit.id, start: unit.start, end: unit.end }));
   const draftsOf = (points: readonly SummaryPoint[]): LiveSummaryDraft[] =>
@@ -1958,7 +1968,7 @@ export const generatePointSummaryDetailed = async (
   }
   if (language === 'pl') finalPoints = await shortenCopiedPoints(finalPoints, units, execution);
   const points = finalPoints.map(point => ({ text: point.text, sourceIds: point.sourceIds }));
-  const document = documentFor(content, points, units);
+  const document = documentFor(content, points, recordedUnits);
   if (points.length && !document) warnings.push('Summary points could not be linked to the note source.');
   if (!points.length) warnings.push('Summary model produced no usable points.');
   const literalFallbackCount = units.length < options.minUnitsForModel ? 0 : finalPoints.filter(point => point.literal).length;
@@ -1972,8 +1982,9 @@ export const generatePointSummaryDetailed = async (
 export const generatePointSummary = async (
   units: readonly SummarySourceUnit[], content: string, language: Language, execution?: ProcessingExecutionContext,
   onLive?: (live: LiveSummaryProgress) => void,
+  recordedUnits: readonly SummarySourceUnit[] = units,
 ): Promise<PointSummaryResult> => {
   const { points, document, warnings, literalFallbackCount } = await generatePointSummaryDetailed(
-    units, content, language, execution, DEFAULT_POINT_SUMMARY_OPTIONS, onLive);
+    units, content, language, execution, DEFAULT_POINT_SUMMARY_OPTIONS, onLive, recordedUnits);
   return { points, document, warnings, literalFallbackCount };
 };
