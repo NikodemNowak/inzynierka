@@ -9,6 +9,8 @@ export type Variant = 'raw' | 'stripped'
 // so 'zadzwon' also finds 'Zadzwonić'. An entry ending in a digit must end the number:
 // '8:00' does not match '8:005', and '30' does not match '300'.
 export type Check =
+  | { kind: 'title'; all: string[] }
+  | { kind: 'titleNot'; any: string[] }
   | { kind: 'summary'; all: string[] }
   | { kind: 'summaryNot'; any: string[] }
   | { kind: 'bullet'; all: string[] }
@@ -50,6 +52,8 @@ export type RunFile = {
   results: CaseResult[]
 }
 
+export const title = (...all: string[]): Check => ({ kind: 'title', all })
+export const titleNot = (...any: string[]): Check => ({ kind: 'titleNot', any })
 export const summary = (...all: string[]): Check => ({ kind: 'summary', all })
 export const summaryNot = (...any: string[]): Check => ({ kind: 'summaryNot', any })
 export const bullet = (...all: string[]): Check => ({ kind: 'bullet', all })
@@ -97,6 +101,8 @@ export const stripPunctuation = (text: string): string =>
 
 export const checkLabel = (check: Check): string => {
   switch (check.kind) {
+    case 'title': return `title: ${check.all.join(' + ')}`
+    case 'titleNot': return `title without: ${check.any.join(' | ')}`
     case 'summary': return `summary: ${check.all.join(' + ')}`
     case 'summaryNot': return `summary without: ${check.any.join(' | ')}`
     case 'bullet': return `one bullet: ${check.all.join(' + ')}`
@@ -112,6 +118,8 @@ const bulletsOf = (text: string): string[] => text.split('\n').map((line) => lin
 
 export const runCheck = (check: Check, output: RunOutput): boolean => {
   switch (check.kind) {
+    case 'title': return allFound(check.all, output.title)
+    case 'titleNot': return !check.any.some((entry) => entryFound(entry, output.title))
     case 'summary': return allFound(check.all, output.summary)
     case 'summaryNot': return !check.any.some((entry) => entryFound(entry, output.summary))
     case 'bullet': return bulletsOf(output.summary).some((line) => allFound(check.all, line))

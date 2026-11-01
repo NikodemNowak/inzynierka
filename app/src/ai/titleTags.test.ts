@@ -17,6 +17,9 @@ import {
   titleTagsPrompt,
   titleTagsSystem,
   unsupportedTitleWord,
+  copiesOnePoint,
+  fixAccusativeCoordination,
+  isPlanLead,
 } from './titleTags'
 import { NOTE_CATEGORIES, categoryLabel, isCategory } from '../domain/categories'
 
@@ -205,6 +208,13 @@ describe('title validation rules', () => {
     expect(unsupportedTitleWord('Testy animacji i serwery', note, 'pl')).toBeUndefined()
     // A category label does not have to be said.
     expect(unsupportedTitleWord('Plan i zadania na zajęcia', note, 'pl')).toBeUndefined()
+  })
+
+  test('the title copying one of several points is noticed', () => {
+    const points = ['Testowanie poprawności animacji wizualnych', 'Pokazać część testów jutro o 08:30']
+    expect(copiesOnePoint('Testowanie poprawności animacji wizualnych', points)).toBe(true)
+    expect(copiesOnePoint('Testy animacji i serwery', points)).toBe(false)
+    expect(copiesOnePoint('Testowanie poprawności animacji wizualnych', points.slice(0, 1))).toBe(false)
   })
 })
 
@@ -498,4 +508,20 @@ test('flags an invented inflection of an indeclinable word', () => {
   const sources = ['Jutro zajęcia z panem mgr trzeba pokazać plany testów']
   expect(titleProblems('Spotkanie z mgr trzebą i konsultacja', sources)).toContain('invented-form:trzebą')
   expect(titleProblems('Plany testów na zajęcia', sources).some((problem) => problem.startsWith('invented-form'))).toBe(false)
+})
+
+describe('word forms after "i"', () => {
+  test('an accusative topic becomes nominative, a neuter noun stays', () => {
+    expect(fixAccusativeCoordination('Rozdział drugi i ankietę')).toBe('Rozdział drugi i ankieta')
+    expect(fixAccusativeCoordination('Urodziny i imię')).toBe('Urodziny i imię')
+    expect(fixAccusativeCoordination('Ankietę i rozdział')).toBe('Ankietę i rozdział')
+  })
+})
+
+describe('weekly plan lead', () => {
+  test('the plan may be announced after a filler', () => {
+    expect(isPlanLead('Okej, robię sobie plan na przyszły tydzień, bo jak tego nie nagram')).toBe(true)
+    expect(isPlanLead('Plan na tydzień, długi.')).toBe(true)
+    expect(isPlanLead('Byłem u lekarza i mam plan leczenia na tydzień')).toBe(false)
+  })
 })

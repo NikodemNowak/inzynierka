@@ -1,4 +1,4 @@
-import { bullet, bulletNot, maxBulletWords, noTask, summary, summaryNot, task, type RegressionCase, type Variant } from './regressionScore'
+import { bullet, bulletNot, title, titleNot, maxBulletWords, noTask, summary, summaryNot, task, type RegressionCase, type Variant } from './regressionScore'
 
 // Notes with punctuation run twice: as written and as iOS dictation delivers them.
 const BOTH: Variant[] = ['raw', 'stripped']
@@ -14,6 +14,7 @@ export const REGRESSION_CASES: RegressionCase[] = [
     source: { text: 'Przygotowuje testowe nagranie żeby zobaczyć czy Poprawione zostały błędy wizualne animacje i tym podobne jutro o 08:30 chyba Mam zajęcia i muszę pokazać moją część testów a o dziesiątej jakoś mamy zajęcia z projektu kompetencyjnego i pokazujemy że aplikacja działa na dwóch serwerach' },
     variants: RAW,
     checks: [
+      title('test|zaj', 'zaj|serw|projekt'),
       bullet('test', '8:30'),
       bullet('kompetencyj|serwer', '10:00|o dziesiatej'),
       bulletNot('test', '10:00'),
@@ -32,6 +33,7 @@ export const REGRESSION_CASES: RegressionCase[] = [
     source: { suite: '01-promotor-rozdzial' },
     variants: BOTH,
     checks: [
+      title('promotor|rozdzia'), titleNot('ankiete'),
       summary('30'),
       summaryNot('20 os', 'dwudziestu os'),
       summary('14:00|czternast'),
@@ -46,6 +48,7 @@ export const REGRESSION_CASES: RegressionCase[] = [
     source: { suite: '02-zakupy-dom' },
     variants: BOTH,
     checks: [
+      title('zakup|list'),
       summary('212'),
       summary('czwart', '8:00|osm'),
       task('prad', '212'),
@@ -61,6 +64,7 @@ export const REGRESSION_CASES: RegressionCase[] = [
     source: { suite: '03-szkolenie-pierwsza-pomoc' },
     variants: BOTH,
     checks: [
+      title('pierwsz|pomoc|resuscyt'),
       summary('100', '120'),
       summaryNot('80 na minut', 'osiemdziesiat'),
       summary('112|sto dwanascie'),
@@ -75,6 +79,7 @@ export const REGRESSION_CASES: RegressionCase[] = [
     source: { suite: '04-pomysly-aplikacja-rachunki' },
     variants: BOTH,
     checks: [
+      title('aplik|apk|rachun|pomysl'),
       summary('kwita'),
       summary('react'),
       task('zapyta', 'chlopak|mieszka|wspollokator|znajom'),
@@ -89,6 +94,7 @@ export const REGRESSION_CASES: RegressionCase[] = [
     source: { suite: '05-dzien-w-pracy' },
     variants: BOTH,
     checks: [
+      title('termex|prac|panel'),
       summary('termex'),
       summary('listopad'),
       summary('14500|14,5'),
@@ -108,6 +114,7 @@ export const REGRESSION_CASES: RegressionCase[] = [
     source: { suite: '06-urlop-portugalia' },
     variants: BOTH,
     checks: [
+      title('portugal|lizbon|urlop|wyjazd'),
       summary('5 listopad|piatego listopad'),
       summary('7:10'),
       summaryNot('6:40', 'modlin'),
@@ -128,6 +135,7 @@ export const REGRESSION_CASES: RegressionCase[] = [
     source: { suite: '07-zdrowie-zatoki-leki' },
     variants: BOTH,
     checks: [
+      title('zatok|antybiot'),
       summary('10 dni|dziesiec dni'),
       summaryNot('7 dni', 'siedem dni'),
       summary('8:00', '20:00'),
@@ -147,6 +155,7 @@ export const REGRESSION_CASES: RegressionCase[] = [
     source: { suite: '08-telefon-urodziny-taty' },
     variants: BOTH,
     checks: [
+      title('urodzin|siedemdzies'),
       summary('28 listopad'),
       summaryNot('sobote 21', '21 listopad'),
       summary('16:00'),
@@ -170,6 +179,7 @@ export const REGRESSION_CASES: RegressionCase[] = [
     source: { suite: '09-dziennik-wieczor' },
     variants: BOTH,
     checks: [
+      title('dziennik|zapis|wieczor'),
       summary('nowego roku'),
       summary('22:30'),
       summaryNot('20:02'),
@@ -190,6 +200,7 @@ export const REGRESSION_CASES: RegressionCase[] = [
     source: { suite: '10-plan-tygodnia' },
     variants: BOTH,
     checks: [
+      title('tydz|tygodn|plan'),
       summary('11:00|o 11'),
       summaryNot('1240'),
       task('slajd', 'wtor'),
@@ -222,6 +233,7 @@ export const REGRESSION_CASES: RegressionCase[] = [
     source: { suite: '11-przypomnienie-opony' },
     variants: BOTH,
     checks: [
+      title('opon|warszta'),
       task('oddzwon|zadzwon', 'warsztat', 'jutro', '9:00|dziewiat'),
     ],
   },
@@ -231,6 +243,7 @@ export const REGRESSION_CASES: RegressionCase[] = [
     source: { suite: '12-zakupy-jutro-po-pracy' },
     variants: BOTH,
     checks: [
+      title('zakup|list'),
       summary('pol kilo|0,5'),
       task('pomidor|zakup|kupic'),
       task('aptek|plastr'),
@@ -245,6 +258,7 @@ export const REGRESSION_CASES: RegressionCase[] = [
     source: { suite: '13-spotkanie-panel-klienta' },
     variants: BOTH,
     checks: [
+      title('panel|spotkan|premier|beta'),
       summary('27'),
       summary('czwart'),
       summaryNot('do przyszlej srody'),
@@ -263,6 +277,7 @@ export const REGRESSION_CASES: RegressionCase[] = [
     source: { suite: '14-dziennik-karnet-kurs' },
     variants: BOTH,
     checks: [
+      title('dziennik|zapis|wieczor|kurs|karnet'),
       summary('25'),
       task('rezygnacj|karnet|formularz', '25'),
       task('wiertark', 'sobot'),
@@ -278,6 +293,7 @@ export const REGRESSION_CASES: RegressionCase[] = [
     source: { suite: '15-sesja-egzaminy' },
     variants: BOTH,
     checks: [
+      title('sesj|egzamin|kolokw'),
       summary('29 stycz'),
       summary('12 lut'),
       summary('8:15'),
@@ -294,6 +310,7 @@ export const REGRESSION_CASES: RegressionCase[] = [
     source: { suite: '16-remont-lazienki-oferty' },
     variants: BOTH,
     checks: [
+      title('remont|lazien'),
       summary('zbigniew'),
       summary('20800'),
       summary('19500'),
@@ -312,6 +329,7 @@ export const REGRESSION_CASES: RegressionCase[] = [
     source: { suite: '17-stas-ucho-logistyka' },
     variants: BOTH,
     checks: [
+      title('stas|ucho|ucha|zapaleni'),
       summary('38,5|38.5'),
       summary('16:30'),
       task('stas|odebra', 'czwart|8:00'),
@@ -329,6 +347,7 @@ export const REGRESSION_CASES: RegressionCase[] = [
     source: { suite: '18-bez-interpunkcji-mix' },
     variants: RAW,
     checks: [
+      title('aut|przeglad|faktur|burek|burka|karm|tydz|tygodn'),
       summary('1200'),
       summary('13:00'),
       summaryNot('doladowac we wtorek'),
@@ -348,6 +367,7 @@ export const REGRESSION_CASES: RegressionCase[] = [
     source: { suite: 'v1-krotka' },
     variants: RAW,
     checks: [
+      title('promotor|aplik|eksport|spotkan'),
       summary('poniedzia'),
       task('ekran', 'eksport'),
       task('link', 'repozytor'),
@@ -362,6 +382,7 @@ export const REGRESSION_CASES: RegressionCase[] = [
     source: { suite: 'v2-srednia' },
     variants: RAW,
     checks: [
+      title('promotor|inzynier|prac'),
       summary('10:30'),
       summary('8 listopad'),
       summary('350'),
@@ -379,6 +400,7 @@ export const REGRESSION_CASES: RegressionCase[] = [
     source: { suite: 'v3-psycholog' },
     variants: RAW,
     checks: [
+      title('test|zaj|jakosc'),
       summary('8:30'),
       summary('18:00'),
       task('plan|test', '8:30'),
@@ -392,6 +414,7 @@ export const REGRESSION_CASES: RegressionCase[] = [
     source: { suite: 'v4-kalkulacja' },
     variants: RAW,
     checks: [
+      title('kalkul|prowiz|polec|licenc|wyplat'),
       summary('25%|25 %|25 procent'),
       summary('12000'),
       summary('3000'),
@@ -404,6 +427,7 @@ export const REGRESSION_CASES: RegressionCase[] = [
     source: { text: 'Dobra, yyy, przypomnij mi, żeby jutro rano zadzwonić do przychodni na Grunwaldzkiej i zapisać się do dermatologa, znaczy nie, do okulisty, do okulisty, bo dermatolog to było w zeszłym roku. Najlepiej zaraz po ósmej, bo potem tam nikt nie odbiera, wiesz, jak to jest. No i w sumie zapytać, czy mają coś jeszcze wolnego w listopadzie. Tyle.' },
     variants: BOTH,
     checks: [
+      title('okulist'), titleNot('dermatolog'),
       bullet('okulist'),
       bulletNot('zapis', 'dermatolog'),
       task('okulist'),
@@ -416,6 +440,7 @@ export const REGRESSION_CASES: RegressionCase[] = [
     source: { text: 'Dobra, notatka po wykładzie z sieci komputerowych, bo zaraz zapomnę. Więc tak. Doktor Wiśniewski powiedział, że pierwsze kolokwium jest dwunastego listopada, nie, czekaj, trzynastego, w piątek, trzynastego listopada, na wykładzie, o dziesiątej piętnaście. Drugie kolokwium piętnastego stycznia. Na pierwszym materiał do warstwy sieciowej włącznie, czyli adresacja, podsieci, routing statyczny. Projekt robimy w parach, termin oddania czwartego grudnia do dwudziestej trzeciej pięćdziesiąt dziewięć, przez Moodle\'a. I mówił wyraźnie, że nie trzeba żadnego sprawozdania na papierze, nie trzeba dokumentacji w LaTeX-u, wystarczy README w repo. Obecność na wykładach też nie jest obowiązkowa, sprawdza tylko na labach. Aha, i protokołów dynamicznych, OSPF i tak dalej, nie będzie na pierwszym kolosie, to dopiero na drugim. No to co ja muszę. Muszę napisać do Kuby, czy robimy razem ten projekt, najlepiej dzisiaj, zanim się ktoś inny do niego zapisze. Muszę się zapisać w USOS-ie na termin obrony projektu, do przyszłego piątku, bo potem zamykają zapisy. No i muszę w końcu zacząć się uczyć do kolosa, bo podsieci to ja w ogóle nie ogarniam, wiesz, te maski. No i oddać ten projekt do czwartego, wiadomo. Dobra, to tyle.' },
     variants: BOTH,
     checks: [
+      title('kolokw|siec|sieci'),
       summary('13 listopad|trzynast'),
       summaryNot('12 listopad|dwunast'),
       task('kub'),
@@ -430,6 +455,7 @@ export const REGRESSION_CASES: RegressionCase[] = [
     source: { text: 'Dobra, lista, szybko: mleko dwa litry, jajka dziesięć, chleb jakiś razowy, masło, pomidory tak z kilo, ser żółty w plastrach, makaron dwie paczki, penne najlepiej, kawa, a nie, kawy nie, jeszcze mam pół paczki, to skreśl. Banany, sześć sztuk, yyy, płyn do naczyń, papier toaletowy, ten duży, osiem rolek. Jeszcze piwo na sobotę, cztery, nie, sześć, bo Kuba przychodzi. I cebula. Dwie cebule. Kupuję dziś po drodze z uczelni w Lidlu, to musi być wszystko, bo drugi raz nie pójdę.' },
     variants: BOTH,
     checks: [
+      title('zakup|list|lidl'),
       bullet('piw', '6|szesc'),
       bulletNot('piw', '4|cztery'),
       noTask('kaw'),
