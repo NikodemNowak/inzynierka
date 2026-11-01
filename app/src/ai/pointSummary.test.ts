@@ -35,6 +35,7 @@ import {
   shortenCopiedPoints,
   rewriteKeepsFacts,
   type SummaryPoint,
+  unfitLiteral,
 } from './pointSummary';
 import { pointNumbers, statedNumbers } from './polishNumbers';
 import type { SummarySourceUnit } from './summarySources';
@@ -945,3 +946,16 @@ describe('shortenCopiedPoints', () => {
     expect(model).not.toHaveBeenCalled();
   });
 });
+
+describe('unfitLiteral', () => {
+  test('quotes that do not read as a point are dropped', () => {
+    expect(unfitLiteral('Mamie mam wykupić leki na ciśnienie receptę wysłała mi esemesem kod jest w wiadomości z wczoraj to')).toBe(true)
+    expect(unfitLiteral('Najpierw powiedziała przez 7 dni, i że mam nie przerywać')).toBe(true)
+    expect(unfitLiteral('Ustawiam sobie budziki na ósmą i na 20 żeby nie zapomnieć o antybiotyku i idę się położyć')).toBe(true)
+  })
+
+  test('a short or punctuated quote stays', () => {
+    expect(unfitLiteral('Wziąć książeczkę szczepień')).toBe(false)
+    expect(unfitLiteral('Kontrola 27 października we wtorek o 16:15, morfologia na czczo w poniedziałek rano przed pracą')).toBe(false)
+  })
+})
