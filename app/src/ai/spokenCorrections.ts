@@ -214,7 +214,12 @@ const cleaned = (correction: SpokenCorrection, joined?: string): SpokenCorrectio
   let old = joined ? asSpoken(tidyValue(correction.old), joined) : tidyValue(correction.old)
   if (lower(old).endsWith(lower(next))) old = tidyValue(old.slice(0, old.length - next.length))
   if (!old || !next || wordCount(old) > MAX_VALUE_WORDS || wordCount(next) > MAX_VALUE_WORDS) return null
-  if (lower(next).includes(lower(old)) || lower(old).includes(lower(next))) return null
+  // "tysiąc" -> "tysiąc dwieście" shares a word but names a different amount.
+  const amounts = [wordsToDigits(old), wordsToDigits(next)].map((value) => value.match(/\d+/gu)?.join(' ') ?? '')
+  // "piętnaście" inside "dziesiątej piętnaście" (15 in 10:15) is the same value, not a change.
+  const differentAmounts = amounts[0] !== '' && amounts[1] !== '' &&
+    !` ${amounts[0]} `.includes(` ${amounts[1]} `) && !` ${amounts[1]} `.includes(` ${amounts[0]} `)
+  if (!differentAmounts && (lower(next).includes(lower(old)) || lower(old).includes(lower(next)))) return null
   if (namesDay(old) !== namesDay(next)) return null
   return { old, new: next, ...(correction.context ? { context: correction.context } : {}) }
 }

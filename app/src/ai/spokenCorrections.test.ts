@@ -117,3 +117,10 @@ describe('applySpokenCorrections for a change far from the old value', () => {
     expect(corrected.startsWith('prezentacja na piątek o jedenastej')).toBe(true)
   })
 })
+
+describe('applySpokenCorrections for amounts sharing a word', () => {
+  test('"tysiąc" corrected to "tysiąc dwieście" is a new amount', () => {
+    expect(correctedText('przelewam tysiąc złotych na lokatę, nie, czekaj, tysiąc dwieście', [{ old: 'tysiąc złotych', new: 'tysiąc dwieście' }]))
+      .toBe('przelewam tysiąc dwieście na lokatę, nie, czekaj, tysiąc dwieście')
+  })
+})

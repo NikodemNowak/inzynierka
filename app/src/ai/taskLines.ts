@@ -306,11 +306,13 @@ const fixGlued = (title: string): string => {
 }
 
 // At least one >=4-letter word of the title shares a 4-letter prefix with the cited text.
+// Vowels alternate inside one Polish word ("urząd" / "urzędu", "stół" / "stołu").
+const anchorStem = (word: string): string => word.slice(0, 4).replace(/[ąę]/gu, 'e').replace(/ó/gu, 'o')
 const contentAnchor = (title: string, cited: string): boolean => {
-  const cw = new Set(lettersOnly(cited).filter((w) => w.length >= 4).map((w) => w.slice(0, 4)))
+  const cw = new Set(lettersOnly(cited).filter((w) => w.length >= 4).map(anchorStem))
   const tw = lettersOnly(title).filter((w) => w.length >= 4 && !STOP.has(w))
   if (!tw.length) return false
-  return tw.some((w) => cw.has(w.slice(0, 4)))
+  return tw.some((w) => cw.has(anchorStem(w)))
 }
 
 const TEMPORAL = rx(
@@ -388,7 +390,8 @@ const IMPERATIVES: Readonly<Record<string, string>> = {
   zamów: 'zamówić', umów: 'umówić', wymień: 'wymienić', oddaj: 'oddać', wpłać: 'wpłacić',
   zabierz: 'zabrać', weź: 'wziąć', dokończ: 'dokończyć', skończ: 'skończyć', ćwicz: 'ćwiczyć',
   odłóż: 'odłożyć', usuń: 'usunąć', dopisz: 'dopisać', zapisz: 'zapisać', ustaw: 'ustawić',
-  odnów: 'odnowić', przelej: 'przelać', przepisz: 'przepisać', przejrzyj: 'przejrzeć', wydrukuj: 'wydrukować',
+  // "Przeleć" is the model's malformed infinitive of "przelać".
+  przeleć: 'przelać', odnów: 'odnowić', przelej: 'przelać', przepisz: 'przepisać', przejrzyj: 'przejrzeć', wydrukuj: 'wydrukować',
   piszę: 'napisać', pisze: 'napisać', przygotuj: 'przygotować', zarezerwuj: 'zarezerwować', skopiuj: 'skopiować', wyślę: 'wysłać',
 }
 export const toInfinitive = (title: string): string => {
@@ -584,6 +587,8 @@ const dayKey = (word: string): string | null => {
   return null
 }
 
+const CORRECTED_DAY_WORDS = 8
+
 // Spoken self-corrections inside one sentence: the value after 'nie, czekaj' / 'jednak' wins.
 export const applyCorrections = (task: TaskDraft, units: readonly Unit[]): TaskDraft => {
   const byId = new Map(units.map((u) => [u.id, u.text]))
@@ -614,7 +619,10 @@ export const applyCorrections = (task: TaskDraft, units: readonly Unit[]): TaskD
     }
     const dueNow = t.due ?? ''
     const dm = new RegExp(DAY_RE.source, 'iu').exec(dueNow)
-    const postDays = [...post.matchAll(DAY_RE)]
+    // The corrected day follows the cue closely; "przesunęli na dziesiątą … wnieść w piątek
+    // wieczorem, bo w sobotę rano nie będzie mi się chciało" gives a reason, not a new day.
+    const near = post.split(/(?<![\p{L}\d])bo(?![\p{L}\d])/u)[0]!.split(/\s+/u).slice(0, CORRECTED_DAY_WORDS).join(' ')
+    const postDays = [...near.matchAll(DAY_RE)]
     if (dm && postDays.length) {
       const last = postDays[postDays.length - 1]!
       const dueKey = dayKey(dm[1]!)
@@ -1582,10 +1590,16 @@ const isListFragment = (text: string): boolean => {
   return words <= 16 && (/,/u.test(text) || /\s(?:i|oraz)\s/u.test(text) || LIST_MORE.test(text))
 }
 
+const OPENS_LIST = rx(String.raw`^(?:\S+\s+){0,2}(?:lista|listę)\s+(?:na|zakupów|do)\b`, 'i')
+
 // Pre-filter plus context: nominal list sentences right after a shopping cue are candidates too.
 export const selectCandidates = <T extends { text: string }>(units: readonly T[]): T[] =>
   units.filter((unit, index) => {
     if (isTaskCandidate(unit.text)) return !isPastNarration(unit.text) && !isHeading(unit.text) && !(isOtherOwned(unit.text) && !LABEL_LEAD.test(unit.text)) && !NO_CHANGE.test(unit.text)
+    // Dictation without punctuation glues the cue to the items: "Dobra lista na jutro po pracy Pomidory kilo …".
+    if (OPENS_LIST.test(unit.text) && unit.text.split(/\s+/u).length >= 8) return true
+    // …or splits it off: "Dobra lista na jutro po pracy" then "Pomidory kilo nie czekaj pół kilo …".
+    if (index > 0 && OPENS_LIST.test(units[index - 1]!.text) && !/[,.]/u.test(unit.text)) return true
     if (!isListFragment(unit.text) || NO_TASK.test(unit.text.toLowerCase())) return false
     return units.slice(Math.max(0, index - LIST_LOOKBACK), index).some((prev) => LIST_CUE.test(prev.text))
   })
@@ -1664,12 +1678,13 @@ export const nominalListTasks = (units: readonly Unit[]): TaskDraft[] => {
 
 // ---------------------------------------------------------------- prompt
 export const TASK_LINES_PROMPT = `ZADANIE: oceń zdania notatki i wypisz zadania autora.
-Zadanie = coś, co AUTOR notatki (ja) ma zrobić w przyszłości: czynność, zalecenie do stosowania (np. brać lek o 8:00) albo umówione spotkanie lub wizyta.
+Zadanie = coś, co AUTOR notatki (ja) ma zrobić w przyszłości: czynność, zalecenie do stosowania (np. brać lek o 8:00) albo umówione spotkanie lub wizyta. Zadaniem jest też plan w czasie teraźniejszym ("w piątek przelewam", "anuluję", "porównuję oferty"), obowiązek bez podmiotu ("slajdy muszą być gotowe do wtorku") i płatność z terminem ("rata sto złotych do dziesiątego").
 To NIE jest zadanie autora:
 - czynność innej osoby ("Ewa przygotuje", "Bartek go odbierze", "Marek ma przysłać"),
 - coś, co już się stało ("było spotkanie", "kupiłam", "odwołałem", "już mam", "załatwione"),
 - plan odwołany lub porzucony ("nie kupuję", "odpada", "rezygnuję", "jednak nie"),
-- fakt, opinia, wspomnienie, porada ogólna, treść wykładu, luźny pomysł, "może / zobaczymy".
+- fakt, opinia, wspomnienie, porada ogólna, treść wykładu, luźny pomysł, "może / zobaczymy",
+- coś odłożone bez terminu ("kiedyś", "nie w tym tygodniu", "może w przyszłym miesiącu").
 Przy poprawce ("nie, czekaj", "jednak", "przesunęli na") obowiązuje późniejsza wersja; sprawdzaj resztę notatki.
 
 Dla każdego zdania z listy napisz jedną linię, w tej samej kolejności i z tym samym numerem:
@@ -1697,6 +1712,11 @@ ZDANIA:
 [12] Ryż, szynka w plastrach, dwa opakowania ręczników papierowych.
 [13] Muszę poprawić ekran logowania.
 [14] Kasia sprawdzi tekst do środy.
+[15] Raport musi być gotowy do poniedziałku, bo szef chce go przejrzeć.
+[16] W piątek przelewam pięćset złotych na lokatę.
+[17] Abonament na siłownię anuluję, i tak nie chodzę.
+[18] Rata za telefon, sto dwadzieścia złotych, do dziesiątego.
+[19] Prąd idzie stałym zleceniem, więc tu nic nie robię.
 ODPOWIEDŹ:
 [1] Oddać projekt — czwartek
 [2] -
@@ -1711,7 +1731,12 @@ ODPOWIEDŹ:
 [11] -
 [12] Kupić: ryż, szynkę w plastrach, 2 opakowania ręczników papierowych
 [13] Poprawić ekran logowania
-[14] -`
+[14] -
+[15] Przygotować raport — do poniedziałku
+[16] Przelać 500 zł na lokatę — piątek
+[17] Anulować abonament na siłownię
+[18] Zapłacić ratę za telefon 120 zł — do 10
+[19] -`
 
 const BATCH_SIZES = [64, 24, 12, 6, 3, 1]
 const OUTPUT_BASE_TOKENS = 40
