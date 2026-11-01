@@ -179,7 +179,9 @@ const CLOCK_HEDGE = /^(?:chyba|może|około|koło|jakoś)$/iu;
 const CLOCK_UNIT_AFTER = /^(?:zł|złot\p{L}*|euro|osób|osoby|minut\p{L}*|procent\p{L}*|razy|stopni|kilo|km)$/iu;
 const minuteValue = (token: string | undefined): number | null => {
   if (!token) return null;
-  const value = /^\d{1,2}$/u.test(token) ? Number(token) : numberWordValue(token);
+  // The last minute word can carry the sentence's punctuation: "pięćdziesiąt dziewięć,".
+  const bare = token.replace(/[,.;:!?]+$/u, '');
+  const value = /^\d{1,2}$/u.test(bare) ? Number(bare) : numberWordValue(bare);
   return value !== null && Number.isInteger(value) && value >= 1 && value <= 59 ? value : null;
 };
 export const spokenClockForPrompt = (text: string): string => {
@@ -189,9 +191,12 @@ export const spokenClockForPrompt = (text: string): string => {
   let last = 0;
   while (index < tokens.length) {
     const word = tokens[index][0];
-    const hour = /(?:ej|ą)$/u.test(word) ? numberWordValue(word) : null;
+    let hour = /(?:ej|ą)$/u.test(word) ? numberWordValue(word) : null;
+    let next = index + 1;
+    // "dwudziestej trzeciej pięćdziesiąt dziewięć" is 23:59, not 20 and 3:50.
+    const hourUnit = hour === 20 && /(?:ej|ą)$/u.test(tokens[next]?.[0] ?? '') ? numberWordValue(tokens[next][0]) : null;
+    if (hour !== null && hourUnit !== null && hourUnit >= 1 && hourUnit <= 4) { hour += hourUnit; next += 1; }
     if (hour !== null && hour >= 1 && hour <= 24) {
-      let next = index + 1;
       const hedged = CLOCK_HEDGE.test(tokens[next]?.[0] ?? '');
       if (hedged) next += 1;
       let minutes = minuteValue(tokens[next]?.[0]);
@@ -203,7 +208,7 @@ export const spokenClockForPrompt = (text: string): string => {
       if (minutes !== null && hour === 20 && minutes < 10) minutes = null;
       if (minutes !== null && !CLOCK_UNIT_AFTER.test(tokens[end + 1]?.[0] ?? '')) {
         out.push(text.slice(last, tokens[index].index), `${hedged ? 'ok. ' : ''}${hour}:${String(minutes).padStart(2, '0')}`);
-        last = tokens[end].index! + tokens[end][0].length;
+        last = tokens[end].index! + tokens[end][0].replace(/[,.;:!?]+$/u, '').length;
         index = end + 1;
         continue;
       }

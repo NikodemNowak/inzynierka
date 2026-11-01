@@ -689,7 +689,7 @@ const surgicalRepair = (
 // A point that kept its facts but ends in a few words the sentences never say
 // ("plany testów w stanie gotowości"): the unsupported tail goes, the rest stays.
 const TAIL_BINDERS = new Set('w we z ze na do od o po u za przy dla in on at for with to of from by'.split(' ').concat(' no not nie bez the an any some też już bardzo'.split(' ')));
-const DANGLING_END = /(?:^|s)(?:czy|że|żeby|aby|bo|i|oraz|lub|albo|a|ale|jak|if|that|whether|and|or|but|to|the|a|an)$/iu;
+const DANGLING_END = /(?:^|\s)(?:czy|że|żeby|aby|bo|i|oraz|lub|albo|a|ale|jak|if|that|whether|and|or|but|to|the|a|an)$/iu;
 const MAX_TRIMMED_TAIL_WORDS = 4;
 const MIN_TRIMMED_HEAD_WORDS = 3;
 const missingContentWords = (text: string, src: string, language: Language): string[] => {
@@ -1397,6 +1397,17 @@ const shortNoteLiterals = (units: readonly Unit[], language: Language): WorkPoin
   }).filter(point => point.text.length > 0);
 };
 
+// A quote is worth showing only when it reads as a point. Dictation without
+// punctuation ("Mamie mam wykupić leki na ciśnienie receptę wysłała mi esemesem …
+// to") cannot be shortened, and "Najpierw powiedziała przez 7 dni" quotes the
+// version the speaker went on to change.
+const MAX_UNPUNCTUATED_LITERAL_WORDS = 14;
+const LITERAL_DANGLING_END = rx(String.raw`(?<![^\W\d_])(?:to|i|a|że|bo|żeby|ale|więc|jak|czy|na|w|we|do|z|ze|o|od|po|się|tak|no)\s*$`, 'i');
+const SUPERSEDED_QUOTE = rx(String.raw`(?<![^\W\d_])(?:(?:najpierw|wcześniej|pierwotnie)\s+(?:[^\W\d_]+\s+){0,2}?(?:mówił|powiedział|miał|był)[^\W\d_]*|miał[aoy]?\s+być)(?![^\W\d_])`, 'i');
+export const unfitLiteral = (literal: string): boolean =>
+  (!/[,;:–()]/u.test(literal) && literal.split(/\s+/u).length > MAX_UNPUNCTUATED_LITERAL_WORDS) ||
+  LITERAL_DANGLING_END.test(literal) || SUPERSEDED_QUOTE.test(literal);
+
 const quotesStaleValue = (literal: string, ids: readonly number[], byId: ReadonlyMap<number, Unit>): boolean => {
   const stale = staleNumbers(ids, byId);
   return [...pointNumbers(literal)].some(n => stale.has(n));
@@ -1462,7 +1473,7 @@ export const finalizePoints = (
     // English speech cut into fixed-size chunks: a quote of a fragment reads as garbage.
     if (language === 'en' && rest.every(id => !/[.!?]["')]*$/u.test(byId.get(id)?.text.trim() ?? ''))) continue;
     // Better no point than one that states the value the speaker took back.
-    if (language === 'pl' && quotesStaleValue(literal, rest, byId)) continue;
+    if (language === 'pl' && (quotesStaleValue(literal, rest, byId) || unfitLiteral(literal))) continue;
     kept.push({ text: literal, sourceIds: rest, literal: true, replaced: reject.text, issues: reject.issues });
     for (const id of rest) covered.add(id);
   }
@@ -1549,7 +1560,7 @@ export const recoverMissed = (points: readonly WorkPoint[], units: readonly Unit
     if (covered.has(unit.id) || !isEventUnit(unit.text)) continue;
     const quoted = tidyQuoted(convert(clauseLiteral({ text: unit.text, sourceIds: [unit.id] }, byId, 'pl'), 'pl'), 'pl');
     const literal = fixStaleWeekday(capitalize(shortenLiteral(impersonalize(quoted, noteWords))), correctionContext([unit.id], byId));
-    if (isMetaPoint(literal) || quotesStaleValue(literal, [unit.id], byId)) continue;
+    if (isMetaPoint(literal) || quotesStaleValue(literal, [unit.id], byId) || unfitLiteral(literal)) continue;
     added.push({ text: literal, sourceIds: [unit.id], literal: true, issues: ['missed'] });
   }
   return added.length ? orderPoints([...points, ...added]) : [...points];

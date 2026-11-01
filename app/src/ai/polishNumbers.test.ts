@@ -279,3 +279,11 @@ test('a half belongs to the thousand it precedes', () => {
   expect(wordsToDigits('pięć i pół miliona')).toBe('5500000')
   expect(wordsToDigits('dwa i pół roku')).toBe('dwa i pół roku')
 })
+
+describe('spoken clock with a compound hour', () => {
+  test('"dwudziestej trzeciej pięćdziesiąt dziewięć" is 23:59 and keeps the comma', () => {
+    expect(spokenClockForPrompt('do dwudziestej trzeciej pięćdziesiąt dziewięć, przez Moodle')).toBe('do 23:59, przez Moodle')
+    expect(spokenClockForPrompt('o dwudziestej pierwszej trzydzieści')).toBe('o 21:30')
+    expect(spokenClockForPrompt('o ósmej trzydzieści.')).toBe('o 8:30.')
+  })
+})
