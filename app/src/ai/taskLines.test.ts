@@ -919,3 +919,29 @@ test('"część" is a noun, and a stated duty survives a non-action answer', () 
     ['Zajęcia z projektu kompetencyjnego', '10:00'],
   ]);
 });
+
+describe('task guards from the weekly plan note', () => {
+  test('a day in a "bo" reason does not replace the stated day', () => {
+    const units = [{ id: 41, text: 'ale dzwonili że przesunęli na dziesiątą więc dziesiąta Opony są w piwnicy trzeba je w piątek wieczorem wnieść do bagażnika bo w sobotę rano nie będzie mi się chciało' }]
+    const raw = parseTaskLines('[41] Wnieść opony zimowe do bagażnika — w piątek wieczorem', new Set([41]), 'pl')
+    expect(postprocessTaskLines(raw, units).kept[0]?.due).toBe('w piątek wieczorem')
+  })
+
+  test('a title word differing only by a vowel alternation is anchored', () => {
+    const units = [{ id: 50, text: 'Urząd w środę jest czynny do osiemnastej, więc w środę po pracy, po tej prezentacji, pójdę.' }]
+    const raw = parseTaskLines('[50] Pójść do urzędu — środa po pracy', new Set([50]), 'pl')
+    expect(postprocessTaskLines(raw, units).kept.map((task) => task.title)).toEqual(['Pójść do urzędu'])
+  })
+
+  test('the malformed "Przeleć" becomes "Przelać"', () => {
+    expect(toInfinitive('Przeleć 500 zł na lokatę')).toBe('Przelać 500 zł na lokatę')
+  })
+
+  test('an unpunctuated shopping list after its cue goes to the model', () => {
+    const units = [
+      { id: 1, text: 'Dobra lista na jutro po pracy' },
+      { id: 2, text: 'Pomidory kilo nie czekaj pół kilo bo i tak nikt ich nie je Makaron penne dwie paczki ser feta' },
+    ]
+    expect(selectCandidates(units).map((unit) => unit.id)).toContain(2)
+  })
+})
