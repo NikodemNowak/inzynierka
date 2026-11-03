@@ -55,6 +55,7 @@ import {
   isTaskCandidate,
   numbersAnchored,
   ownerFilter,
+  ownerNamed,
   parseTaskLines,
   postprocessTaskLines,
   recoverAmount,
@@ -337,6 +338,33 @@ describe('recoverAmount and dedupeTasks', () => {
   });
 });
 
+describe('tasks of named people', () => {
+  const u = units(
+    'Do piątku mam wysłać promotorowi opis pomiarów.',
+    'Marek ma do czwartku sprawdzić tabelę czasów.',
+    'Ona ma to jeszcze przejrzeć.',
+  );
+  test('the model names the person; the title starts with the name', () => {
+    const raw = parseTaskLines('[1] Wysłać opis pomiarów promotorowi — do piątku\n[2] Marek: sprawdzić tabelę czasów — do czwartku', new Set([1, 2]));
+    expect(raw[1]).toMatchObject({ title: 'sprawdzić tabelę czasów', owner: 'Marek' });
+    expect(postprocessTaskLines(raw, u).kept.map(t => t.title)).toEqual(['Wysłać opis pomiarów promotorowi', 'Marek: sprawdzić tabelę czasów']);
+  });
+  test('"Magda: zaproszenia, ja: podesłać numery" is two tasks', () => {
+    expect(parseTaskLines('[1] Magda: zrobić zaproszenia, ja: podesłać numery — do piątku', new Set([1])).map(t => [t.owner, t.title]))
+      .toEqual([['Magda', 'zrobić zaproszenia'], [undefined, 'Podesłać numery']]);
+  });
+  test('"Kupić:" is a label, not a person', () => {
+    expect(parseTaskLines('[1] Kupić: chleb, mleko', new Set([1]))[0]).not.toHaveProperty('owner');
+  });
+  test('a name missing from the sentence or a pronoun subject still drops the task', () => {
+    const raw = parseTaskLines('[2] Ewa: sprawdzić tabelę czasów\n[3] Przejrzeć to', new Set([2, 3]));
+    expect(ownerNamed('Ewa', u[1]!.text)).toBe(false);
+    expect(ownerNamed('Marek', u[1]!.text)).toBe(true);
+    expect(ownerNamed('Mama', 'Jutro mama odbierze paczkę.')).toBe(true);
+    expect(postprocessTaskLines(raw, u).kept).toEqual([]);
+  });
+});
+
 describe('postprocessTaskLines', () => {
   test('runs the guards in order and reports rejections', () => {
     const u = units(
@@ -581,7 +609,7 @@ describe('round 4 task fixes', () => {
     expect(isPastNarration('Fryzjer był na jedenastą, ale jednak na trzynastą.')).toBe(false)
     expect(isPastNarration('Kontrola jest we wtorek, lekarka powiedziała, że o szesnastej.')).toBe(false)
     expect(selectCandidates(units('Zapłaciłem trzysta złotych w piątek.', 'Muszę zapłacić rachunek.')).map(u => u.id)).toEqual([2])
-    expect(selectCandidates(units('Druga sprawa: prezentacja na poniedziałek.', 'Ola przygotuje listę uwag do piątku.')).map(u => u.id)).toEqual([])
+    expect(selectCandidates(units('Druga sprawa: prezentacja na poniedziałek.', 'Ola przygotuje listę uwag do piątku.')).map(u => u.id)).toEqual([2])
   })
   test('limitCandidates keeps the most binding sentences in note order', () => {
     const u = [{ id: 1, text: 'W piątek zajęcia.' }, { id: 2, text: 'Muszę oddać raport.' }, { id: 3, text: 'W sobotę rano zrobię przegląd.' }]
@@ -945,3 +973,17 @@ describe('task guards from the weekly plan note', () => {
     expect(selectCandidates(units).map((unit) => unit.id)).toContain(2)
   })
 })
+
+describe('answer lines numbered past the batch gaps', () => {
+  const batch = [
+    { id: 5, text: 'Sprawozdanie z laboratorium z elektrotechniki muszę oddać we wtorek do czternastej.' },
+    { id: 6, text: 'Konsultacje u doktora Maja mam w środę o szesnastej, chcę zapytać o zadania z szeregów.' },
+  ];
+  test('a line goes to the sentence it shares its words with', () => {
+    const tasks = parseTaskLines('[4] Oddać sprawozdanie z laboratorium z elektrotechniki — wtorek 14:00\n[5] Zapytać o zadania z szeregów u doktora Maja — środa 16:00', new Set([5, 6]), 'pl', batch);
+    expect(tasks.map(t => [t.sourceIds[0], t.title])).toEqual([[5, 'Oddać sprawozdanie z laboratorium z elektrotechniki'], [6, 'Zapytać o zadania z szeregów u doktora Maja']]);
+  });
+  test('a line matching nothing outside the batch is dropped', () => {
+    expect(parseTaskLines('[9] Kupić chleb', new Set([5, 6]), 'pl', batch)).toEqual([]);
+  });
+});

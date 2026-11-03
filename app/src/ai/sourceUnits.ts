@@ -115,6 +115,10 @@ const ADJECTIVE_END = /^\p{L}{4,}(?:ych|ymi|ego|emu|owej|owym|nej|nym|skiej|skim
 const ORDINAL_END = /(?:ej|ego|ym)$/u;
 const MEAL = /^(?:obiad|lunch|śniadanie|kolację|kolacje|kawę|kawe|deser)$/u;
 const CAPITAL_VERB = /^(?:prze|przy|po|wy|za|od|roz|na|do)\p{Ll}{4,}(?:a|e|i|uje|ją)$/u;
+const VALUE_NOUNS = /^(?:budżet|koszt|koszty|cena|kwota|rachunek|czynsz|rata)$/u;
+const VALUE_VERBS = /^(?:wynosi|wynosił|wynosiła|wyniósł|kosztuje|kosztował|kosztowała|to)$/u;
+const DEADLINE_DAY = /^(?:poniedziałku|wtorku|środy|czwartku|piątku|soboty|niedzieli|jutra|weekendu)$/u;
+const NEGATED_PLAN =/^\p{L}{3,}(?:emy|imy|ymy|amy|uję|ujemy)$/u;
 const TOPIC_STARTS = new Set(["spotkanie", "rachunek", "rachunki", "wizyta", "zaliczka", "zaliczkę", "zakupy", "prezentacja", "egzamin", "kolokwium", "termin", "rata", "czynsz", "przegląd", "urodziny", "wyjazd", "lot", "pociąg"]);
 
 // English speech: capitals mark names, days and months, so only "I…" and spoken
@@ -162,6 +166,12 @@ const boundaryScore = (index: number, raw: readonly string[], norm: readonly str
   if (CAPITALIZED.test(raw[index]) && NAMED_AFTER.test(previous)) return 0;
   if (CAPITALIZED.test(raw[index]))
     return raw[index].length > 2 && !TIME_STARTS.has(norm[index]) && /\p{L}{2,}(?:ł|ła|ło|li|ły)$/u.test(previous) ? 0 : 4;
+  // "… wykres porównawczy budżet wynosił 120 zł": an amount the note states opens its own fact.
+  if (VALUE_NOUNS.test(norm[index]) && VALUE_VERBS.test(norm[index + 1] ?? "") && !/^(?:na|w|we|z|ze|do|o|za|po|przed|cały|całym|nasz|ten|ostateczny)$/u.test(previous)) return 3;
+  // "Notatka dotyczy testów do piątku mam wysłać …": a deadline followed by the speaker's duty.
+  if (norm[index] === "do" && DEADLINE_DAY.test(norm[index + 1] ?? "") && DUTY_AFTER_CONJUNCTION.has(norm[index + 2] ?? "") && norm[index + 2] !== "jeszcze") return 4;
+  // "… 180 zł nie kupujemy nowego mikrofonu": a decision not to do something.
+  if (norm[index] === "nie" && NEGATED_PLAN.test(norm[index + 1] ?? "") && !NUMBER_WORD.test(previous)) return 3;
   // "… część testów a o dziesiątej mamy zajęcia": "a" before a new time opens the next event.
   // Not "a potem": a narrated sequence often carries a correction of the previous words.
   const next = norm[index + 1] ?? "";

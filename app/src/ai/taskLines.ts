@@ -31,6 +31,8 @@ interface Unit {
 // guards widen sourceIds to neighbours.
 export interface TaskDraft extends TaskLine {
   modelIds: number[]
+  // Someone other than the author named in the sentence ("Marek ma sprawdzić").
+  owner?: string
 }
 export interface RejectedTask {
   title: string
@@ -453,19 +455,41 @@ export const cleanDue = (t: TaskDraft): TaskDraft => {
 }
 
 const LINE = /^\s*\[(\d+)\]\s*(.*?)\s*$/u
-export const parseTaskLines = (text: string, allowed: ReadonlySet<number>, language: Language = 'pl'): TaskDraft[] => {
+// "Marek: sprawdzić tabelę" - a person's name, not a label such as "Kupić:".
+const OWNER_LEAD = /^(\p{Lu}\p{Ll}+(?:\s+\p{Lu}\p{Ll}+)?)\s*:\s*(\p{L}.*)$/u
+// The model sometimes numbers its answer 1, 2, 3… although the batch skips sentences
+// ("[4] Oddać sprawozdanie" for sentence [5]): a line that shares nothing with its own
+// sentence goes to the batch sentence it clearly comes from.
+const MIN_ANCHOR_STEMS = 2
+const stemsOf = (text: string): Set<string> => new Set(lettersOnly(text).filter((w) => w.length >= 4).map((w) => w.slice(0, 4)))
+export const anchoredId = (id: number, body: string, batch: readonly Unit[]): number | null => {
+  const wanted = stemsOf(body)
+  const shared = (unit: Unit): number => [...stemsOf(unit.text)].filter((s) => wanted.has(s)).length
+  const own = batch.find((unit) => unit.id === id)
+  if (own && shared(own) > 0) return id
+  const best = batch.map((unit) => ({ id: unit.id, score: shared(unit) })).sort((a, b) => b.score - a.score)[0]
+  if (best && best.score >= MIN_ANCHOR_STEMS) return best.id
+  return own ? id : null
+}
+
+export const parseTaskLines = (text: string, allowed: ReadonlySet<number>, language: Language = 'pl', batch?: readonly Unit[]): TaskDraft[] => {
   const out: TaskDraft[] = []
   for (const line of text.split(/\r\n|[\n\r\v\f\x1c-\x1e\x85\u2028\u2029]/u)) {
     const m = LINE.exec(line)
     if (!m) continue
-    const id = Number(m[1])
-    if (!allowed.has(id)) continue
     const body = m[2]!.trim()
     if (!body || ['-', '—', '–'].includes(body) || body.toUpperCase().startsWith('BRAK') || body.startsWith('- ')) continue
-    for (const part of body.split('|')) {
-      const { title, due } = splitTitleDue(part)
+    const id = batch ? anchoredId(Number(m[1]), body, batch) : Number(m[1])
+    if (id === null || !allowed.has(id)) continue
+    // "Magda: zaproszenia, ja: podesłać numery" - another person's task and the author's in one line.
+    for (const part of body.split(/\||,\s*(?=ja\s*:)/iu)) {
+      const { title, due } = splitTitleDue(part.replace(/^\s*ja\s*:\s*/iu, ''))
       if (!title || title === '-') continue
-      const draft = { title, due, sourceIds: [id], modelIds: [] }
+      const lead = language === 'en' ? null : OWNER_LEAD.exec(title)
+      const owned = lead && !/[ćc]$/u.test(lead[1]!) ? lead : null
+      const draft: TaskDraft = owned
+        ? { title: owned[2]!, due, sourceIds: [id], modelIds: [], owner: owned[1]! }
+        : { title, due, sourceIds: [id], modelIds: [] }
       // English deadlines are checked by the English guards; the Polish cleanup would drop "today".
       out.push(language === 'en' ? draft : cleanDue(repairPlaceholder(draft)))
     }
@@ -757,7 +781,7 @@ export const validateTasks = (tasks: readonly TaskDraft[], units: readonly Unit[
         }
       }
     }
-    kept.push({ title, due, sourceIds: ids, modelIds: t.modelIds.length ? t.modelIds : t.sourceIds })
+    kept.push({ ...t, title, due, sourceIds: ids, modelIds: t.modelIds.length ? t.modelIds : t.sourceIds })
   }
   return { kept, rejected }
 }
@@ -865,14 +889,51 @@ const OTHER_VS = rx(
 export const isOtherOwned = (sentence: string): boolean =>
   (OTHER_SUBJ.test(sentence) || OTHER_VS.test(sentence)) && !FIRST_PERSON.test(sentence)
 
+// "Marek ma do czwartku sprawdzić", "Paweł ma zamówić", "Agnieszka zadzwoni": a person named as the doer.
+// "lekarka przepisała", "ona ma to przejrzeć" name nobody the task could be shown for.
+const NAMED_DOER = rx(String.raw`(?:^|[,.;:]\s*|\s)(?!Ja\b)[A-ZŁŚŻŹĆ][a-ząćęłńóśźż]{2,}\s+(?:(?:ma|mają|musi)\s+(?:\w+\s+){0,3}?\w+(?:ć|c)\b|zrobi|przygotuje|odbierze|kupi|roześle|zamówi|zadzwoni|zarezerwuje|podeśle|zajmie się|załatwi|ogarnie|przyniesie|zawiezie|sprawdzi|przejrzy|poprawi|przyśle|wyśle|napisze|dokończy|skończy|zorganizuje)\b`)
+export const namesDoer = (sentence: string): boolean => NAMED_DOER.test(sentence) || OTHER_VS.test(sentence)
+
+const ROLE_OWNERS = new Set(['mama', 'tata', 'babcia', 'dziadek', 'brat', 'siostra', 'żona', 'mąż', 'szef', 'szefowa', 'promotor', 'promotorka'])
+// "Marek" for "Marek ma", "Hania" for "Hani", "Mama" for "mama odbierze": a capitalised word or a family role in the sentence.
+export const ownerNamed = (owner: string, sentence: string): boolean => {
+  const first = owner.split(/\s+/u)[0]!
+  const stem = first.toLowerCase().slice(0, Math.min(4, first.length - 1))
+  const words = sentence.match(/\p{L}+/gu) ?? []
+  if (ROLE_OWNERS.has(first.toLowerCase())) return words.some((word) => word.toLowerCase().startsWith(stem))
+  return words.some((word, index) => /^\p{Lu}\p{Ll}/u.test(word) && word.toLowerCase().startsWith(stem) &&
+    // A sentence's first word is capitalised anyway: only a name the speaker gives a task ("Marek ma") counts there.
+    (index > 0 || word.toLowerCase() === first.toLowerCase()))
+}
+
+// "Marek: sprawdzić tabelę czasów".
+const withOwner = (t: TaskDraft): TaskDraft => {
+  if (!t.owner) return t
+  const title = t.title.replace(/[\s,;:]+$/u, '')
+  const action = /^\p{Lu}\p{Ll}/u.test(title) ? title.charAt(0).toLowerCase() + title.slice(1) : title
+  const owner = ROLE_OWNERS.has(t.owner.toLowerCase()) ? t.owner.charAt(0).toUpperCase() + t.owner.slice(1).toLowerCase() : t.owner
+  const out: TaskDraft = { ...t, title: `${owner}: ${action}` }
+  delete out.owner
+  return out
+}
+
 // Ownership is judged on the sentences the model pointed at that actually carry the task's content words
 // (a neighbouring date sentence says nothing about who does the work).
 export const ownerFilter = (tasks: readonly TaskDraft[], units: readonly Unit[]): GuardResult => {
   const byId = new Map(units.map((u) => [u.id, u.text]))
   const kept: TaskDraft[] = []
   const rejected: RejectedTask[] = []
-  for (const t of tasks) {
-    const ids = (t.modelIds.length ? t.modelIds : t.sourceIds).filter((i) => byId.has(i))
+  for (const draft of tasks) {
+    const ids = (draft.modelIds.length ? draft.modelIds : draft.sourceIds).filter((i) => byId.has(i))
+    // The named person must be in the cited sentence; an invented one leaves the task to the checks below.
+    // "Kowalska: zrobić do środy" says nothing about what is to be done.
+    const object = lettersOnly(draft.title).slice(1).filter((w) => w.length >= 4 && !DATE_RX.test(w))
+    if (draft.owner && object.length && ownerNamed(draft.owner, ids.map((i) => byId.get(i)!).join(' '))) {
+      kept.push(draft)
+      continue
+    }
+    const t: TaskDraft = { ...draft }
+    delete t.owner
     const objectStems = new Set(lettersOnly(t.title.split(/\s+/u).slice(1).join(' ')).filter((w) => w.length >= 4).map((w) => w.slice(0, 4)))
     const anchored = ids.filter((i) => lettersOnly(byId.get(i)!).some((w) => w.length >= 4 && objectStems.has(w.slice(0, 4))))
     const judged = anchored.length ? anchored : ids
@@ -958,7 +1019,7 @@ export const recoverAmount = (t: TaskDraft, units: readonly Unit[]): TaskDraft =
     const near = words.some(
       (w, k) =>
         (w.startsWith('zł') || w.startsWith('złot') || w.startsWith('euro')) &&
-        !words.slice(Math.max(0, k - 4), k).some((x) => /^(?:kosztował\w*|zapłacił\w*|wydał\w*|dostał\w*|kupił\w*)$/u.test(x)) &&
+        !words.slice(Math.max(0, k - 4), k).some((x) => /^(?:kosztował\w*|zapłacił\w*|wydał\w*|dostał\w*|kupił\w*|wynosił\w*)$/u.test(x)) &&
         words.slice(Math.max(0, k - 6), k + 6).some((x) => x.length >= 4 && ts.has(x.slice(0, 4))),
     )
     if (near) found.set(`${amounts[0]!.value}|${amounts[0]!.currency}`, amounts[0]!)
@@ -1459,7 +1520,7 @@ export const postprocessTaskLines = (raw: readonly TaskDraft[], units: readonly 
   )
   tasks = tasks.map((t) => cleanTaskDue(dueFromCorrection(t, units), units))
   const noteWords = new Set(units.flatMap((unit) => unit.text.toLowerCase().match(/\p{L}+/gu) ?? []))
-  return { kept: dedupeTasks(mergeVague(tasks)).map((t) => polishTaskTitle(t, noteWords)), rejected }
+  return { kept: dedupeTasks(mergeVague(tasks)).map((t) => withOwner(polishTaskTitle(t, noteWords))), rejected }
 }
 
 const CORRECTION_TURN = /(?:nie,?\s+czekaj|przenie\p{L}+|przesun\p{L}+|zmienili\s+na|jednak)\s+(.{0,60})/iu
@@ -1534,7 +1595,6 @@ const FORWARD = [MODAL, FIRST_PERSON_FUT, INF, HEUR_COND, String.raw`\b(żebym|�
 // 'Druga sprawa: prezentacja na poniedziałek.' - a heading the speaker reads out, not a task.
 const HEADING = rx(String.raw`^(?:\p{L}+\s+)?(?:sprawa|sekcja|część|punkt)(?:\s+\p{L}+)?\s*:`, 'i')
 export const isHeading = (text: string): boolean => HEADING.test(text.trim()) && text.trim().split(/\s+/u).length <= 9
-const LABEL_LEAD = /^\s*\p{L}+\s*:/u
 const NO_CHANGE = rx(String.raw`\bbez zmian\b`, 'i')
 // Present-tense facts ('Kontrola jest we wtorek') and appointments stay candidates even with a past clause,
 // except a past meeting ('miałem spotkanie').
@@ -1596,7 +1656,7 @@ const OPENS_LIST = rx(String.raw`^(?:\S+\s+){0,2}(?:lista|listę)\s+(?:na|zakup�
 // Pre-filter plus context: nominal list sentences right after a shopping cue are candidates too.
 export const selectCandidates = <T extends { text: string }>(units: readonly T[]): T[] =>
   units.filter((unit, index) => {
-    if (isTaskCandidate(unit.text)) return !isPastNarration(unit.text) && !isHeading(unit.text) && !(isOtherOwned(unit.text) && !LABEL_LEAD.test(unit.text)) && !NO_CHANGE.test(unit.text)
+    if (isTaskCandidate(unit.text)) return !isPastNarration(unit.text) && !isHeading(unit.text) && (!isOtherOwned(unit.text) || namesDoer(unit.text)) && !NO_CHANGE.test(unit.text)
     // Dictation without punctuation glues the cue to the items: "Dobra lista na jutro po pracy Pomidory kilo …".
     if (OPENS_LIST.test(unit.text) && unit.text.split(/\s+/u).length >= 8) return true
     // …or splits it off: "Dobra lista na jutro po pracy" then "Pomidory kilo nie czekaj pół kilo …".
@@ -1678,10 +1738,10 @@ export const nominalListTasks = (units: readonly Unit[]): TaskDraft[] => {
 }
 
 // ---------------------------------------------------------------- prompt
-export const TASK_LINES_PROMPT = `ZADANIE: oceń zdania notatki i wypisz zadania autora.
+export const TASK_LINES_PROMPT = `ZADANIE: oceń zdania notatki i wypisz zadania autora oraz zadania innych osób wymienionych w notatce.
 Zadanie = coś, co AUTOR notatki (ja) ma zrobić w przyszłości: czynność, zalecenie do stosowania (np. brać lek o 8:00) albo umówione spotkanie lub wizyta. Zadaniem jest też plan w czasie teraźniejszym ("w piątek przelewam", "anuluję", "porównuję oferty"), obowiązek bez podmiotu ("slajdy muszą być gotowe do wtorku") i płatność z terminem ("rata sto złotych do dziesiątego").
-To NIE jest zadanie autora:
-- czynność innej osoby ("Ewa przygotuje", "Bartek go odbierze", "Marek ma przysłać"),
+Zadanie innej osoby nazwanej w zdaniu ("Ewa przygotuje", "Marek ma sprawdzić", "mama odbierze") wypisz z jej imieniem i dwukropkiem: "Ewa: przygotować prezentację". Gdy nie wiadomo, kto ("ktoś", "oni"), pomiń.
+To NIE jest zadanie:
 - coś, co już się stało ("było spotkanie", "kupiłam", "odwołałem", "już mam", "załatwione"),
 - plan odwołany lub porzucony ("nie kupuję", "odpada", "rezygnuję", "jednak nie"),
 - fakt, opinia, wspomnienie, porada ogólna, treść wykładu, luźny pomysł, "może / zobaczymy",
@@ -1720,7 +1780,7 @@ ZDANIA:
 [19] Prąd idzie stałym zleceniem, więc tu nic nie robię.
 ODPOWIEDŹ:
 [1] Oddać projekt — czwartek
-[2] -
+[2] Zosia: zająć się zakupami
 [3] -
 [4] Wizyta u fryzjera — 13:00
 [5] -
@@ -1732,7 +1792,7 @@ ODPOWIEDŹ:
 [11] -
 [12] Kupić: ryż, szynkę w plastrach, 2 opakowania ręczników papierowych
 [13] Poprawić ekran logowania
-[14] -
+[14] Kasia: sprawdzić tekst — do środy
 [15] Przygotować raport — do poniedziałku
 [16] Przelać 500 zł na lokatę — piątek
 [17] Anulować abonament na siłownię
@@ -2018,7 +2078,7 @@ export const extractTaskLines = async (
     }
     // A cut answer ends in a half-written line; drop it.
     const answer = cutAnswer(result.text, stopped)
-    raw.push(...parseTaskLines(answer, new Set(batch.map((unit) => unit.id)), language))
+    raw.push(...parseTaskLines(answer, new Set(batch.map((unit) => unit.id)), language, batch))
     partial = null
     if (!stopped) {
       rest = rest.slice(batch.length)

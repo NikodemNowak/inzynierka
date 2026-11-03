@@ -325,3 +325,17 @@ test('an unpunctuated iOS transcript is cut before each timed event, not at stra
     'a o dziesiątej jakoś mamy zajęcia z projektu kompetencyjnego i pokazujemy że aplikacja działa na dwóch serwerach',
   ]);
 });
+
+test('an unpunctuated note is cut before a duty with its deadline, a stated amount and a decision not to buy', () => {
+  const text = 'Notatka dotyczy testów aplikacji do piątku mam wysłać promotorowi opis pomiarów Marek ma do czwartku sprawdzić tabelę czasów Anna ma do poniedziałku przygotować wykres porównawczy budżet wynosił 120 zł Poprawka ostateczny budżet to 180 zł nie kupujemy nowego mikrofonu kopię plików zrobiłem wczoraj';
+  const plan = deterministicSourceUnitPlan(text);
+  expect(plan && sourceUnitsFromPlan(text, plan).map((unit) => unit.text)).toEqual([
+    'Notatka dotyczy testów aplikacji',
+    'do piątku mam wysłać promotorowi opis pomiarów',
+    'Marek ma do czwartku sprawdzić tabelę czasów',
+    'Anna ma do poniedziałku przygotować wykres porównawczy',
+    'budżet wynosił 120 zł',
+    'Poprawka ostateczny budżet to 180 zł',
+    'nie kupujemy nowego mikrofonu kopię plików zrobiłem wczoraj',
+  ]);
+});

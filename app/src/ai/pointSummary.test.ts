@@ -34,6 +34,8 @@ import {
   isCopiedPoint,
   shortenCopiedPoints,
   rewriteKeepsFacts,
+  addDoers,
+  dropDeniedValues,
   type SummaryPoint,
   unfitLiteral,
 } from './pointSummary';
@@ -959,3 +961,25 @@ describe('unfitLiteral', () => {
     expect(unfitLiteral('Kontrola 27 października we wtorek o 16:15, morfologia na czczo w poniedziałek rano przed pracą')).toBe(false)
   })
 })
+
+describe('named doers, denied values and shortened deadlines', () => {
+  const marek = 'Marek ma do czwartku sprawdzić tabelę czasów';
+  const anna = 'Anna ma do poniedziałku przygotować wykres porównawczy';
+  const listed = 'Testy aplikacji: do piątku wysłać opis pomiarów, do czwartku sprawdzić tabelę czasów, do poniedziałku przygotować wykres porównawczy';
+  test('a duty of a named person summarised without the name is flagged and repaired', () => {
+    const units = [{ id: 1, text: 'do piątku mam wysłać promotorowi opis pomiarów' }, { id: 2, text: marek }, { id: 3, text: anna }];
+    const byId = new Map(units.map(unit => [unit.id, unit]));
+    expect(checkPoint({ text: listed, sourceIds: [1, 2, 3] }, byId, units)).toContain('doer:Marek');
+    expect(addDoers(listed, units.map(unit => unit.text))).toBe(
+      'Testy aplikacji: do piątku wysłać opis pomiarów, Marek: do czwartku sprawdzić tabelę czasów, Anna: do poniedziałku przygotować wykres porównawczy');
+  });
+  test('the replaced amount named only to deny it is dropped', () => {
+    expect(dropDeniedValues('Ostateczny budżet 180 zł, nie 120 zł', ['120'])).toBe('Ostateczny budżet 180 zł');
+    expect(dropDeniedValues('Budżet 180 zł (zamiast 120 zł)', ['120'])).toBe('Budżet 180 zł');
+    expect(dropDeniedValues('Budżet 1200 zł', ['120'])).toBe('Budżet 1200 zł');
+  });
+  test('a shortening that drops a deadline or a name is not taken', () => {
+    expect(rewriteKeepsFacts('Do piątku wysłać opis pomiarów', listed, listed)).toBe(false);
+    expect(rewriteKeepsFacts('Do czwartku sprawdzić tabelę czasów', 'Do czwartku Marek ma sprawdzić tabelę czasów', marek)).toBe(false);
+  });
+});

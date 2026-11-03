@@ -38,7 +38,8 @@ const rx = (source: string, flags = ''): RegExp =>
   new RegExp(source.replace(/\[\^\\W\\d_\]/g, '\\p{L}').replace(/\\b/g, BOUNDARY).replace(/\\w/g, WORD), `${flags}u`);
 const words = (text: string): string[] => text.toLowerCase().match(/\p{L}+/gu) ?? [];
 const STEM = 4;
-const stems = (text: string): string[] => words(text).filter(w => w.length >= 4).map(w => w.slice(0, STEM));
+const OWAC_FORM = /ow(?:ać|anie|ania)$/u;
+const stems =(text: string): string[] => words(text).filter(w => w.length >= 4).map(w => w.slice(0, STEM));
 const stripChars = (text: string, chars: string): string => {
   let start = 0;
   let end = text.length;
@@ -394,6 +395,8 @@ export const snapToNoteSpelling = (text: string, noteWords: ReadonlySet<string>)
 export const polishPoint = (text: string, src: string, noteWords: ReadonlySet<string> = new Set()): string =>
   fixFirstPersonTail(lowerStrayCapitals(fixDroppedMinutes(snapToNoteSpelling(text, noteWords), src)), src);
 
+// "Marek ma do czwartku…", "Anna przygotuje…": a named person opens the sentence with their duty.
+const NAMED_DOER = /^(\p{Lu}\p{Ll}{2,})\s+(?:ma|mają|musi|muszą|powinien|powinna|zrobi|przygotuje|sprawdzi|wyśle|kupi|zadzwoni|napisze|załatwi|zajmie\s+się)(?!\p{L})/u;
 const checkPointPl = (
   text: string, src: string, ids: readonly number[], allUnits: readonly Unit[] | null, minOverlap: number,
 ): string[] => {
@@ -466,7 +469,8 @@ const checkPointPl = (
   const noteStems = new Set(stems(noteText));
   const noteWords = new Set(words(noteText));
   if (wanted.length) {
-    const missing = wanted.filter(w => !haveStems.has(w.slice(0, STEM)));
+    // "kupować" for the speaker's "kupujemy": the -ować/-uje alternation keeps the stem.
+    const missing = wanted.filter(w => !haveStems.has(w.slice(0, STEM)) && !haveStems.has(w.replace(OWAC_FORM, 'uj').slice(0, STEM)));
     // An invented verb form ("przepłaciłem", "dojde") shares no long prefix with any word of the note.
     const noteList = [...noteWords];
     const invented = missing.filter(w => w.length >= 5 && INVENTED_VERB.test(w) &&
@@ -487,6 +491,17 @@ const checkPointPl = (
     const pref = lw.slice(0, Math.max(3, Math.min(STEM, lw.length - 2)));
     const inflected = [...noteWords].some(w => w.startsWith(pref)) && NAME_ENDING.test(lw);
     if (!(noteWords.has(lw) || inflected) && !SUMMARY_VOCAB.has(lw)) { issues.push(`name:${name}`); break; }
+  }
+  // 6a. "Marek ma do czwartku sprawdzić tabelę" summarised without "Marek" reads as the author's duty.
+  {
+    const pointStems = new Set(stems(text));
+    for (const id of ids) {
+      const unit = allUnits?.find(u => u.id === id)?.text ?? '';
+      const doer = NAMED_DOER.exec(unit);
+      if (!doer) continue;
+      const duty = stems(unit.slice(doer[0].length)).filter(s => !DATE_PREFIX.some(p => p.test(s)));
+      if (duty.filter(s => pointStems.has(s)).length >= 2 && !pointStems.has(doer[1].toLowerCase().slice(0, STEM))) { issues.push(`doer:${doer[1]}`); break; }
+    }
   }
   // 6b. a phrase rebuilt around another preposition ("na miejscu" -> "do miejsca")
   const prepHit = swappedPreposition(text, src, noteText);
@@ -844,10 +859,39 @@ const undoPlannedAsDone = (text: string, src: string): string | null => {
 };
 
 // Citation repair, then surgical repair (also on each re-cited variant).
+// "…, do czwartku sprawdzić tabelę czasów" -> "…, Marek: do czwartku sprawdzić tabelę czasów".
+export const addDoers = (text: string, cited: readonly string[]): string => {
+  const segments = text.split(/(?<=[,;])\s+/u);
+  for (const sentence of cited) {
+    const doer = NAMED_DOER.exec(sentence);
+    if (!doer) continue;
+    const duty = new Set(stems(sentence.slice(doer[0].length)));
+    const at = segments.findIndex(segment => stems(segment).filter(s => duty.has(s)).length >= 2);
+    if (at < 0 || stems(segments[at]).includes(doer[1].toLowerCase().slice(0, STEM))) continue;
+    const head = segments[at].match(/^\p{L}[^:]{0,40}:\s+/u)?.[0] ?? '';
+    segments[at] = `${head}${doer[1]}: ${segments[at].slice(head.length)}`;
+  }
+  return segments.join(' ');
+};
+
+export const dropDeniedValues = (text: string, values: readonly string[]): string =>
+  values.reduce((out, value) => out.replace(
+    rx(String.raw`\s*[,(–-]?\s*(?:a\s+)?(?:nie|zamiast)\s+${value}(?!\d)(?:\s*(?:zł|złotych|euro|eur|%))?\s*\)?(?=[,.;]|$)`, 'i'), ''), text);
+
 export const repairPoint = (
   start: WorkPoint, byId: ReadonlyMap<number, Unit>, allUnits: readonly Unit[], language: Language = 'pl', radius = 2,
 ): { point: WorkPoint; issues: string[] } => {
   let point = start;
+  // "Ostateczny budżet 180 zł, nie 120 zł": the replaced value named only to deny it.
+  const stale = checkPoint(point, byId, allUnits, language).find(issue => issue.startsWith('stale:'));
+  if (language === 'pl' && stale) {
+    const text = dropDeniedValues(point.text, stale.slice('stale:'.length).split(','));
+    if (text !== point.text) point = { ...point, text };
+  }
+  if (language === 'pl' && checkPoint(point, byId, allUnits, language).some(issue => issue.startsWith('doer:'))) {
+    const text = addDoers(point.text, point.sourceIds.map(id => byId.get(id)?.text ?? ''));
+    if (text !== point.text) point = { ...point, text };
+  }
   // "o 8:30" for "ósmą chyba 30": the speaker's hedge on the hour comes back as "ok.".
   if (language === 'pl' && checkPoint(point, byId, allUnits, language).some(issue => issue.startsWith('hedge:'))) {
     const hedged = hedgeClock(point.text, citedText(point.sourceIds, byId));
@@ -1846,13 +1890,18 @@ const clockTimes = (text: string): string[] =>
 // A short rewrite may drop words but not the negation, and may not bend a word of the
 // note into a form that does not exist ("sobaty" for "soboty", "bole" for "bólu").
 // checkPoint only rejects values a point adds, so dropping a stated one is guarded here.
+const DEADLINE_WORD = /(?<!\p{L})(?:poniedział|wtor|środ|czwart|piąt|sobot|niedziel|jutr|pojutrz)\p{L}*/giu;
 export const rewriteKeepsFacts = (rewrite: string, original: string, cited: string): boolean => {
   if (NEGATION.test(original) && !NEGATION.test(rewrite)) return false;
   const rewriteClocks = new Set(clockTimes(rewrite));
   if (clockTimes(original).some(clock => !rewriteClocks.has(clock))) return false;
   const rewriteNumbers = pointNumbers(rewrite);
   if ([...pointNumbers(original)].some(value => !rewriteNumbers.has(value))) return false;
-  const known = [...new Set([...words(original), ...words(cited)].map(fold))];
+  // "do czwartku sprawdzić tabelę" dropped from a shortened point is a lost deadline; a dropped name, a lost doer.
+  const kept = new Set(words(rewrite).map(word => word.slice(0, 5)));
+  const lost = (pattern: RegExp): boolean => (original.match(pattern) ?? []).some(word => !kept.has(word.toLowerCase().slice(0, 5)));
+  if (lost(DEADLINE_WORD) || lost(/(?<=\S\s+)\p{Lu}\p{Ll}{2,}/gu)) return false;
+  const known =[...new Set([...words(original), ...words(cited)].map(fold))];
   const knownSet = new Set(known);
   // An inflected ending ("błędy" → "błędów") is fine; a change inside the stem is not.
   const commonPrefix = (a: string, b: string): number => {
