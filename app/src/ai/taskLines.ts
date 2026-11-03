@@ -6,6 +6,7 @@ import { numberSpans, numberWordValue, promptView } from './polishNumbers'
 import { TASK_LINES_PROMPT_EN, englishPromptView, isTaskCandidateEn, postprocessTaskLinesEn } from './taskLinesEn'
 import { noteSourceSystem, sourceFirstPrompt } from './sharedSourcePrompt'
 import { digitView, inferDue, ordinalHour, repairDue, whenOf } from './taskDueRepair'
+import { extractMeetingTasks, isRecordedConversation } from './meetingTasks'
 
 // Single-call task extractor: one batched pass over the candidate sentences of
 // a note, then deterministic guards. Polish only (the pre-filter, the numeral
@@ -1940,6 +1941,13 @@ export const extractTaskLines = async (
   execution?: ProcessingExecutionContext,
 ): Promise<TaskLinesResult> => {
   const en = language === 'en'
+  if (!en && isRecordedConversation(units)) {
+    const tasks = (await extractMeetingTasks(units, execution)).map((task): TaskLine => {
+      const tidy = tidyTask({ ...task, modelIds: [...task.sourceIds] })
+      return { title: tidy.title, due: tidy.due, sourceIds: task.sourceIds }
+    })
+    return { tasks, rendered: tasks.map(renderTask), warnings: [] }
+  }
   const { nominal, candidates } = pickCandidates(units, language)
   if (!candidates.length && !nominal.length) return emptyResult()
   const system = noteSourceSystem(language)
