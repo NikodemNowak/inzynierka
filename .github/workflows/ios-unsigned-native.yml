@@ -28,10 +28,6 @@ on:
       - 'app/assets/adaptive-icon.png'
       - 'app/assets/favicon.png'
 
-concurrency:
-  group: ios-unsigned-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
   build:
     uses: ./.github/workflows/ios-unsigned.yml
