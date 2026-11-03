@@ -159,3 +159,9 @@ describe('later values in a long note', () => {
     expect(found[0].passages.map((chunk) => chunk.text).join(' ')).not.toContain('przełożyli')
   })
 })
+
+test('a hit in a recorded conversation brings the short turns after it', () => {
+  const meeting = buildAskIndex([{ id: 'planning', title: 'Spotkanie zespołu', content: 'Release jest we wtorek. Aha i następny planning. Gdzie i kiedy? Przesuńmy na środę o dziesiątej. Dobra, to tyle.', summary: null, createdAt: wednesday }], [])
+  const texts = retrieve('Kiedy jest następny planning?', meeting, { now: friday })[0]!.passages.map((chunk) => chunk.text)
+  expect(texts.some((text) => text.includes('środę o dziesiątej'))).toBe(true)
+})

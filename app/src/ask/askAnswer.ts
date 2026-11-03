@@ -67,18 +67,42 @@ const formatMoment = (date: Date, allDay: boolean, language: Language): string =
 
 const DAY = 86400000
 const DAY_PHRASE = /(?<![\p{L}])(?:(?:w\s+|we\s+|na\s+|on\s+|next\s+|this\s+)?(?:przysz\p{L}+\s+|ten\s+|t[eę]\s+)?)(?:dzi[sś]|dzisiaj|jutr\p{L}*|pojutrze|poniedzia\p{L}*|wtor\p{L}*|[sś]rod(?:a|ę|e|y|zie|ą)|czwart(?:ek|ku|kiem)|pi[aą]t(?:ek|ku|kiem)|sobot\p{L}*|niedziel\p{L}*|today|tonight|tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday)(?![\p{L}])/giu
-const DATE_FOLLOWS = /^[,\s]*(?:the\s+)?\d|^[,\s]*(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\p{L}*\s+\d/iu
+// "do czwartku piątego" already names its day of the month: the next Thursday would contradict it.
+const DATE_FOLLOWS = /^[,\s]*(?:the\s+)?\d|^[,\s]*(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\p{L}*\s+\d|^[,\s]*(?:pierwsz|drugi|trzeci|czwart|piąt|szóst|siódm|ósm|dziewiąt|dziesiąt|jedenast|dwunast|trzynast|czternast|piętnast|szesnast|siedemnast|osiemnast|dziewiętnast|dwudziest|trzydziest)(?:ego|ej)(?![\p{L}])/iu
 
 // The model reads "jutro o szesnastej" badly and cannot count days: numbers
 // become digits and every relative day gets its calendar day, counted from the
 // recording ("w czwartek [15 października]").
+const PL_MONTHS = ['stycz', 'lut', 'mar', 'kwie', 'maj', 'czerw', 'lip', 'sierp', 'wrze', 'paźdz', 'listop', 'grud']
+const STATED_DATE = /(?<!\d)(\d{1,2})\s+(stycz|lut|mar|kwie|maj|czerw|lip|sierp|wrze|paźdz|listop|grud)\p{L}*/giu
+const WEEKDAY_INDEX: readonly (readonly [RegExp, number])[] = [
+  [/^niedziel/iu, 0], [/^poniedzia/iu, 1], [/^wtor/iu, 2], [/^[sś]rod/iu, 3], [/^czwart/iu, 4], [/^pi[aą]t/iu, 5], [/^sobot/iu, 6],
+]
+// "urodziny 7 listopada to jest sobota": the weekday names the date just said.
+const DATE_BEFORE = /(?<!\d)\d{1,2}\s+(?:stycz|lut|mar|kwie|maj|czerw|lip|sierp|wrze|paźdz|listop|grud)\p{L}*[\s,]+(?:\p{L}+\s+){0,3}$/iu
+// Dates the note states outright, from the recording on: "na sobotę" in a note that
+// says "urodziny 7 listopada, sobota" is that Saturday, not the nearest one.
+const statedDays = (content: string, recorded: Date): number[] => {
+  const start = new Date(recorded.getFullYear(), recorded.getMonth(), recorded.getDate()).getTime()
+  return [...wordsToDigits(content).matchAll(STATED_DATE)].flatMap((match) => {
+    const month = PL_MONTHS.findIndex((stem) => match[2]!.toLowerCase().startsWith(stem))
+    const day = new Date(recorded.getFullYear(), month, Number(match[1])).getTime()
+    const next = day < start ? new Date(recorded.getFullYear() + 1, month, Number(match[1])).getTime() : day
+    return next - start <= 31 * DAY ? [next] : []
+  })
+}
+
 const withDays = (text: string, note: AskNote, now: Date, language: Language): string => {
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
+  const stated = language === 'pl' ? statedDays(note.content, new Date(note.createdAt)) : []
   return text.replace(DAY_PHRASE, (phrase: string, offset: number) => {
     if (DATE_FOLLOWS.test(text.slice(offset + phrase.length, offset + phrase.length + 16))) return phrase
+    if (DATE_BEFORE.test(text.slice(Math.max(0, offset - 40), offset))) return phrase
     const resolved = resolveDue(phrase, new Date(note.createdAt))
     if (!resolved) return phrase
-    const day = new Date(resolved.date.getFullYear(), resolved.date.getMonth(), resolved.date.getDate()).getTime()
+    const weekday = phrase.split(/\s+/u).map((word) => WEEKDAY_INDEX.find(([pattern]) => pattern.test(word))?.[1]).find((value) => value !== undefined)
+    const named = weekday === undefined ? undefined : stated.find((day) => new Date(day).getDay() === weekday)
+    const day = named ?? new Date(resolved.date.getFullYear(), resolved.date.getMonth(), resolved.date.getDate()).getTime()
     const shift = Math.round((day - today) / DAY)
     const relative = language === 'pl'
       ? shift === 0 ? ', dziś' : shift === 1 ? ', jutro' : shift === -1 ? ', wczoraj' : ''

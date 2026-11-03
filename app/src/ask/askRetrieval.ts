@@ -107,6 +107,10 @@ const WHEN_QUESTION = /\b(?:kiedy|kiedys|o\s+ktorej|na\s+kiedy|do\s+kiedy|ktoreg
 const VALUE_QUESTION = /\b(?:kiedy|o\s+ktorej|na\s+kiedy|do\s+kiedy|ktorego\s+dnia|ile|jaki|jaka|jakie|jakiego|ktory|ktora|ktore|budzet\w*|koszt\w*|cen\w*|kwot\w*|when|what\s+time|which|how\s+much|how\s+many|budget|cost|price)\b/u
 // Later sentences of the best note that may change the value; a few, latest first.
 const LATER_VALUES = 3
+// Turns after a hit, until this many words of context: short spoken turns only.
+const FOLLOW_HITS = 3
+const FOLLOW_TURNS = 2
+const FOLLOW_WORDS = 20
 const carriesValue = (chunk: AskChunk): boolean => chunk.day !== null || /\d/u.test(wordsToDigits(chunk.text))
 
 const DUTY = /\b(?:musze|trzeba|mam\s+\w+c|mam\s+do|nalezy|przypomnij|oddac|zaplacic|kupic|zadzwonic|odebrac|have\s+to|need\s+to|must|remind|should|pick\s+up|pay|buy|call)\b/u
@@ -244,6 +248,24 @@ export const retrieve = (question: string, index: AskIndex, options: RetrieveOpt
       .sort((a, b) => (relevance.get(b.id) ?? 0) - (relevance.get(a.id) ?? 0) || b.order - a.order)
       .slice(0, LATER_VALUES)
     top.passages.push(...picked)
+  }
+  // A recorded conversation answers in the next short turn: "Aha i następny planning" is
+  // followed by "to zróbmy w środę o dziesiątej". The best sentences bring the turns after them.
+  if (top) {
+    const have = new Set(top.passages.map((chunk) => chunk.id))
+    const sentences = index.chunks.filter((chunk) => chunk.noteId === top.noteId && chunk.kind === 'sentence')
+    const byOrder = new Map(sentences.map((chunk) => [chunk.order, chunk]))
+    const follow: AskChunk[] = []
+    for (const hit of top.passages.filter((chunk) => chunk.kind === 'sentence').slice(0, FOLLOW_HITS)) {
+      let words = hit.text.split(/\s+/u).length
+      for (let step = 1; step <= FOLLOW_TURNS && words < FOLLOW_WORDS; step += 1) {
+        const next = byOrder.get(hit.order + step)
+        if (!next) break
+        words += next.text.split(/\s+/u).length
+        if (!have.has(next.id)) { have.add(next.id); follow.push(next) }
+      }
+    }
+    top.passages.push(...follow)
   }
   let budget = maxPassages + (top ? Math.max(0, top.passages.length - 6) : 0)
   for (const note of kept) {

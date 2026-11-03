@@ -1,5 +1,5 @@
 import { generate } from '../ai/llm'
-import { answerQuestion } from './askAnswer'
+import { answerQuestion, buildAskContext } from './askAnswer'
 import { buildAskIndex } from './askIndex'
 import { retrieve } from './askRetrieval'
 
@@ -37,4 +37,21 @@ test('a bare yes/no gets a second, fuller answer', async () => {
   const answer = await answerQuestion('Czy mogę wydać 100 euro na hostel?', found, index, 'pl', { now })
   expect(answer.text).toBe('Nie, budżet to około 40 euro za noc, więcej nie wydawać [1].')
   expect(jest.mocked(generate).mock.calls[1]?.[0]).toContain('podaj, co dokładnie mówi notatka')
+})
+
+test('a weekday followed by its day of the month in words keeps that day', () => {
+  const recorded = new Date(2026, 9, 30, 9)
+  const notes = buildAskIndex([{ id: 'mama', title: 'Urodziny mamy', content: 'Prezent dla mamy muszę kupić do czwartku piątego.', summary: null, createdAt: recorded.getTime(), language: 'pl' }], [])
+  const { context } = buildAskContext(retrieve('Do kiedy kupić prezent dla mamy?', notes, { now: recorded }), notes, 'pl', recorded)
+  expect(context).toContain('do czwartku 5')
+  expect(context).not.toContain('29 października')
+})
+
+test('a weekday is the date the note states for it, not the nearest one', () => {
+  const recorded = new Date(2026, 9, 29, 20)
+  const notes = buildAskIndex([{ id: 'mama', title: 'Urodziny mamy', content: 'Mama ma urodziny siódmego listopada to jest sobota. Prezent muszę kupić w czwartek piątego, bo później kurier nie dowiezie na sobotę.', summary: null, createdAt: recorded.getTime(), language: 'pl' }], [])
+  const { context } = buildAskContext(retrieve('Kiedy są urodziny mamy?', notes, { now: recorded }), notes, 'pl', recorded)
+  expect(context).toContain('7 listopada to jest sobota.')
+  expect(context).toContain('na sobotę 7 listopada')
+  expect(context).not.toContain('31 października')
 })
