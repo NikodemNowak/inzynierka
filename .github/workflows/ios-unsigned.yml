@@ -1,34 +1,69 @@
 name: iOS unsigned device build
 
+# Manual IPA, every push to main, and tags. Feature branches run only from
+# ios-unsigned-native.yml, when native iOS inputs change.
 on:
   workflow_dispatch:
+  workflow_call:
   push:
-    branches: [main, 'feat/**']
+    branches: [main]
+    tags: ['*']
 
 concurrency:
   group: ios-unsigned-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   build:
-    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[build]')
     runs-on: macos-latest
-    timeout-minutes: 90
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
 
       - name: Select newest available Xcode
+        id: xcode
         run: |
           set -eu
           ls -d /Applications/Xcode*.app
           sudo xcode-select -s "$(ls -d /Applications/Xcode*.app | sort | tail -1)"
           xcodebuild -version
+          version="$(xcodebuild -version | awk 'NR==1 { print $2 }')"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Install ccache
+        run: |
+          set -eu
+          version=4.14.2
+          archive="ccache-${version}-darwin.tar.gz"
+          expected=cf240009630b605b775c7c5c7b7105a3b196c79f31af322c1557969aa28003fc
+          curl -fsSL -o "$RUNNER_TEMP/$archive" \
+            "https://github.com/ccache/ccache/releases/download/v${version}/${archive}"
+          actual="$(shasum -a 256 "$RUNNER_TEMP/$archive" | awk '{ print $1 }')"
+          test "$actual" = "$expected"
+          tar -xzf "$RUNNER_TEMP/$archive" -C "$RUNNER_TEMP"
+          mkdir -p "$RUNNER_TEMP/ccache-install"
+          cp "$RUNNER_TEMP/ccache-${version}-darwin/ccache" "$RUNNER_TEMP/ccache-install/ccache"
+          chmod +x "$RUNNER_TEMP/ccache-install/ccache"
+          echo "$RUNNER_TEMP/ccache-install" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/ccache-install/ccache" --version
+
+      - name: Restore ccache
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/.ccache
+          key: macos-ccache-${{ steps.xcode.outputs.version }}-${{ hashFiles('app/package-lock.json', 'app/patches/**') }}
+          restore-keys: |
+            macos-ccache-${{ steps.xcode.outputs.version }}-
 
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
           node-version: 22.19.0
+          cache: npm
+          cache-dependency-path: app/package-lock.json
 
       - name: Install dependencies
         run: |
@@ -40,22 +75,125 @@ jobs:
           cd app
           npx expo prebuild --platform ios --no-install
 
+      - name: Restore CocoaPods cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            app/ios/Pods
+            app/ios/Podfile.lock
+            ~/Library/Caches/CocoaPods
+          key: macos-pods-${{ steps.xcode.outputs.version }}-${{ hashFiles('app/package-lock.json', 'app/app.json', 'app/plugins/**', 'app/patches/**', 'app/modules/**/ios/**', 'app/modules/**/*.podspec', 'app/modules/**/expo-module.config.json', 'app/modules/**/package.json') }}
+
       - name: Install CocoaPods dependencies
         run: |
           cd app/ios
           pod install
 
       - name: Build for iPhone without signing
+        env:
+          CCACHE_DIR: ${{ github.workspace }}/.ccache
+          CCACHE_MAXSIZE: 2G
+          CCACHE_COMPRESS: "true"
+          CCACHE_COMPILERCHECK: content
+          CCACHE_DEPEND: "true"
+          CCACHE_INODECACHE: "true"
+          CCACHE_FILECLONE: "true"
+          CCACHE_BASEDIR: ${{ github.workspace }}
+          CCACHE_NOHASHDIR: "true"
+          CCACHE_SLOPPINESS: clang_index_store,include_file_ctime,include_file_mtime,ivfsoverlay,pch_defines,modules,system_headers,time_macros
         run: |
+          set -eu
+          wrapper_dir="$RUNNER_TEMP/ccache-wrappers"
+          mkdir -p "$wrapper_dir"
+          # ccache hashes the mtime of -fbuild-session-file. Xcode creates a new
+          # file on every build, which would make every compile a miss. Point
+          # clang at one file with a fixed mtime instead. -ivfsstatcache is a
+          # per-build stat cache and does not change object code.
+          session_file="$GITHUB_WORKSPACE/.xcode-build-session"
+          : > "$session_file"
+          touch -t 202001010000 "$session_file"
+          export CCACHE_SESSION_FILE="$session_file"
+          cat > "$wrapper_dir/ccache-clang" << 'EOF'
+          #!/bin/bash
+          set -euo pipefail
+          devtools="$(xcode-select -p)"
+          compiler="$devtools/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang"
+          case "$(basename "$0")" in
+            *++*) compiler="$devtools/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang++" ;;
+          esac
+          args=()
+          skip=0
+          for arg in "$@"; do
+            if [[ "$skip" -eq 1 ]]; then
+              skip=0
+              continue
+            fi
+            case "$arg" in
+              -ivfsstatcache)
+                skip=1
+                ;;
+              -ivfsstatcache=*)
+                ;;
+              -fbuild-session-file)
+                skip=1
+                args+=("-fbuild-session-file=${CCACHE_SESSION_FILE}")
+                ;;
+              -fbuild-session-file=*)
+                args+=("-fbuild-session-file=${CCACHE_SESSION_FILE}")
+                ;;
+              @*)
+                src="${arg#@}"
+                dest="${CCACHE_BASEDIR}/.ccache-resp/$(basename "$src")"
+                mkdir -p "$(dirname "$dest")"
+                tmp="${dest}.$$"
+                awk -v session="$CCACHE_SESSION_FILE" '
+                  skip { skip = 0; next }
+                  $0 == "-ivfsstatcache" { skip = 1; next }
+                  $0 ~ /^-ivfsstatcache=/ { next }
+                  $0 == "-fbuild-session-file" {
+                    print "-fbuild-session-file=" session
+                    skip = 1
+                    next
+                  }
+                  {
+                    gsub(/-fbuild-session-file=[^[:space:]]+/, "-fbuild-session-file=" session)
+                    gsub(/-ivfsstatcache=[^[:space:]]+/, "")
+                    gsub(/-ivfsstatcache[[:space:]]+[^[:space:]]+/, "")
+                    print
+                  }
+                ' "$src" > "$tmp"
+                mv "$tmp" "$dest"
+                args+=("@${dest}")
+                ;;
+              *)
+                args+=("$arg")
+                ;;
+            esac
+          done
+          exec ccache "$compiler" "${args[@]}"
+          EOF
+          chmod +x "$wrapper_dir/ccache-clang"
+          cp "$wrapper_dir/ccache-clang" "$wrapper_dir/clang"
+          cp "$wrapper_dir/ccache-clang" "$wrapper_dir/clang++"
+          ccache --zero-stats
           cd app
+          set +e
           xcodebuild \
             -workspace ios/Notatki.xcworkspace \
             -scheme Notatki \
             -configuration Release \
             -destination 'generic/platform=iOS' \
             -derivedDataPath "$GITHUB_WORKSPACE/ios-build" \
+            -showBuildTimingSummary \
+            "CC=$wrapper_dir/clang" \
+            "CPLUSPLUS=$wrapper_dir/clang++" \
             CODE_SIGNING_ALLOWED=NO \
+            COMPILER_INDEX_STORE_ENABLE=NO \
             build
+          status=$?
+          set -e
+          ccache --show-stats || true
+          exit "$status"
 
       - name: Validate ExpoModulesJSI ABI
         run: |
@@ -76,3 +214,4 @@ jobs:
           name: Notatki-unsigned
           path: Notatki-unsigned.ipa
           if-no-files-found: error
+          retention-days: 7
