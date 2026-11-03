@@ -1,0 +1,33 @@
+name: iOS unsigned device build
+
+# Feature-branch pushes start a macOS runner only when the native project,
+# CocoaPods inputs, or app config that prebuild reads actually change.
+on:
+  push:
+    branches: ['feat/**']
+    paths:
+      - '.github/workflows/ios-unsigned.yml'
+      - '.github/workflows/ios-unsigned-native.yml'
+      - 'scripts/check-ios-expo-abi.py'
+      - 'app/app.json'
+      - 'app/app.config.js'
+      - 'app/app.config.ts'
+      - 'app/package.json'
+      - 'app/package-lock.json'
+      - 'app/babel.config.js'
+      - 'app/metro.config.js'
+      - 'app/plugins/**'
+      - 'app/patches/**'
+      - 'app/locales/**'
+      - 'app/modules/**/ios/**'
+      - 'app/modules/**/*.podspec'
+      - 'app/modules/**/expo-module.config.json'
+      - 'app/modules/**/package.json'
+      - 'app/assets/icon.png'
+      - 'app/assets/splash-icon.png'
+      - 'app/assets/adaptive-icon.png'
+      - 'app/assets/favicon.png'
+
+jobs:
+  build:
+    uses: ./.github/workflows/ios-unsigned.yml
