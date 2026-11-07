@@ -2,6 +2,11 @@ name: iOS unsigned device build
 
 on:
   workflow_dispatch:
+    inputs:
+      measurements:
+        description: Include the measurements screen and benchmark audio
+        type: boolean
+        default: false
   push:
     branches: [main, 'feat/**']
 
@@ -11,9 +16,12 @@ concurrency:
 
 jobs:
   build:
-    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[build]')
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[build]') || contains(github.event.head_commit.message, '[measure]')
     runs-on: macos-latest
     timeout-minutes: 90
+    env:
+      # Inlined into the JS bundle by Expo; see app/src/measurementBuild.ts.
+      EXPO_PUBLIC_MEASUREMENTS: ${{ (inputs.measurements || contains(github.event.head_commit.message, '[measure]')) && '1' || '0' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4

@@ -32,10 +32,11 @@ interface SuiteData {
   questions: { id: string; language: Language; question: string; type: string; answer: string; mustInclude: string[]; mustNotInclude: string[]; sourceNotes: string[]; followUpOf: string | null; liveDate?: boolean }[]
 }
 
-// The WAV fixtures are required only under __DEV__: Metro folds the constant in
-// release builds and drops the branch, so the audio stays out of the bundle.
+// The WAV fixtures are required only in development and measurement builds:
+// Metro folds the constant in other release builds and drops the branch, so the
+// audio stays out of the bundle (condition inline, see measurementBuild.ts).
 const audioModule = (id: string): number => {
-  if (__DEV__) {
+  if (__DEV__ || process.env.EXPO_PUBLIC_MEASUREMENTS === '1') {
     switch (id) {
       case 'pl-plan': return require('../../assets/benchmarks/suite-pl-plan.wav')
       case 'pl-dziennik': return require('../../assets/benchmarks/suite-pl-dziennik.wav')

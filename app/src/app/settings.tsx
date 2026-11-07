@@ -21,6 +21,7 @@ import { BottomSheet } from '../ui/BottomSheet'
 import { Icon } from '../ui/Icon'
 import { radius, spacing, type, useTheme, fonts } from '../ui/theme'
 import { ProcessingSettingsSection } from '../processing/ProcessingSettingsSection'
+import { MEASUREMENT_TOOLS } from '../measurementBuild'
 
 const formatGb = (bytes: number, locale: string): string =>
   `${(bytes / 1024 ** 3).toLocaleString(locale, { maximumFractionDigits: 1 })} GB`
@@ -432,16 +433,16 @@ function ModelSection() {
       <BottomSheet
         visible={confirming}
         onClose={() => setConfirming(false)}
-        title={t('Usun¹æ model?', 'Remove model?')}
+        title={t('Usunï¿½ï¿½ model?', 'Remove model?')}
       >
         <Text style={{ ...type.body, color: colors.body }}>
           {t(
-            'Zwolni to miejsce na urz¹dzeniu. Tytu³y i podsumowania AI bêd¹ niedostêpne, dopóki nie pobierzesz modelu ponownie. Notatki i nagrania zostan¹ nienaruszone.',
+            'Zwolni to miejsce na urzï¿½dzeniu. Tytuï¿½y i podsumowania AI bï¿½dï¿½ niedostï¿½pne, dopï¿½ki nie pobierzesz modelu ponownie. Notatki i nagrania zostanï¿½ nienaruszone.',
             'This frees up space on your device. AI titles and summaries will be unavailable until you download the model again. Your notes and recordings will be kept.',
           )}
         </Text>
         <Button
-          label={t('Usuñ model', 'Remove model')}
+          label={t('Usuï¿½ model', 'Remove model')}
           variant="danger"
           onPress={() => {
             setConfirming(false)
@@ -753,7 +754,7 @@ export default function SettingsScreen() {
       <AppearanceSection />
       <PrivacySection />
       <DataSection />
-      {__DEV__ && <DeveloperSection />}
+      {MEASUREMENT_TOOLS && <DeveloperSection />}
     </ScrollView>
   )
 }

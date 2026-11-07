@@ -12,9 +12,10 @@ export const BENCHMARK_AUDIO_FIXTURES = [
   { id: 'en-audio-30min-v1', ...ENGLISH_AUDIO_FIXTURE_DATA['en-audio-30min-v1'] },
 ] as const
 
-// Required only under __DEV__ so release bundles do not embed the WAV files.
+// Required only in development and measurement builds so release bundles do
+// not embed the WAV files (condition inline, see measurementBuild.ts).
 const audioModule = (id: BenchmarkAudioFixtureId): number => {
-  if (__DEV__) {
+  if (__DEV__ || process.env.EXPO_PUBLIC_MEASUREMENTS === '1') {
     switch (id) {
       case 'en-audio-3min-v1': return require('../../assets/benchmarks/english-3min.wav')
       case 'en-audio-10min-v1': return require('../../assets/benchmarks/english-10min.wav')
