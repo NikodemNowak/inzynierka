@@ -3,6 +3,22 @@ import BackgroundTasks
 import UIKit
 import UserNotifications
 import Darwin
+import os
+
+// Memory as iOS counts it against the app's limit (phys_footprint, what Xcode
+// shows) and what is left before jetsam would kill the app.
+private func memorySnapshot() -> [String: Any] {
+  var info = task_vm_info_data_t()
+  var count = mach_msg_type_number_t(MemoryLayout<task_vm_info_data_t>.size / MemoryLayout<natural_t>.size)
+  let status = withUnsafeMutablePointer(to: &info) {
+    $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) {
+      task_info(mach_task_self_, task_flavor_t(TASK_VM_INFO), $0, &count)
+    }
+  }
+  return ["footprintBytes": status == KERN_SUCCESS ? Double(info.phys_footprint) : NSNull(),
+          "availableBytes": Double(os_proc_available_memory()),
+          "thermalState": ProcessInfo.processInfo.thermalState.rawValue]
+}
 
 private enum ProcessingDiagnosticLog {
   private static let lock = NSLock()
@@ -99,6 +115,8 @@ public class NotatkiProcessingModule: Module {
     }
 
     Function("getLeaseDiagnostics") { ProcessingDiagnosticLog.snapshot() }
+
+    Function("getMemory") { memorySnapshot() }
 
     AsyncFunction("begin") { (attempt: String, title: String, subtitle: String, promise: Promise) in
       #if compiler(>=6.2)

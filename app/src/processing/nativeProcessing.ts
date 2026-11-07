@@ -48,9 +48,16 @@ export interface ProcessingLeaseDiagnostic {
   requiredResources?: string
 }
 
+export interface MemorySnapshot {
+  footprintBytes: number | null
+  availableBytes: number
+  thermalState: number
+}
+
 interface ProcessingNativeModule {
   getCapabilities(): ProcessingNativeCapabilities
   getLeaseDiagnostics?(): ProcessingLeaseDiagnostic[]
+  getMemory?(): MemorySnapshot
   begin(attemptId: string, title: string, subtitle: string): Promise<boolean>
   update(
     attemptId: string,
@@ -104,6 +111,15 @@ export const readProcessingCapabilities = (): ProcessingCapabilities => {
     bundleIdentifier: raw?.bundleIdentifier ?? null,
     hardwareModel: raw?.hardwareModel ?? null,
     queryError,
+  }
+}
+
+// Null on Android, in tests and on builds without the new native function.
+export const readMemory = (): MemorySnapshot | null => {
+  try {
+    return nativeProcessing?.getMemory?.() ?? null
+  } catch {
+    return null
   }
 }
 
