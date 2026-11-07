@@ -2,6 +2,7 @@ import { Asset } from 'expo-asset'
 import * as FileSystem from 'expo-file-system/legacy'
 import { Platform } from 'react-native'
 import { prepareBenchmarkAudio } from '../ai/benchmarkAudio'
+import { QUICK_SUITE_TEXTS } from '../ai/benchmarkQuickTexts'
 import { enqueueLlm } from '../ai/llmQueue'
 import { ensureModelReady } from '../ai/modelReady'
 import { processNoteWithLlm } from '../ai/noteProcessing'
@@ -14,6 +15,8 @@ import { retrieve } from '../ask/askRetrieval'
 import { plain, questionLanguage } from '../ask/askText'
 import { documentText, embedText, queryText } from '../ask/embedder'
 import { isEmbeddingModelDownloaded } from '../ask/embeddingModel'
+import { listMetrics, type GenerationMetric } from '../data/metricsRepository'
+import { withDatabaseWrite } from '../db/writeQueue'
 import type { Language } from '../i18n/language'
 import { nativeCapture } from '../stt/nativeCapture'
 import { createMemoryTrace } from './memoryTrace'
@@ -67,6 +70,53 @@ export const includes = (text: string, wanted: string): boolean =>
 
 const since = (start: number): number => Date.now() - start
 
+// Title, summary, tags and the task proposal for one note, on the app's model.
+const runNotePipeline = async (content: string, language: Language, signal: AbortSignal) => {
+  const execution = { taskEvidenceMemo: {}, ...(signal ? { signal } : {}) }
+  let calls = 0
+  const llm = await enqueueLlm(async () => {
+    let modelLoadMs: number | null = null
+    const noteStarted = Date.now()
+    const note = await processNoteWithLlm(content, () => undefined, (ms) => { modelLoadMs = ms }, language, execution, true)
+    const noteMs = since(noteStarted)
+    const tasksStarted = Date.now()
+    const proposal = await createTaskProposal(content, () => { calls += 1 }, language, execution)
+    return { note, proposal, noteMs, tasksMs: since(tasksStarted), modelLoadMs }
+  })
+  return { ...llm, calls }
+}
+
+const pipelineEntry = (llm: Awaited<ReturnType<typeof runNotePipeline>>): Record<string, unknown> => ({
+  title: llm.note.title, summary: llm.note.summary, tags: llm.note.tags, tasks: llm.proposal.tasks,
+  noteMs: llm.noteMs, tasksMs: llm.tasksMs, modelLoadMs: llm.modelLoadMs, taskStatusUpdates: llm.calls,
+  warnings: [...(llm.note.warnings ?? []), ...llm.proposal.warnings],
+})
+
+const perSecond = (tokens: number, ms: number): number | null => (ms > 0 ? Math.round((tokens / ms) * 10_000) / 10 : null)
+
+// Prompt reading (prefill) and writing (decode) speed over a run's model calls.
+export const generationSpeed = (metrics: GenerationMetric[]) => {
+  const total = (key: 'promptTokens' | 'predictedTokens'): number => metrics.reduce((sum, metric) => sum + (metric[key] ?? 0), 0)
+  // A cached prompt has tokens but no time; such calls would inflate the rate.
+  const rate = (tokens: 'promptTokens' | 'predictedTokens', ms: 'promptMs' | 'predictedMs'): number | null => {
+    const timed = metrics.filter((metric) => (metric[ms] ?? 0) > 0)
+    return perSecond(timed.reduce((sum, m) => sum + (m[tokens] ?? 0), 0), timed.reduce((sum, m) => sum + m[ms]!, 0))
+  }
+  const decode = metrics
+    .filter((metric) => (metric.predictedMs ?? 0) > 0 && (metric.predictedTokens ?? 0) > 0)
+    .map((metric) => perSecond(metric.predictedTokens!, metric.predictedMs!)!)
+    .sort((a, b) => a - b)
+  return {
+    calls: metrics.length,
+    models: [...new Set(metrics.map((metric) => metric.model))],
+    promptTokens: total('promptTokens'),
+    predictedTokens: total('predictedTokens'),
+    prefillTokensPerSecond: rate('promptTokens', 'promptMs'),
+    decodeTokensPerSecond: rate('predictedTokens', 'predictedMs'),
+    decodePerCall: decode.length ? { min: decode[0], median: decode[Math.floor(decode.length / 2)], max: decode[decode.length - 1] } : null,
+  }
+}
+
 export interface SuiteProgress {
   step: string
   done: number
@@ -101,7 +151,7 @@ export const runFullFlowSuite = async (onProgress: (progress: SuiteProgress) => 
   const data = require('./suiteData.json') as SuiteData
   const startedAt = Date.now()
   const result: Record<string, unknown> = { kind: 'full-flow-suite', version: data.version, pipeline: PIPELINE_VERSION, platform: Platform.OS, osVersion: String(Platform.Version), startedAt }
-  const total = data.recordings.length * 2 + data.questions.length + 2
+  const total = data.recordings.length * 2 + (QUICK_SUITE_TEXTS.length - 1) + data.questions.length + 2
   let done = 0
   const memory = createMemoryTrace()
   const step = (name: string): void => {
@@ -110,7 +160,6 @@ export const runFullFlowSuite = async (onProgress: (progress: SuiteProgress) => 
     onProgress({ step: name, done: done++, total })
   }
   try {
-
     // 1–2. Speech recognition and the note pipeline for each recording.
     const recordings: Record<string, unknown>[] = []
     const suiteNotes: AskNote[] = []
@@ -131,28 +180,24 @@ export const runFullFlowSuite = async (onProgress: (progress: SuiteProgress) => 
       }
       step(`LLM · ${recording.id}`)
       const content = String(entry.transcript)
-      const execution = { taskEvidenceMemo: {}, ...(signal ? { signal } : {}) }
-      let calls = 0
-      const llm = await enqueueLlm(async () => {
-        let modelLoadMs: number | null = null
-        const noteStarted = Date.now()
-        const note = await processNoteWithLlm(content, () => undefined, (ms) => { modelLoadMs = ms }, recording.language, execution, true)
-        const noteMs = since(noteStarted)
-        const tasksStarted = Date.now()
-        const proposal = await createTaskProposal(content, () => { calls += 1 }, recording.language, execution)
-        return { note, proposal, noteMs, tasksMs: since(tasksStarted), modelLoadMs }
-      })
-      Object.assign(entry, {
-        title: llm.note.title, summary: llm.note.summary, tags: llm.note.tags, tasks: llm.proposal.tasks,
-        noteMs: llm.noteMs, tasksMs: llm.tasksMs, modelLoadMs: llm.modelLoadMs, taskStatusUpdates: calls,
-        warnings: [...(llm.note.warnings ?? []), ...llm.proposal.warnings],
-      })
+      const llm = await runNotePipeline(content, recording.language, signal)
+      Object.assign(entry, pipelineEntry(llm))
       recordings.push(entry)
       const id = `suite-${recording.id}`
       suiteNotes.push({ id, title: llm.note.title, content, summary: llm.note.summary, createdAt: Date.now(), language: recording.language })
       for (const task of llm.proposal.tasks) suiteTasks.push({ noteId: id, text: task, done: false })
     }
     result.recordings = recordings
+
+    // 2b. Longer dictated notes (about 3 and 10 minutes of speech) as text: the
+    // time to a summary and tasks for long recordings without a 10-minute WAV.
+    const longNotes: Record<string, unknown>[] = []
+    for (const text of QUICK_SUITE_TEXTS.slice(1)) {
+      step(`Long · ${text.id}`)
+      const llm = await runNotePipeline(text.source, 'pl', signal)
+      longNotes.push({ id: text.id, words: text.words, ...pipelineEntry(llm) })
+    }
+    result.longNotes = longNotes
 
     // 3. "Zapytaj notatki" over the eval notebook and the three new notes.
     const evalNotes: AskNote[] = data.notes.map((note) => ({ id: note.id, title: note.title, content: note.content, summary: note.summary, createdAt: new Date(note.createdAt).getTime(), language: note.language }))
@@ -239,6 +284,14 @@ export const runFullFlowSuite = async (onProgress: (progress: SuiteProgress) => 
     result.scale = { notes: big.notes.size, chunks: big.chunks.length, buildMs, retrieveMsPerQuestion: since(queryStarted) / sample.length }
   } finally {
     result.memory = memory.stop()
+  }
+
+  // Every model call of this run, as recorded in the metrics table.
+  try {
+    await withDatabaseWrite(async () => undefined)
+    result.generation = generationSpeed((await listMetrics(2000)).filter((metric) => metric.createdAt >= startedAt))
+  } catch (error) {
+    result.generation = { error: String(error) }
   }
 
   result.totalMs = since(startedAt)
