@@ -1,7 +1,7 @@
-diff --git a/node_modules/expo-speech-recognition/android/src/main/java/expo/modules/speechrecognition/ExpoAudioRecorder.kt b/node_modules/expo-speech-recognition/android/src/main/java/expo/modules/speechrecognition/ExpoAudioRecorder.kt
+diff --git a/android/src/main/java/expo/modules/speechrecognition/ExpoAudioRecorder.kt b/android/src/main/java/expo/modules/speechrecognition/ExpoAudioRecorder.kt
 index aaa462a..73cebe5 100644
---- a/node_modules/expo-speech-recognition/android/src/main/java/expo/modules/speechrecognition/ExpoAudioRecorder.kt
-+++ b/node_modules/expo-speech-recognition/android/src/main/java/expo/modules/speechrecognition/ExpoAudioRecorder.kt
+--- a/android/src/main/java/expo/modules/speechrecognition/ExpoAudioRecorder.kt
++++ b/android/src/main/java/expo/modules/speechrecognition/ExpoAudioRecorder.kt
 @@ -8,6 +8,7 @@ import android.media.MediaRecorder
  import android.os.ParcelFileDescriptor
  import android.os.ParcelFileDescriptor.AutoCloseOutputStream
@@ -61,10 +61,10 @@ index aaa462a..73cebe5 100644
                      try {
                          outputStream?.write(data, 0, read)
                          outputStream?.flush()
-diff --git a/node_modules/expo-speech-recognition/android/src/main/java/expo/modules/speechrecognition/ExpoSpeechService.kt b/node_modules/expo-speech-recognition/android/src/main/java/expo/modules/speechrecognition/ExpoSpeechService.kt
+diff --git a/android/src/main/java/expo/modules/speechrecognition/ExpoSpeechService.kt b/android/src/main/java/expo/modules/speechrecognition/ExpoSpeechService.kt
 index 0e6b676..a5fe36a 100644
---- a/node_modules/expo-speech-recognition/android/src/main/java/expo/modules/speechrecognition/ExpoSpeechService.kt
-+++ b/node_modules/expo-speech-recognition/android/src/main/java/expo/modules/speechrecognition/ExpoSpeechService.kt
+--- a/android/src/main/java/expo/modules/speechrecognition/ExpoSpeechService.kt
++++ b/android/src/main/java/expo/modules/speechrecognition/ExpoSpeechService.kt
 @@ -281,6 +281,19 @@ class ExpoSpeechService(
  
              // Set common intent extras if audioRecorder is initialized
@@ -94,10 +94,10 @@ index 0e6b676..a5fe36a 100644
          if (options.volumeChangeEventOptions?.enabled != true) {
              return
          }
-diff --git a/node_modules/expo-speech-recognition/build/ExpoSpeechRecognitionModule.types.d.ts b/node_modules/expo-speech-recognition/build/ExpoSpeechRecognitionModule.types.d.ts
+diff --git a/build/ExpoSpeechRecognitionModule.types.d.ts b/build/ExpoSpeechRecognitionModule.types.d.ts
 index 319bdcb..57c3483 100644
---- a/node_modules/expo-speech-recognition/build/ExpoSpeechRecognitionModule.types.d.ts
-+++ b/node_modules/expo-speech-recognition/build/ExpoSpeechRecognitionModule.types.d.ts
+--- a/build/ExpoSpeechRecognitionModule.types.d.ts
++++ b/build/ExpoSpeechRecognitionModule.types.d.ts
 @@ -644,7 +644,7 @@ export declare class ExpoSpeechRecognitionModuleType extends NativeModule<ExpoSp
      /**
       * Whether the on-device speech recognition is available on the device.
@@ -107,10 +107,10 @@ index 319bdcb..57c3483 100644
      /**
       * Whether the recording feature is available on the device.
       *
-diff --git a/node_modules/expo-speech-recognition/ios/ExpoSpeechRecognitionModule.swift b/node_modules/expo-speech-recognition/ios/ExpoSpeechRecognitionModule.swift
+diff --git a/ios/ExpoSpeechRecognitionModule.swift b/ios/ExpoSpeechRecognitionModule.swift
 index daec776..e9f0d85 100644
---- a/node_modules/expo-speech-recognition/ios/ExpoSpeechRecognitionModule.swift
-+++ b/node_modules/expo-speech-recognition/ios/ExpoSpeechRecognitionModule.swift
+--- a/ios/ExpoSpeechRecognitionModule.swift
++++ b/ios/ExpoSpeechRecognitionModule.swift
 @@ -185,6 +185,21 @@ public class ExpoSpeechRecognitionModule: Module {
            // Reset the previous result
            self.previousResult = nil
@@ -152,10 +152,10 @@ index daec776..e9f0d85 100644
        return recognizer?.supportsOnDeviceRecognition ?? false
      }
  
-diff --git a/node_modules/expo-speech-recognition/ios/ExpoSpeechRecognizer.swift b/node_modules/expo-speech-recognition/ios/ExpoSpeechRecognizer.swift
+diff --git a/ios/ExpoSpeechRecognizer.swift b/ios/ExpoSpeechRecognizer.swift
 index c474f80..43848da 100644
---- a/node_modules/expo-speech-recognition/ios/ExpoSpeechRecognizer.swift
-+++ b/node_modules/expo-speech-recognition/ios/ExpoSpeechRecognizer.swift
+--- a/ios/ExpoSpeechRecognizer.swift
++++ b/ios/ExpoSpeechRecognizer.swift
 @@ -576,9 +576,7 @@ actor ExpoSpeechRecognizer: ObservableObject {
      // These won't get emitted to the user, however
      request.shouldReportPartialResults = options.interimResults || !options.continuous
@@ -167,10 +167,10 @@ index c474f80..43848da 100644
  
      if let taskHint = options.iosTaskHint {
        request.taskHint = taskHint.sfSpeechRecognitionTaskHint
-diff --git a/node_modules/expo-speech-recognition/src/ExpoSpeechRecognitionModule.types.ts b/node_modules/expo-speech-recognition/src/ExpoSpeechRecognitionModule.types.ts
+diff --git a/src/ExpoSpeechRecognitionModule.types.ts b/src/ExpoSpeechRecognitionModule.types.ts
 index 28f323f..6a4b6b4 100644
---- a/node_modules/expo-speech-recognition/src/ExpoSpeechRecognitionModule.types.ts
-+++ b/node_modules/expo-speech-recognition/src/ExpoSpeechRecognitionModule.types.ts
+--- a/src/ExpoSpeechRecognitionModule.types.ts
++++ b/src/ExpoSpeechRecognitionModule.types.ts
 @@ -690,7 +690,7 @@ export declare class ExpoSpeechRecognitionModuleType extends NativeModule<ExpoSp
    /**
     * Whether the on-device speech recognition is available on the device.

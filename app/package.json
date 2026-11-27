@@ -3,15 +3,15 @@
   "version": "1.0.0",
   "main": "expo-router/entry",
   "scripts": {
-    "postinstall": "patch-package --error-on-fail",
     "start": "expo start",
     "android": "expo run:android",
     "ios": "expo run:ios",
     "web": "expo start --web",
-    "test": "jest",
-    "test:llm": "jest --runInBand --testMatch \"**/regression/llmRegression.run.ts\"",
-    "typecheck": "tsc --noEmit",
-    "check": "npm run typecheck && npm test -- --runInBand"
+    "test": "bun --bun jest",
+    "test:llm": "bun --bun jest --runInBand --testMatch \"**/regression/llmRegression.run.ts\"",
+    "typecheck": "bun check --no-script",
+    "check": "bun run typecheck && bun run lint && bun run test",
+    "lint": "oxlint src"
   },
   "jest": {
     "preset": "jest-expo",
@@ -60,9 +60,9 @@
     "@types/react-test-renderer": "19.1.0",
     "jest": "~29.7.0",
     "jest-expo": "~56.0.5",
-    "patch-package": "8.0.1",
     "react-test-renderer": "19.2.3",
-    "typescript": "~6.0.3"
+    "typescript": "~6.0.3",
+    "oxlint": "1.95.0"
   },
   "overrides": {
     "expo-modules-jsi": "56.0.7"
@@ -75,5 +75,10 @@
       ]
     }
   },
-  "private": true
+  "private": true,
+  "patchedDependencies": {
+    "llama.rn@0.12.3": "patches/llama.rn@0.12.3.patch",
+    "expo-speech-recognition@56.0.4": "patches/expo-speech-recognition@56.0.4.patch"
+  },
+  "packageManager": "bun@1.4.5"
 }

@@ -11,24 +11,24 @@ export function TasksEmptyState({ onOpenNotes }: { onOpenNotes: () => void }) {
     <View style={styles.container}>
       <EmptyIllustration
         kind="tasks"
-        label={t('Ilustracja listy zadañ', 'Task list illustration')}
+        label={t('Ilustracja listy zadaÅ„', 'Task list illustration')}
       />
       <Text
         accessibilityRole="header"
         style={[styles.title, { color: colors.ink }]}
       >
-        {t('Jeszcze bez zadañ', 'No tasks yet')}
+        {t('Jeszcze bez zadaÅ„', 'No tasks yet')}
       </Text>
       <Text style={[styles.description, { color: colors.muted }]}>
         {t(
-          'Otwórz notatkê i wybierz „Zaproponuj zadania”.',
-          'Open a note and choose “Suggest tasks”.',
+          'OtwÃ³rz notatkÄ™ i wybierz â€Zaproponuj zadaniaâ€.',
+          'Open a note and choose â€œSuggest tasksâ€.',
         )}
       </Text>
       <Button
         compact
         variant="secondary"
-        label={t('PrzejdŸ do notatek', 'Go to notes')}
+        label={t('PrzejdÅº do notatek', 'Go to notes')}
         onPress={onOpenNotes}
         style={styles.action}
       />

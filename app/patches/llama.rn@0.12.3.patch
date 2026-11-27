@@ -1,7 +1,7 @@
-diff --git a/node_modules/llama.rn/cpp/common/sampling.cpp b/node_modules/llama.rn/cpp/common/sampling.cpp
+diff --git a/cpp/common/sampling.cpp b/cpp/common/sampling.cpp
 index d14a079..a79a316 100644
---- a/node_modules/llama.rn/cpp/common/sampling.cpp
-+++ b/node_modules/llama.rn/cpp/common/sampling.cpp
+--- a/cpp/common/sampling.cpp
++++ b/cpp/common/sampling.cpp
 @@ -285,10 +285,12 @@ struct common_sampler * common_sampler_init(const struct llama_model * model, st
                  llama_sampler_accept(grmr, token);
                  LOG_DBG("%s: grammar accepted prefill token (%d)\n", __func__, token);
@@ -17,10 +17,10 @@ index d14a079..a79a316 100644
          }
      }
  
-diff --git a/node_modules/llama.rn/cpp/jsi/JSIParams.cpp b/node_modules/llama.rn/cpp/jsi/JSIParams.cpp
+diff --git a/cpp/jsi/JSIParams.cpp b/cpp/jsi/JSIParams.cpp
 index 21bfe1b..b19af3f 100644
---- a/node_modules/llama.rn/cpp/jsi/JSIParams.cpp
-+++ b/node_modules/llama.rn/cpp/jsi/JSIParams.cpp
+--- a/cpp/jsi/JSIParams.cpp
++++ b/cpp/jsi/JSIParams.cpp
 @@ -471,7 +471,22 @@ namespace rnllama_jsi {
  
          std::string grammar = getPropertyAsString(runtime, params, "grammar");
@@ -45,10 +45,10 @@ index 21bfe1b..b19af3f 100644
          }
  
          std::string jsonSchema = getPropertyAsString(runtime, params, "json_schema");
-diff --git a/node_modules/llama.rn/cpp/rn-completion.cpp b/node_modules/llama.rn/cpp/rn-completion.cpp
+diff --git a/cpp/rn-completion.cpp b/cpp/rn-completion.cpp
 index 90d7e93..73a996f 100644
---- a/node_modules/llama.rn/cpp/rn-completion.cpp
-+++ b/node_modules/llama.rn/cpp/rn-completion.cpp
+--- a/cpp/rn-completion.cpp
++++ b/cpp/rn-completion.cpp
 @@ -66,6 +66,7 @@ void llama_rn_context_completion::rewind() {
  bool llama_rn_context_completion::initSampling() {
      if (ctx_sampling != nullptr) {

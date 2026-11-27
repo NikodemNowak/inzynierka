@@ -12,7 +12,7 @@ export function NotesEmptyState() {
       <EmptyIllustration
         kind="note"
         label={t(
-          'Ilustracja notatki z fal¹ dŸwiêkow¹',
+          'Ilustracja notatki z falÄ… dÅºwiÄ™kowÄ…',
           'Illustration of a note with a sound wave',
         )}
       />
@@ -20,11 +20,11 @@ export function NotesEmptyState() {
         accessibilityRole="header"
         style={[styles.title, { color: colors.ink }]}
       >
-        {t('Miejsce na Twoje myœli', 'A place for your thoughts')}
+        {t('Miejsce na Twoje myÅ›li', 'A place for your thoughts')}
       </Text>
       <Text style={[styles.description, { color: colors.muted }]}>
         {t(
-          'Nagraj, zaimportuj lub napisz pierwsz¹ notatkê.',
+          'Nagraj, zaimportuj lub napisz pierwszÄ… notatkÄ™.',
           'Record, import, or write your first note.',
         )}
       </Text>
@@ -48,11 +48,11 @@ export function NotesNoResultsState({
         accessibilityRole="header"
         style={[styles.title, { color: colors.ink }]}
       >
-        {t('Brak wyników', 'No results')}
+        {t('Brak wynikÃ³w', 'No results')}
       </Text>
       <Text style={[styles.description, { color: colors.muted }]}>
         {t(
-          'Spróbuj innego has³a lub usuñ filtry.',
+          'SprÃ³buj innego hasÅ‚a lub usuÅ„ filtry.',
           'Try another search or clear the filters.',
         )}
       </Text>
@@ -62,8 +62,8 @@ export function NotesNoResultsState({
         onPress={onClear}
         label={
           hasSearch
-            ? t('Wyczyœæ wyszukiwanie', 'Clear search')
-            : t('Wyczyœæ filtry', 'Clear filters')
+            ? t('WyczyÅ›Ä‡ wyszukiwanie', 'Clear search')
+            : t('WyczyÅ›Ä‡ filtry', 'Clear filters')
         }
         style={styles.action}
       />

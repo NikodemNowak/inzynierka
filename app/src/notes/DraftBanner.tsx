@@ -37,7 +37,7 @@ export function DraftBanner() {
     } catch {
       setFailure(
         t(
-          'Nie zapisano notatki. Odzyskany tekst nadal czeka tutaj, spr�buj ponownie.',
+          'Nie zapisano notatki. Odzyskany tekst nadal czeka tutaj, spróbuj ponownie.',
           'Note not saved. Your recovered text is still here, try again.',
         ),
       )
@@ -52,7 +52,7 @@ export function DraftBanner() {
       .catch(() =>
         setFailure(
           t(
-            'Nie odrzucono szkicu. Spr�buj ponownie.',
+            'Nie odrzucono szkicu. Spróbuj ponownie.',
             'Draft not discarded. Try again.',
           ),
         ),
@@ -86,7 +86,7 @@ export function DraftBanner() {
       </Text>
       <Text style={{ ...type.meta, color: colors.muted }}>
         {t(
-          'Zachowano tekst. Audio jest niedostępne.',
+          'Zachowano tekst. Audio jest niedostÄ™pne.',
           'Text recovered. Audio is unavailable.',
         )}
       </Text>
@@ -107,13 +107,13 @@ export function DraftBanner() {
       )}
       <View style={{ flexDirection: 'row', gap: 8 }}>
         <Button
-          label={t('Zapisz notatkę', 'Save note')}
+          label={t('Zapisz notatkÄ™', 'Save note')}
           onPress={() => void keep()}
           disabled={busy}
           style={{ flex: 1 }}
         />
         <Button
-          label={t('Odrzuć', 'Discard')}
+          label={t('OdrzuÄ‡', 'Discard')}
           variant="danger"
           onPress={() => setConfirming(true)}
           disabled={busy}
@@ -122,15 +122,15 @@ export function DraftBanner() {
       <BottomSheet
         visible={confirming}
         onClose={() => setConfirming(false)}
-        title={t('Odrzuci� odzyskany tekst?', 'Discard recovered text?')}
+        title={t('Odrzucić odzyskany tekst?', 'Discard recovered text?')}
       >
         <Text style={{ ...type.body, color: colors.body }}>
           {t(
-            'Ten szkic nie zosta� jeszcze zapisany jako notatka.',
+            'Ten szkic nie został jeszcze zapisany jako notatka.',
             'This draft has not been saved as a note yet.',
           )}
         </Text>
-        <Button label={t('Odrzu�', 'Discard')} variant="danger" onPress={discard} />
+        <Button label={t('Odrzuć', 'Discard')} variant="danger" onPress={discard} />
         <Button
           label={t('Zachowaj', 'Keep')}
           variant="quiet"
