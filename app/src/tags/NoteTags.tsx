@@ -1,7 +1,7 @@
 import { useI18n } from '../i18n/useI18n'
 import { Pressable, StyleSheet, Text, View } from 'react-native'
 import { categoryLabel, NOTE_CATEGORIES } from '../domain/categories'
-import { radius, spacing, type, useTheme, fonts } from '../ui/theme'
+import { radius, spacing, type, useTheme, font } from '../ui/theme'
 
 export function NoteTags({
   tags,
@@ -48,9 +48,8 @@ export function NoteTags({
               style={({ pressed }) => [
                 compact ? styles.compactChip : styles.chip,
                 {
-                  backgroundColor: active ? colors.marker : colors.surface,
-                  borderColor: active ? colors.marker : colors.surface,
-                  opacity: pressed && editable ? 0.72 : 1,
+                  backgroundColor: active ? colors.tint : colors.track,
+                  opacity: pressed && editable ? 0.6 : 1,
                 },
               ]}
               accessibilityRole={editable ? 'checkbox' : 'text'}
@@ -62,7 +61,7 @@ export function NoteTags({
               <Text
                 style={[
                   compact ? styles.compactText : styles.text,
-                  { color: active ? colors.onMarker : colors.body },
+                  { color: active ? colors.onTint : colors.ink },
                 ]}
               >
                 {categoryLabel(category, language)}
@@ -83,16 +82,14 @@ const styles = StyleSheet.create({
     borderRadius: radius.pill,
     minHeight: 36,
     justifyContent: 'center',
-    paddingHorizontal: 12,
-    borderWidth: 1,
+    paddingHorizontal: 14,
   },
   compactChip: {
     borderRadius: radius.pill,
-    minHeight: 30,
+    minHeight: 28,
     justifyContent: 'center',
     paddingHorizontal: 10,
-    borderWidth: 1,
   },
-  text: { ...type.label, fontSize: 13, lineHeight: 18, fontFamily: fonts.medium },
-  compactText: { fontSize: 12, lineHeight: 16, fontFamily: fonts.medium },
+  text: { ...type.meta, ...font.semibold },
+  compactText: { ...type.caption },
 })

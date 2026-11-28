@@ -1,22 +1,12 @@
 import { useEffect } from 'react'
-import { Alert, AppState, View } from 'react-native'
+import { Alert, AppState } from 'react-native'
 import { afterInteractions } from '../ui/afterInteractions'
-import { useFonts } from 'expo-font'
-import {
-  Onest_400Regular,
-  Onest_500Medium,
-  Onest_600SemiBold,
-  Onest_700Bold,
-} from '@expo-google-fonts/onest'
-import {
-  Literata_400Regular,
-  Literata_500Medium,
-} from '@expo-google-fonts/literata'
 import { Stack } from 'expo-router'
+import { getFocusedRouteNameFromRoute } from 'expo-router/react-navigation'
 import { StatusBar } from 'expo-status-bar'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
 import { AppHeader } from '../ui/AppHeader'
-import { StartSplash } from '../ui/StartSplash'
+import { tabsBackTitle } from '../ui/tabsBackTitle'
 import { useNotesStore } from '../state/notesStore'
 import { useTasksStore } from '../state/tasksStore'
 import { useSettingsStore } from '../state/settingsStore'
@@ -112,33 +102,23 @@ export default function RootLayout() {
   useEffect(startTaskPrefetch, [])
   useEffect(startSearchIndexing, [])
 
-  const [fontsLoaded, fontError] = useFonts({
-    Onest_400Regular,
-    Onest_500Medium,
-    Onest_600SemiBold,
-    Onest_700Bold,
-    Literata_400Regular,
-    Literata_500Medium,
-  })
-  // The router needs its navigator on the first render, so the fonts load under
-  // the start splash instead of in place of the Stack; a font error just shows the app.
-  const fontsPending = !fontsLoaded && !fontError
-
   return (
     <SafeAreaProvider>
       <StatusBar style={isDark ? 'light' : 'dark'} />
-      {/* Screens render only once the fonts are in: text measured with the fallback
-          font stays clipped, since the measurement cache outlives a remount. */}
       <Stack
-        screenLayout={({ children }) => (fontsPending ? <View /> : children)}
         screenOptions={{
           contentStyle: { backgroundColor: colors.canvas },
           header: (props) => <AppHeader {...props} />,
         }}
       >
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        <Stack.Screen
+          name="(tabs)"
+          options={({ route }) => ({
+            headerShown: false,
+            title: tabsBackTitle(getFocusedRouteNameFromRoute(route)),
+          })}
+        />
       </Stack>
-      <StartSplash ready={!fontsPending} />
     </SafeAreaProvider>
   )
 }

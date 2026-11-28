@@ -1,18 +1,11 @@
 import { useI18n } from '../i18n/useI18n'
 import { useState } from 'react'
-import type { ReactNode } from 'react'
-import {
-  Keyboard,
-  Pressable,
-  ScrollView,
-  Text,
-  TextInput,
-  View,
-} from 'react-native'
+import { Keyboard, Pressable, Text, TextInput, View } from 'react-native'
 import type { NoteSortMode } from './noteListView'
 import { Icon, IconButton } from '../ui/Icon'
 import { BottomSheet } from '../ui/BottomSheet'
-import { type, useTheme, fonts } from '../ui/theme'
+import { Group } from '../ui/Grouped'
+import { type, useTheme, font } from '../ui/theme'
 import { categoryLabel } from '../domain/categories'
 
 interface NotesToolbarProps {
@@ -23,8 +16,39 @@ interface NotesToolbarProps {
   categories: readonly string[]
   selectedCategory: string | null
   onSelectCategory: (category: string | null) => void
-  afterSearch?: ReactNode
 }
+
+function ChoiceRow({
+  label,
+  selected,
+  onPress,
+}: {
+  label: string
+  selected: boolean
+  onPress: () => void
+}) {
+  const { colors } = useTheme()
+  return (
+    <Pressable
+      accessibilityRole="radio"
+      accessibilityState={{ checked: selected }}
+      onPress={onPress}
+      style={({ pressed }) => ({
+        paddingVertical: 12,
+        paddingHorizontal: 16,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        opacity: pressed ? 0.6 : 1,
+      })}
+    >
+      <Text style={{ ...type.body, color: colors.ink }}>{label}</Text>
+      {selected && <Icon name="check" size={18} color={colors.accent} />}
+    </Pressable>
+  )
+}
+
+// Search field with a sort icon; sorting and the category filter live in a sheet.
 export function NotesToolbar({
   query,
   onQueryChange,
@@ -33,148 +57,101 @@ export function NotesToolbar({
   categories,
   selectedCategory,
   onSelectCategory,
-  afterSearch,
 }: NotesToolbarProps) {
   const { colors, isDark } = useTheme()
   const { t, language } = useI18n()
-  const [sorting, setSorting] = useState(false)
+  const [open, setOpen] = useState(false)
   return (
-    <View>
+    <View style={{ paddingHorizontal: 16, paddingTop: 12 }}>
       <View
         style={{
-          marginHorizontal: 24,
-          borderRadius: 24,
-          borderWidth: 1,
-          borderColor: colors.line,
-          backgroundColor: colors.paper,
+          height: 38,
+          borderRadius: 10,
+          backgroundColor: colors.field,
           flexDirection: 'row',
           alignItems: 'center',
-          paddingLeft: 16,
+          paddingLeft: 10,
+          gap: 8,
         }}
       >
-        <Icon name="search" size={18} color={colors.muted} />
+        <Icon name="search" size={18} color={colors.secondary} />
         <TextInput
           value={query}
           onChangeText={onQueryChange}
-          placeholder={t('Szukaj w notatkach', 'Search notes')}
-          placeholderTextColor={colors.muted}
+          placeholder={t('Szukaj', 'Search')}
+          placeholderTextColor={colors.secondary}
           accessibilityLabel={t('Szukaj w notatkach', 'Search notes')}
           autoCorrect={false}
           returnKeyType="search"
           keyboardAppearance={isDark ? 'dark' : 'light'}
-          selectionColor={colors.markerLine}
-          style={{
-            flex: 1,
-            minHeight: 46,
-            color: colors.ink,
-            fontFamily: fonts.regular,
-            fontSize: 15,
-            paddingHorizontal: 10,
-            paddingVertical: 11,
-          }}
+          selectionColor={colors.accent}
+          style={{ flex: 1, height: 38, color: colors.ink, ...font.regular, fontSize: 17, padding: 0 }}
         />
         {!!query && (
           <IconButton
             name="close"
             label={t('Wyczyść wyszukiwanie', 'Clear search')}
+            color={colors.secondary}
             onPress={() => onQueryChange('')}
-            size={17}
+            size={16}
           />
         )}
         <IconButton
           name="sort"
-          label={t('Zmień sortowanie', 'Change sort order')}
+          label={t('Sortowanie i filtry', 'Sort and filters')}
+          color={selectedCategory ? colors.accent : colors.secondary}
           onPress={() => {
             Keyboard.dismiss()
-            setSorting(true)
+            setOpen(true)
           }}
-          size={17}
+          size={18}
         />
       </View>
-      {afterSearch}
-      {!!categories.length && (
-        <ScrollView
-          horizontal
-          keyboardShouldPersistTaps="handled"
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={{
-            paddingHorizontal: 24,
-            paddingTop: 7,
-            gap: 7,
-          }}
-        >
-          {[null, ...categories].map((category) => (
-            <Pressable
-              key={category ?? 'all'}
-              accessibilityRole="button"
-              accessibilityState={{ selected: selectedCategory === category }}
-              onPress={() => onSelectCategory(category)}
-              style={{ minHeight: 44, justifyContent: 'center' }}
-            >
-              <View
-                style={{
-                  paddingHorizontal: 14,
-                  paddingVertical: 7,
-                  borderRadius: 18,
-                  backgroundColor:
-                    selectedCategory === category
-                      ? colors.action
-                      : colors.surface,
-                }}
-              >
-                <Text
-                  style={{
-                    fontSize: 13,
-                    lineHeight: 18,
-                    color:
-                      selectedCategory === category
-                        ? colors.onAction
-                        : colors.body,
-                    fontFamily: selectedCategory === category ? fonts.semibold : fonts.regular,
-                  }}
-                >
-                  {category === null
-                    ? t('Wszystkie', 'All')
-                    : categoryLabel(category, language)}
-                </Text>
-              </View>
-            </Pressable>
-          ))}
-        </ScrollView>
-      )}
       <BottomSheet
-        visible={sorting}
-        title={t('Sortowanie notatek', 'Sort notes')}
-        onClose={() => setSorting(false)}
+        visible={open}
+        title={t('Sortowanie i filtry', 'Sort and filters')}
+        onClose={() => setOpen(false)}
       >
-        {(
-          [
-            {
-              mode: 'updated',
-              label: t('Ostatnio zmienione', 'Recently changed'),
-            },
-            { mode: 'created', label: t('Ostatnio dodane', 'Recently added') },
-          ] as const
-        ).map(({ mode, label }) => (
-          <Pressable
-            key={mode}
-            accessibilityRole="radio"
-            accessibilityState={{ checked: sortMode === mode }}
-            onPress={() => {
-              onSortModeChange(mode)
-              setSorting(false)
-            }}
-            style={{
-              paddingVertical: 16,
-              flexDirection: 'row',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-            }}
-          >
-            <Text style={{ ...type.body, color: colors.ink }}>{label}</Text>
-            {sortMode === mode && <Icon name="check" color={colors.ink} />}
-          </Pressable>
-        ))}
+        <Group>
+          {(
+            [
+              { mode: 'updated', label: t('Ostatnio zmienione', 'Recently changed') },
+              { mode: 'created', label: t('Ostatnio dodane', 'Recently added') },
+            ] as const
+          ).map(({ mode, label }) => (
+            <ChoiceRow
+              key={mode}
+              label={label}
+              selected={sortMode === mode}
+              onPress={() => {
+                onSortModeChange(mode)
+                setOpen(false)
+              }}
+            />
+          ))}
+        </Group>
+        {!!categories.length && (
+          <>
+            <Text
+              style={{ ...type.caption, color: colors.secondary, marginTop: 16, marginBottom: 8, marginHorizontal: 4 }}
+            >
+              {t('Kategoria', 'Category')}
+            </Text>
+            <Group>
+              {[null, ...categories].map((category) => (
+                <ChoiceRow
+                  key={category ?? 'all'}
+                  label={category === null ? t('Wszystkie', 'All') : categoryLabel(category, language)}
+                  selected={selectedCategory === category}
+                  onPress={() => {
+                    onSelectCategory(category)
+                    setOpen(false)
+                  }}
+                />
+              ))}
+            </Group>
+          </>
+        )}
       </BottomSheet>
     </View>
   )

@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import {
-  AppState,
+  Animated,
+  Easing,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -19,8 +20,7 @@ import { useModelStore } from '../state/modelStore'
 import { useSettingsStore } from '../state/settingsStore'
 import { Button } from '../ui/Button'
 import { IconButton } from '../ui/Icon'
-import { useReducedMotion } from '../ui/Motion'
-import { fonts, radius, type, useTheme } from '../ui/theme'
+import { font, radius, type, useTheme } from '../ui/theme'
 
 // Each title ends with the words the highlighter marks.
 const PAGES = [
@@ -64,14 +64,12 @@ export default function WelcomeScreen() {
   const insets = useSafeAreaInsets()
   const { width, height, fontScale } = useWindowDimensions()
   const { colors } = useTheme()
-  const reducedMotion = useReducedMotion()
   const [page, setPage] = useState(0)
   const [isFinishing, setIsFinishing] = useState(false)
   const [finishError, setFinishError] = useState<string | null>(null)
   const [micNote, setMicNote] = useState<string | null>(null)
-  const [appActive, setAppActive] = useState(AppState.currentState === 'active')
   const finishLock = useRef(false)
-  const pager = useRef<ScrollView>(null)
+  const fade = useRef(new Animated.Value(1)).current
   const status = useModelStore((state) => state.status)
   const progress = useModelStore((state) => state.progress)
   const error = useModelStore((state) => state.error)
@@ -81,20 +79,18 @@ export default function WelcomeScreen() {
   const completeOnboarding = useSettingsStore((state) => state.completeOnboarding)
   const modelSize = `${(MODEL_CONFIG.approxSizeMb / 1024).toLocaleString(locale, { maximumFractionDigits: 1 })} GB`
   const contentWidth = Math.min(width - 48, 420)
+  const item = PAGES[page]
+  const index = page
+  const [lead, marked] = t(item.title.join('|'), item.titleEn.join('|')).split('|')
+  const titleSize = Math.min(34, contentWidth * 0.092)
   const artHeight = Math.min(contentWidth * 0.9, height * 0.36)
-
-  useEffect(() => {
-    const subscription = AppState.addEventListener('change', (next) => setAppActive(next === 'active'))
-    return () => subscription.remove()
-  }, [])
-  useEffect(() => {
-    pager.current?.scrollTo({ x: page * width, animated: false })
-  }, [width])
 
   const goToPage = (target: number) => {
     const next = Math.max(0, Math.min(LAST, target))
+    if (next === page) return
     setPage(next)
-    pager.current?.scrollTo({ x: next * width, animated: !reducedMotion })
+    fade.setValue(0)
+    Animated.timing(fade, { toValue: 1, duration: 200, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start()
   }
   const finish = async () => {
     if (finishLock.current) return
@@ -181,9 +177,9 @@ export default function WelcomeScreen() {
           accessibilityRole="progressbar"
           accessibilityLabel={t('Pobieranie modelu', 'Downloading model')}
           accessibilityValue={{ min: 0, max: 100, now: status === 'ready' ? 100 : Math.round(progress) }}
-          style={[styles.track, { backgroundColor: colors.surface }]}
+          style={[styles.track, { backgroundColor: colors.track }]}
         >
-          <View style={[styles.trackInk, { backgroundColor: colors.marker, width: `${status === 'ready' ? 100 : Math.min(100, Math.max(0, progress))}%` }]} />
+          <View style={[styles.trackInk, { backgroundColor: colors.accent, width: `${status === 'ready' ? 100 : Math.min(100, Math.max(0, progress))}%` }]} />
         </View>
       )}
       {page === LAST && status !== 'ready' && status !== 'downloading' && (
@@ -218,7 +214,7 @@ export default function WelcomeScreen() {
                 style={[
                   styles.step,
                   page === index
-                    ? { width: 28, backgroundColor: colors.marker, borderColor: colors.markerLine, borderWidth: 1 }
+                    ? { width: 28, backgroundColor: colors.accent }
                     : { backgroundColor: index < page ? colors.ink : colors.line },
                 ]}
               />
@@ -239,60 +235,42 @@ export default function WelcomeScreen() {
           </Pressable>
         )}
       </View>
-      <ScrollView
-        ref={pager}
-        horizontal
-        pagingEnabled
-        bounces={false}
-        showsHorizontalScrollIndicator={false}
-        scrollEnabled={!isFinishing}
-        onMomentumScrollEnd={(e) => setPage(Math.max(0, Math.min(LAST, Math.round(e.nativeEvent.contentOffset.x / width))))}
-        style={styles.pager}
-        contentContainerStyle={styles.pagerContent}
-      >
-        {PAGES.map((item, index) => {
-          const [lead, marked] = t(item.title.join('|'), item.titleEn.join('|')).split('|')
-          const titleSize = Math.min(34, contentWidth * 0.092)
-          return (
-            <View key={index} style={{ width, flex: 1 }}>
-              <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={[styles.pageContent, { paddingTop: Math.max(12, height * 0.03) }]}>
-                <View style={{ width: contentWidth, alignSelf: 'center' }}>
-                  <View style={{ height: index === 1 ? artHeight * 0.78 : artHeight, marginBottom: index === 1 ? 18 : 26 }}>
-                    <OnboardingArt page={index as OnboardingPage} animate={page === index && appActive && !reducedMotion} />
-                  </View>
-                  <Text accessibilityRole="header" style={[type.display, { color: colors.ink, fontSize: titleSize, lineHeight: titleSize * 1.14 }]}>
-                    {fontScale > 1.15 ? lead.replace('\n', ' ') : lead}
-                    <Text style={{ backgroundColor: colors.marker, color: colors.onMarker }}>{marked}</Text>
-                  </Text>
-                  <Text style={[styles.body, { color: colors.body }]}>{t(item.body, item.bodyEn)}</Text>
-                  {index === 1 && (
-                    <View style={styles.language}>
-                      <Text style={[type.label, { fontSize: 13, color: colors.muted }]}>{t('W jakim języku mówisz?', 'Which language do you speak?')}</Text>
-                      <View style={[styles.segment, { backgroundColor: colors.surface }]} accessibilityRole="radiogroup">
-                        {languages.map((option) => {
-                          const selected = noteLanguage === option.value
-                          return (
-                            <Pressable
-                              key={option.value}
-                              accessibilityRole="radio"
-                              accessibilityState={{ checked: selected }}
-                              onPress={() => void setNoteLanguage(option.value)}
-                              style={[styles.segmentOption, selected && { backgroundColor: colors.raised }]}
-                            >
-                              <Text style={{ fontFamily: fonts.semibold, fontSize: 15, color: selected ? colors.ink : colors.muted }}>{option.label}</Text>
-                            </Pressable>
-                          )
-                        })}
-                      </View>
-                    </View>
-                  )}
-                  {(index === 2 || index === LAST) && <View style={{ marginTop: 18 }}>{modelCard}</View>}
+      <Animated.View style={[styles.pager, { opacity: fade }]}>
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={[styles.pageContent, { paddingTop: Math.max(12, height * 0.03) }]}>
+              <View style={{ width: contentWidth, alignSelf: 'center' }}>
+                <View style={{ height: index === 1 ? artHeight * 0.78 : artHeight, marginBottom: index === 1 ? 18 : 26 }}>
+                  <OnboardingArt page={index as OnboardingPage} />
                 </View>
-              </ScrollView>
-            </View>
-          )
-        })}
-      </ScrollView>
+                <Text accessibilityRole="header" style={[type.display, { color: colors.ink, fontSize: titleSize, lineHeight: titleSize * 1.14 }]}>
+                  {fontScale > 1.15 ? lead.replace('\n', ' ') : lead}
+                  <Text style={{ color: colors.accent }}>{marked}</Text>
+                </Text>
+                <Text style={[styles.body, { color: colors.body }]}>{t(item.body, item.bodyEn)}</Text>
+                {index === 1 && (
+                  <View style={styles.language}>
+                    <Text style={[type.label, { fontSize: 13, color: colors.muted }]}>{t('W jakim języku mówisz?', 'Which language do you speak?')}</Text>
+                    <View style={[styles.segment, { backgroundColor: colors.surface }]} accessibilityRole="radiogroup">
+                      {languages.map((option) => {
+                        const selected = noteLanguage === option.value
+                        return (
+                          <Pressable
+                            key={option.value}
+                            accessibilityRole="radio"
+                            accessibilityState={{ checked: selected }}
+                            onPress={() => void setNoteLanguage(option.value)}
+                            style={[styles.segmentOption, selected && { backgroundColor: colors.raised }]}
+                          >
+                            <Text style={{ ...font.semibold, fontSize: 15, color: selected ? colors.ink : colors.muted }}>{option.label}</Text>
+                          </Pressable>
+                        )
+                      })}
+                    </View>
+                  </View>
+                )}
+                {(index === 2 || index === LAST) && <View style={{ marginTop: 18 }}>{modelCard}</View>}
+              </View>
+            </ScrollView>
+      </Animated.View>
       <View style={[styles.footer, { width: contentWidth, paddingBottom: Math.max(insets.bottom, 16) + 12 }]}>
         {finishError && <Text accessibilityRole="alert" style={[type.meta, { color: colors.danger }]}>{finishError}</Text>}
         {footer()}
@@ -308,9 +286,8 @@ const styles = StyleSheet.create({
   steps: { flex: 1, flexDirection: 'row', justifyContent: 'center', gap: 6 },
   stepTarget: { height: 24, justifyContent: 'center' },
   step: { width: 14, height: 6, borderRadius: 3 },
-  skip: { fontFamily: fonts.semibold, fontSize: 15 },
+  skip: { ...font.semibold, fontSize: 15 },
   pager: { flex: 1 },
-  pagerContent: { flexGrow: 1 },
   pageContent: { paddingBottom: 16, paddingHorizontal: 24 },
   body: { ...type.body, fontSize: 17, lineHeight: 25, marginTop: 14 },
   language: { marginTop: 18, gap: 8 },
@@ -318,9 +295,9 @@ const styles = StyleSheet.create({
   segmentOption: { flex: 1, minHeight: 40, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
   modelCard: { borderRadius: radius.lg, borderWidth: 1, padding: 14, gap: 10 },
   modelRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' },
-  modelName: { fontFamily: fonts.semibold, fontSize: 16 },
+  modelName: { ...font.semibold, fontSize: 16 },
   track: { height: 10, borderRadius: 3, overflow: 'hidden' },
   trackInk: { height: 10, borderTopRightRadius: 6, borderBottomRightRadius: 2 },
   footer: { alignSelf: 'center', paddingTop: 10, gap: 8 },
-  caption: { fontFamily: fonts.regular, fontSize: 13, lineHeight: 19, textAlign: 'center' },
+  caption: { ...font.regular, fontSize: 13, lineHeight: 19, textAlign: 'center' },
 })

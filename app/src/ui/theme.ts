@@ -3,64 +3,78 @@ import { useColorScheme } from 'react-native'
 import { useSettingsStore } from '../state/settingsStore'
 import { resolveColorScheme } from './appearance'
 
-// Warm paper, black ink and one highlighter yellow.
-const lightColors = {
-  ink: '#18181B',
-  body: '#3F3E3A',
-  muted: '#6B6A66',
-  faint: '#A3A19B',
-  line: '#E6E3DB',
-  surface: '#EFEDE7',
-  canvas: '#F7F6F2',
+// iOS-like grouped palette: system grays, one blue accent.
+export const lightColors = {
+  ink: '#000000',
+  body: '#000000',
+  muted: '#6C6C70',
+  faint: '#8E8E93',
+  line: '#C6C6C8',
+  surface: '#E3E3E8',
+  canvas: '#F2F2F7',
   paper: '#FFFFFF',
-  accent: '#18181B',
-  accentSoft: '#EFEDE7',
-  onAccent: '#F7F6F2',
-  action: '#18181B',
-  onAction: '#F7F6F2',
-  marker: '#FFE066',
-  markerLine: '#E8C93A',
-  markerSoft: '#FFFBE8',
-  onMarker: '#18181B',
-  // Signature fill: black with a yellow mark on paper, yellow with a dark mark on graphite.
-  brand: '#18181B',
-  onBrand: '#FFE066',
-  // A selected segment lifted off its track.
+  accent: '#0064D2',
+  accentSoft: '#E3EEFB',
+  onAccent: '#FFFFFF',
+  action: '#0064D2',
+  onAction: '#FFFFFF',
+  marker: '#0064D2',
+  markerLine: '#0064D2',
+  markerSoft: '#E3EEFB',
+  onMarker: '#FFFFFF',
+  brand: '#0064D2',
+  onBrand: '#FFFFFF',
   raised: '#FFFFFF',
-  ember: '#D2493A',
-  emberSoft: '#FBEAE6',
-  danger: '#B3362B',
-  success: '#2E7D4F',
-  overlay: 'rgba(24,24,27,0.38)',
+  ember: '#D70015',
+  emberSoft: '#FDE8EA',
+  danger: '#D70015',
+  success: '#248A3D',
+  overlay: 'rgba(0,0,0,0.32)',
+  group: '#FFFFFF',
+  field: '#E3E3E8',
+  secondary: '#6C6C70',
+  tint: '#E3EEFB',
+  onTint: '#00489A',
+  track: '#E5E5EA',
+  bar: '#FFFFFF',
+  red: '#D70015',
 }
 export const colors = lightColors
 export type ThemeColors = typeof colors
-const darkColors: ThemeColors = {
-  ink: '#EDEBE6',
-  body: '#CFCDC7',
-  muted: '#9A9892',
-  faint: '#77756F',
-  line: '#2C2C30',
-  surface: '#26262A',
-  canvas: '#141416',
-  paper: '#1E1E21',
-  accent: '#EDEBE6',
-  accentSoft: '#2A2A2E',
-  onAccent: '#141416',
-  action: '#EDEBE6',
-  onAction: '#141416',
-  marker: '#FFE066',
-  markerLine: '#E8C93A',
-  markerSoft: '#26262A',
-  onMarker: '#141416',
-  brand: '#FFE066',
-  onBrand: '#141416',
-  raised: '#3A3A40',
-  ember: '#F08C7F',
-  emberSoft: '#3A2522',
-  danger: '#F39288',
-  success: '#8CC8A6',
-  overlay: 'rgba(0,0,0,0.6)',
+export const darkColors: ThemeColors = {
+  ink: '#FFFFFF',
+  body: '#FFFFFF',
+  muted: '#98989F',
+  faint: '#636366',
+  line: '#38383A',
+  surface: '#2C2C2E',
+  canvas: '#000000',
+  paper: '#1C1C1E',
+  accent: '#4C9BFF',
+  accentSoft: '#0E2440',
+  onAccent: '#FFFFFF',
+  action: '#4C9BFF',
+  onAction: '#FFFFFF',
+  marker: '#4C9BFF',
+  markerLine: '#4C9BFF',
+  markerSoft: '#0E2440',
+  onMarker: '#FFFFFF',
+  brand: '#4C9BFF',
+  onBrand: '#FFFFFF',
+  raised: '#636366',
+  ember: '#FF6961',
+  emberSoft: '#3A1D20',
+  danger: '#FF6961',
+  success: '#30D158',
+  overlay: 'rgba(0,0,0,0.55)',
+  group: '#1C1C1E',
+  field: '#1C1C1E',
+  secondary: '#98989F',
+  tint: '#0E2440',
+  onTint: '#8CC0FF',
+  track: '#3A3A3C',
+  bar: '#1C1C1E',
+  red: '#FF6961',
 }
 export function useTheme() {
   const preference = useSettingsStore((state) => state.appearancePreference)
@@ -72,14 +86,11 @@ export function useTheme() {
   )
 }
 
-// Custom fonts ship one family per weight, so weights are picked by family.
-export const fonts = {
-  regular: 'Onest_400Regular',
-  medium: 'Onest_500Medium',
-  semibold: 'Onest_600SemiBold',
-  bold: 'Onest_700Bold',
-  serif: 'Literata_500Medium',
-  serifRegular: 'Literata_400Regular',
+// System font (SF Pro on iOS): weights are picked with fontWeight.
+export const font = {
+  regular: { fontWeight: '400' },
+  semibold: { fontWeight: '600' },
+  bold: { fontWeight: '700' },
 } as const
 
 export const spacing = {
@@ -99,26 +110,18 @@ export const radius = {
 } as const
 
 export const type = {
-  display: {
-    fontFamily: fonts.serif,
-    fontSize: 30,
-    // Literata's descenders need room below the baseline.
-    lineHeight: 40,
-    letterSpacing: -0.3,
-  },
-  title: {
-    fontFamily: fonts.semibold,
-    fontSize: 18,
-    lineHeight: 25,
-    letterSpacing: -0.2,
-  },
-  body: { fontFamily: fonts.regular, fontSize: 16, lineHeight: 25 },
-  label: { fontFamily: fonts.semibold, fontSize: 14, lineHeight: 20 },
-  meta: { fontFamily: fonts.regular, fontSize: 12, lineHeight: 18 },
+  display: { ...font.bold, fontSize: 34, lineHeight: 41, letterSpacing: -0.4 },
+  noteTitle: { ...font.bold, fontSize: 28, lineHeight: 34 },
+  section: { ...font.bold, fontSize: 20, lineHeight: 25 },
+  title: { ...font.semibold, fontSize: 17, lineHeight: 22 },
+  body: { ...font.regular, fontSize: 17, lineHeight: 22 },
+  label: { ...font.semibold, fontSize: 15, lineHeight: 20 },
+  meta: { ...font.regular, fontSize: 15, lineHeight: 20 },
+  caption: { ...font.semibold, fontSize: 13, lineHeight: 18 },
   counter: {
-    fontFamily: fonts.medium,
-    fontSize: 58,
-    lineHeight: 70,
-    letterSpacing: -2,
+    ...font.semibold,
+    fontSize: 48,
+    lineHeight: 56,
+    fontVariant: ['tabular-nums'],
   },
 } as const

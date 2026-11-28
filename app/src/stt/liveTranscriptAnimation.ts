@@ -1,9 +1,8 @@
 export const MAX_ANIMATED_TAIL = 32
 export const LETTER_DELAY_MS = 12
-export const LETTER_FADE_MS = 170
-export const LETTER_BLUE_HOLD_MS = 400
-export const LETTER_COLOR_FADE_MS = 500
-export const LETTER_COLOR_SETTLE_MS = LETTER_BLUE_HOLD_MS + LETTER_COLOR_FADE_MS
+// New words are shown in the secondary color and switch to the text color
+// after this long; there is no fade, so one timer per frame is enough.
+export const LETTER_SECONDARY_MS = 300
 
 export interface TranscriptLetter {
   index: number
@@ -57,25 +56,22 @@ export function buildTranscriptFrame(
   return { prefix: characters.slice(0, tailStart).join(''), tail }
 }
 
-export function getTranscriptLetterAlpha(
-  letter: TranscriptLetter,
-  now: number,
-): number {
-  if (letter.startedAt === null) return 1
-  const progress = Math.max(
-    0,
-    Math.min(1, (now - letter.startedAt) / LETTER_FADE_MS),
-  )
-  return 0.12 + 0.88 * Math.max(0, Math.min(1, progress))
-}
-
+// 0 while the letter is still secondary, 1 once it has settled to text color.
 export function getTranscriptColorProgress(
   letter: TranscriptLetter,
   now: number,
 ): number {
   if (letter.startedAt === null) return 1
-  const elapsed = now - letter.startedAt - LETTER_BLUE_HOLD_MS
-  return Math.max(0, Math.min(1, elapsed / LETTER_COLOR_FADE_MS))
+  return now - letter.startedAt >= LETTER_SECONDARY_MS ? 1 : 0
+}
+
+// Time at which the last new letter of the frame settles, or null if none is new.
+export function transcriptSettleTime(tail: readonly TranscriptLetter[]): number | null {
+  let latest: number | null = null
+  for (const letter of tail)
+    if (letter.startedAt !== null && (latest === null || letter.startedAt > latest))
+      latest = letter.startedAt
+  return latest === null ? null : latest + LETTER_SECONDARY_MS
 }
 
 const parseHexColor = (color: string): [number, number, number] | null => {

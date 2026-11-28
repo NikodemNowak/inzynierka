@@ -178,3 +178,9 @@ export const resolveTaskDay = (taskText: string, noteCreatedAt: number | string 
   const resolved = phrase ? resolveDue(phrase, new Date(noteCreatedAt)) : null
   return resolved ? { date: resolved.date, allDay: resolved.allDay, day: startOfDay(resolved.date).getTime() } : null
 }
+
+// True when the task's deadline day is before today (the "Po terminie" group).
+export const isTaskOverdue = (taskText: string, noteCreatedAt: number | string | Date, now: Date = new Date()): boolean => {
+  const day = resolveTaskDay(taskText, noteCreatedAt)?.day
+  return day !== undefined && day < startOfDay(now).getTime()
+}

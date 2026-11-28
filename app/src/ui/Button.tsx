@@ -6,7 +6,7 @@ import {
   type StyleProp,
   type ViewStyle,
 } from 'react-native'
-import { radius, useTheme, fonts } from './theme'
+import { useTheme, font } from './theme'
 import { Icon, type IconName } from './Icon'
 
 export type ButtonVariant = 'primary' | 'secondary' | 'danger' | 'quiet'
@@ -34,10 +34,10 @@ export function Button({
   const inactive = disabled || busy
   const foreground =
     variant === 'primary'
-      ? colors.onAction
+      ? colors.onAccent
       : variant === 'danger'
-        ? colors.danger
-        : colors.ink
+        ? colors.red
+        : colors.accent
   return (
     <Pressable
       onPress={onPress}
@@ -46,20 +46,18 @@ export function Button({
       accessibilityState={{ disabled: inactive, busy }}
       style={({ pressed }) => [
         {
-          minHeight: compact ? 36 : variant === 'primary' ? 54 : 48,
-          borderRadius: radius.pill,
+          minHeight: compact ? 36 : 50,
+          borderRadius: 12,
           paddingVertical: compact ? 6 : 13,
           paddingHorizontal: compact ? 14 : 20,
           alignItems: 'center',
           justifyContent: 'center',
           backgroundColor:
             variant === 'primary'
-              ? colors.action
+              ? colors.accent
               : variant === 'secondary'
-                ? colors.paper
+                ? colors.tint
                 : 'transparent',
-          borderWidth: variant === 'secondary' ? 1 : 0,
-          borderColor: colors.line,
           opacity: inactive ? 0.45 : 1,
           transform: [{ scale: pressed && !inactive ? 0.98 : 1 }],
         },
@@ -82,9 +80,9 @@ export function Button({
         <Text
           style={{
             color: foreground,
-            fontSize: compact ? 14 : variant === 'primary' ? 16 : 15,
+            fontSize: compact ? 15 : 17,
             lineHeight: 22,
-            fontFamily: fonts.semibold,
+            ...font.semibold,
             flexShrink: 1,
             textAlign: 'center',
           }}

@@ -1,11 +1,9 @@
 import {
   buildTranscriptFrame,
   getTranscriptColorProgress,
-  getTranscriptLetterAlpha,
   interpolateTranscriptColor,
-  LETTER_BLUE_HOLD_MS,
-  LETTER_COLOR_FADE_MS,
-  LETTER_COLOR_SETTLE_MS,
+  LETTER_SECONDARY_MS,
+  transcriptSettleTime,
   type TranscriptLetter,
 } from './liveTranscriptAnimation'
 
@@ -52,20 +50,13 @@ describe('live transcript reveal timing', () => {
     ])
   })
 
-  it('bounds the animated tail and fully reveals its last letter by the deadline', () => {
+  it('bounds the animated tail to 32 letters', () => {
     const text = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMN'
     const frame = buildTranscriptFrame('', new Map(), text, 500)
-    const lastLetter = frame.tail[31]
 
     expect(Array.from(frame.prefix)).toHaveLength(8)
     expect(frame.tail).toHaveLength(32)
-    expect(lastLetter.startedAt).toBe(500 + 31 * 12)
-    expect(
-      getTranscriptLetterAlpha(lastLetter, lastLetter.startedAt! + 169),
-    ).toBeLessThan(1)
-    expect(
-      getTranscriptLetterAlpha(lastLetter, lastLetter.startedAt! + 170),
-    ).toBe(1)
+    expect(frame.tail[31].startedAt).toBe(500 + 31 * 12)
   })
 })
 
@@ -84,23 +75,29 @@ describe('live transcript color transition', () => {
     expect(interpolateTranscriptColor('invalid', '#172131', 0)).toBe('#172131')
   })
 
-  it('holds new letters blue before fading independently of opacity reveal', () => {
+  it('keeps new letters secondary for 300 ms, then switches in one step', () => {
     const letter: TranscriptLetter = {
       index: 0,
       character: 'ą',
       startedAt: 100,
     }
 
-    expect(LETTER_BLUE_HOLD_MS).toBe(400)
-    expect(LETTER_COLOR_FADE_MS).toBe(500)
-    expect(LETTER_COLOR_SETTLE_MS).toBe(900)
-    expect(getTranscriptLetterAlpha(letter, 270)).toBe(1)
-    expect(getTranscriptColorProgress(letter, 499)).toBe(0)
-    expect(getTranscriptColorProgress(letter, 500)).toBe(0)
-    expect(getTranscriptColorProgress(letter, 750)).toBe(0.5)
-    expect(getTranscriptColorProgress(letter, 1000)).toBe(1)
+    expect(LETTER_SECONDARY_MS).toBe(300)
+    expect(getTranscriptColorProgress(letter, 100)).toBe(0)
+    expect(getTranscriptColorProgress(letter, 399)).toBe(0)
+    expect(getTranscriptColorProgress(letter, 400)).toBe(1)
     expect(
       getTranscriptColorProgress({ ...letter, startedAt: null }, 100),
     ).toBe(1)
+  })
+
+  it('settles once, 300 ms after the newest letter, with no fade loop', () => {
+    const tail: TranscriptLetter[] = [
+      { index: 0, character: 'a', startedAt: null },
+      { index: 1, character: 'b', startedAt: 100 },
+      { index: 2, character: 'c', startedAt: 112 },
+    ]
+    expect(transcriptSettleTime(tail)).toBe(412)
+    expect(transcriptSettleTime([tail[0]])).toBeNull()
   })
 })

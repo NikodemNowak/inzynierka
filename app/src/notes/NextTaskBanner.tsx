@@ -1,3 +1,4 @@
+import { plPlural } from '../i18n/plPlural'
 import { useMemo } from 'react'
 import { useRouter } from 'expo-router'
 import { Pressable, Text, View } from 'react-native'
@@ -6,52 +7,88 @@ import { useNoteCreatedMap } from './useNoteCreatedMap'
 import { useTasksStore } from '../state/tasksStore'
 import { splitTaskText } from '../tasks/taskDue'
 import { groupTasksByDue } from '../tasks/taskGroups'
-import { fonts, radius, useTheme } from '../ui/theme'
+import { Group } from '../ui/Grouped'
+import { type, useTheme } from '../ui/theme'
 
-// The day's first open task, pulled from every note, above the list.
-export function NextTaskBanner() {
-  const { colors, isDark } = useTheme()
-  const { t, locale } = useI18n()
-  const router = useRouter()
+export interface NextTask {
+  readonly noteId: string
+  readonly title: string
+  readonly due: Date | null
+  readonly allDay: boolean
+  readonly overdue: boolean
+  readonly more: number
+}
+
+// The first open task that is overdue or due today, pulled from every note.
+export function useNextTask(): NextTask | null {
   const tasks = useTasksStore((state) => state.tasks)
   const created = useNoteCreatedMap()
-  const today = useMemo(
-    () => groupTasksByDue(tasks.filter((task) => !task.done), created, new Date()).get('today') ?? [],
-    [tasks, created],
+  return useMemo(() => {
+    const groups = groupTasksByDue(tasks.filter((task) => !task.done), created, new Date())
+    const overdue = groups.get('overdue') ?? []
+    const today = groups.get('today') ?? []
+    const next = overdue[0] ?? today[0]
+    if (!next) return null
+    return {
+      noteId: next.task.noteId,
+      title: splitTaskText(next.task.text).title,
+      due: next.due,
+      allDay: next.allDay,
+      overdue: overdue.length > 0,
+      more: overdue.length + today.length - 1,
+    }
+  }, [tasks, created])
+}
+
+export const morePhrase = (count: number, t: (pl: string, en: string) => string): string =>
+  t(
+    `+${count} ${plPlural(count, 'zadanie', 'zadania', 'zadań')}`,
+    `+${count} ${count === 1 ? 'task' : 'tasks'}`,
   )
-  const next = today[0]
-  if (!next) return null
-  const time = next.due && !next.allDay
-    ? next.due.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' })
-    : t('Dziś', 'Today')
-  const title = splitTaskText(next.task.text).title
+
+export function NextTaskBanner({ next }: { next: NextTask }) {
+  const { colors } = useTheme()
+  const { t, locale } = useI18n()
+  const router = useRouter()
+  const when = next.overdue
+    ? t('Zaległe', 'Overdue')
+    : next.due && !next.allDay
+      ? `${t('Dziś', 'Today')} ${next.due.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' })}`
+      : t('Dziś', 'Today')
   return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={t(`Najbliższe zadanie: ${title}, ${time}. Otwórz notatkę`, `Next task: ${title}, ${time}. Open the note`)}
-      onPress={() => router.push(`/note/${next.task.noteId}`)}
-      style={({ pressed }) => ({
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 12,
-        minHeight: 56,
-        marginHorizontal: 24,
-        marginBottom: 8,
-        paddingHorizontal: 14,
-        borderRadius: radius.lg,
-        backgroundColor: colors.brand,
-        transform: [{ scale: pressed ? 0.985 : 1 }],
-      })}
-    >
-      <View style={{ minHeight: 28, paddingHorizontal: 10, borderRadius: 14, justifyContent: 'center', backgroundColor: colors.onBrand }}>
-        <Text style={{ fontFamily: fonts.bold, fontSize: 13, color: colors.brand, fontVariant: ['tabular-nums'] }}>{time}</Text>
-      </View>
-      <Text numberOfLines={1} style={{ flex: 1, fontFamily: fonts.medium, fontSize: 15, color: isDark ? colors.onBrand : colors.onAction }}>{title}</Text>
-      {today.length > 1 && (
-        <Text style={{ fontFamily: fonts.regular, fontSize: 12, color: isDark ? colors.onBrand : colors.faint }}>
-          {t(`+${today.length - 1} dziś`, `+${today.length - 1} today`)}
+    <Group style={{ marginHorizontal: 16, marginTop: 10 }}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={t(
+          `Najbliższe zadanie: ${next.title}, ${when}. Otwórz notatkę`,
+          `Next task: ${next.title}, ${when}. Open the note`,
+        )}
+        onPress={() => router.push(`/note/${next.noteId}`)}
+        style={({ pressed }) => ({
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: 12,
+          height: 46,
+          paddingHorizontal: 16,
+          opacity: pressed ? 0.6 : 1,
+        })}
+      >
+        <View
+          style={{
+            width: 8,
+            height: 8,
+            borderRadius: 4,
+            backgroundColor: next.overdue ? colors.red : colors.accent,
+          }}
+        />
+        <Text numberOfLines={1} style={{ ...type.label, fontWeight: '400', color: colors.ink, flex: 1 }}>
+          <Text style={{ fontWeight: '600' }}>{when}</Text>
+          {` · ${next.title}`}
         </Text>
-      )}
-    </Pressable>
+        {next.more > 0 && (
+          <Text style={{ ...type.meta, color: colors.secondary }}>{morePhrase(next.more, t)}</Text>
+        )}
+      </Pressable>
+    </Group>
   )
 }

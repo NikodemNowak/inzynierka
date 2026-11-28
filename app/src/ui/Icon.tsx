@@ -47,9 +47,11 @@ const paths = {
   sparkles:
     'M9 2c1.1 5.2 2.2 6.3 7.5 7.5C11.2 10.7 10.1 11.8 9 17c-1.1-5.2-2.2-6.3-7.5-7.5C6.8 8.3 7.9 7.2 9 2ZM18 13c.6 3.1 1.4 3.9 4.5 4.5-3.1.6-3.9 1.4-4.5 4.5-.6-3.1-1.4-3.9-4.5-4.5 3.1-.6 3.9-1.4 4.5-4.5Z',
   'arrow-right': 'M3 12h18m-7-7 7 7-7 7',
+  'arrow-up': 'M12 19V5M6 11l6-6 6 6',
   file: 'M14 2H4v20h16V8Zm0 0v6h6M8 13h8M8 17h5',
   refresh: 'M20 7a9 9 0 1 0 1 8M20 2v6h-6',
   alert: 'M12 3 2 21h20ZM12 9v5M12 17v.5',
+  chat: 'M4 5.5h16v10H9l-5 4v-14zM8.5 10.5h7',
   more: 'M5 12h.01M12 12h.01M19 12h.01',
 } as const
 export type IconName = keyof typeof paths
@@ -90,12 +92,14 @@ export function IconButton({
   onPress,
   disabled = false,
   size = 22,
+  color,
 }: {
   name: IconName
   label: string
   onPress: () => void
   disabled?: boolean
   size?: number
+  color?: string
 }) {
   const { colors } = useTheme()
   return (
@@ -113,7 +117,7 @@ export function IconButton({
         opacity: disabled ? 0.4 : pressed ? 0.55 : 1,
       })}
     >
-      <Icon name={name} size={size} color={colors.ink} />
+      <Icon name={name} size={size} color={color ?? colors.ink} />
     </Pressable>
   )
 }

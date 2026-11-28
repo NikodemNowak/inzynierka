@@ -17,7 +17,7 @@ import { IconButton } from './Icon'
 import { useReducedMotion } from './Motion'
 import { type, useTheme } from './theme'
 
-// The dim fades in on its own while the panel springs up, so the backdrop never slides.
+// The dim fades while the panel slides up and fades in; with Reduce Motion only opacity changes.
 export function BottomSheet({
   visible,
   onClose,
@@ -44,22 +44,18 @@ export function BottomSheet({
 
   useEffect(() => {
     if (!mounted) return
+    const ease = Easing.out(Easing.cubic)
     if (visible) {
-      if (reduced) {
-        offset.setValue(0)
-        Animated.timing(dim, { toValue: 1, duration: 160, useNativeDriver: true }).start()
-        return
-      }
-      offset.setValue(height)
+      offset.setValue(reduced ? 0 : height)
       Animated.parallel([
-        Animated.timing(dim, { toValue: 1, duration: 240, easing: Easing.out(Easing.quad), useNativeDriver: true }),
-        Animated.spring(offset, { toValue: 0, damping: 20, stiffness: 210, mass: 0.9, useNativeDriver: true }),
+        Animated.timing(dim, { toValue: 1, duration: 250, easing: ease, useNativeDriver: true }),
+        Animated.timing(offset, { toValue: 0, duration: 250, easing: ease, useNativeDriver: true }),
       ]).start()
       return
     }
     Animated.parallel([
-      Animated.timing(dim, { toValue: 0, duration: 200, useNativeDriver: true }),
-      Animated.timing(offset, { toValue: reduced ? 0 : height, duration: reduced ? 1 : 220, easing: Easing.in(Easing.cubic), useNativeDriver: true }),
+      Animated.timing(dim, { toValue: 0, duration: 200, easing: ease, useNativeDriver: true }),
+      Animated.timing(offset, { toValue: reduced ? 0 : height, duration: 200, easing: ease, useNativeDriver: true }),
     ]).start(({ finished }) => { if (finished) setMounted(false) })
   }, [visible, mounted, reduced, height, dim, offset])
 
@@ -87,9 +83,10 @@ export function BottomSheet({
           accessibilityViewIsModal
           style={{
             maxHeight: '88%',
-            backgroundColor: colors.paper,
-            borderTopLeftRadius: 28,
-            borderTopRightRadius: 28,
+            backgroundColor: colors.canvas,
+            borderTopLeftRadius: 16,
+            borderTopRightRadius: 16,
+            opacity: dim,
             paddingBottom: Math.max(insets.bottom, 16),
             transform: [{ translateY: offset }],
           }}
@@ -97,11 +94,11 @@ export function BottomSheet({
           <View
             style={{
               alignSelf: 'center',
-              width: 40,
+              width: 36,
               height: 5,
               borderRadius: 3,
               backgroundColor: colors.line,
-              marginTop: 10,
+              marginTop: 8,
             }}
           />
           <View
@@ -113,7 +110,7 @@ export function BottomSheet({
               paddingTop: 12,
             }}
           >
-            <Text style={{ ...type.display, fontSize: 26, lineHeight: 32, color: colors.ink, flex: 1 }}>
+            <Text style={{ ...type.section, color: colors.ink, flex: 1 }}>
               {title}
             </Text>
             <IconButton

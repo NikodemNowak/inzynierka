@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { Animated, AppState, Easing, LayoutAnimation } from 'react-native'
 
-const layoutDurationMs = 320
+const layoutDurationMs = 250
 
 const useForeground = () => {
   const [foreground, setForeground] = useState(AppState.currentState === 'active')
@@ -22,9 +22,9 @@ export function useLayoutTransition<T>(value: T, signature: string, scope: strin
     if (shown.scope === scope && active && foreground && !reducedMotion) {
       LayoutAnimation.configureNext({
         duration: layoutDurationMs,
-        create: { type: 'easeInEaseOut', property: 'opacity', duration: 240 },
-        update: { type: 'easeInEaseOut' },
-        delete: { type: 'easeInEaseOut', property: 'opacity', duration: 180 },
+        create: { type: 'easeOut', property: 'opacity', duration: 200 },
+        update: { type: 'easeOut' },
+        delete: { type: 'easeOut', property: 'opacity', duration: 150 },
       })
     }
     setShown({ value, signature, scope })
@@ -46,7 +46,7 @@ export function LayoutEntry({ children, eventKey, visible, active, reducedMotion
     if (!changed || !active || !foreground || reducedMotion) { progress.setValue(1); return }
     progress.setValue(0)
     const animation = Animated.timing(progress, {
-      toValue: 1, duration: 240, delay: layoutDurationMs, easing: Easing.out(Easing.cubic),
+      toValue: 1, duration: 200, delay: layoutDurationMs, easing: Easing.out(Easing.cubic),
       useNativeDriver: true, isInteraction: false,
     })
     animation.start()

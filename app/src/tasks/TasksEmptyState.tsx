@@ -1,7 +1,6 @@
 import { useI18n } from '../i18n/useI18n'
 import { StyleSheet, Text, View } from 'react-native'
 import { Button } from '../ui/Button'
-import { EmptyIllustration } from '../ui/EmptyIllustration'
 import { spacing, type, useTheme } from '../ui/theme'
 
 export function TasksEmptyState({ onOpenNotes }: { onOpenNotes: () => void }) {
@@ -9,17 +8,10 @@ export function TasksEmptyState({ onOpenNotes }: { onOpenNotes: () => void }) {
   const { t } = useI18n()
   return (
     <View style={styles.container}>
-      <EmptyIllustration
-        kind="tasks"
-        label={t('Ilustracja listy zadań', 'Task list illustration')}
-      />
-      <Text
-        accessibilityRole="header"
-        style={[styles.title, { color: colors.ink }]}
-      >
+      <Text accessibilityRole="header" style={[styles.title, { color: colors.ink }]}>
         {t('Jeszcze bez zadań', 'No tasks yet')}
       </Text>
-      <Text style={[styles.description, { color: colors.muted }]}>
+      <Text style={[styles.description, { color: colors.secondary }]}>
         {t(
           'Otwórz notatkę i wybierz „Zaproponuj zadania”.',
           'Open a note and choose “Suggest tasks”.',
@@ -45,12 +37,7 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.xxl,
     gap: spacing.sm,
   },
-  title: { ...type.display, fontSize: 24, lineHeight: 32, textAlign: 'center' },
-  description: {
-    ...type.body,
-    fontSize: 15,
-    lineHeight: 23,
-    textAlign: 'center',
-  },
+  title: { ...type.section, textAlign: 'center' },
+  description: { ...type.body, textAlign: 'center' },
   action: { marginTop: spacing.sm },
 })

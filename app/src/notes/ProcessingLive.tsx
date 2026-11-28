@@ -1,16 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
-import { Animated, Easing, StyleSheet, Text, View, type LayoutChangeEvent } from 'react-native'
+import { Animated, Easing, StyleSheet, Text, View } from 'react-native'
 import * as Haptics from 'expo-haptics'
 import type { LiveSummaryProgress, ProcessingPhase } from '../ai/noteProcessing'
 import { useI18n } from '../i18n/useI18n'
-import { radius, spacing, type, useTheme } from '../ui/theme'
-
-export type LiveSegmentKind = 'plain' | 'cited' | 'next'
-export interface LiveSegment { readonly text: string; readonly kind: LiveSegmentKind }
+import { Icon } from '../ui/Icon'
+import { type, useTheme } from '../ui/theme'
 
 const EMPTY_LIVE: LiveSummaryProgress = { units: [], drafts: [] }
-const NEXT_UNITS = 2
-const SLOW_AFTER_SECONDS = 40
+const ENTER_MS = 200
 
 // Index of the furthest sentence any draft cites, or -1 before the first point.
 export const lastCitedIndex = (live: LiveSummaryProgress): number => {
@@ -23,107 +20,100 @@ export const lastCitedIndex = (live: LiveSummaryProgress): number => {
 export const liveTrailFraction = (live: LiveSummaryProgress): number =>
   live.units.length ? (lastCitedIndex(live) + 1) / live.units.length : 0
 
-// Transcript split into plain text, cited sentences and the ones the model reads next.
-export const liveTranscriptSegments = (content: string, live: LiveSummaryProgress): LiveSegment[] => {
-  const cited = new Set(live.drafts.flatMap((draft) => draft.sourceIds))
-  const last = lastCitedIndex(live)
-  const next = new Set(live.units.slice(last + 1, last + 1 + NEXT_UNITS).map((unit) => unit.id))
-  // Spans from another revision of the text would mark the wrong words.
-  const valid = live.units.every((unit, index) =>
-    unit.start >= (index ? live.units[index - 1].end : 0) && unit.start <= unit.end && unit.end <= content.length)
-  if (!valid) return [{ text: content, kind: 'plain' }]
-  const segments: LiveSegment[] = []
-  let cursor = 0
-  for (const unit of live.units) {
-    if (unit.start > cursor) segments.push({ text: content.slice(cursor, unit.start), kind: 'plain' })
-    const kind: LiveSegmentKind = cited.has(unit.id) ? 'cited' : next.has(unit.id) ? 'next' : 'plain'
-    segments.push({ text: content.slice(unit.start, unit.end), kind })
-    cursor = unit.end
-  }
-  if (cursor < content.length) segments.push({ text: content.slice(cursor), kind: 'plain' })
-  return segments
+type LivePhase = ProcessingPhase | undefined
+export type StageState = 'done' | 'active' | 'waiting'
+export interface LiveStage {
+  readonly key: 'transcript' | 'summary' | 'tasks' | 'title'
+  readonly state: StageState
+}
+
+// The pipeline summarises first, then settles tasks and the title. There is no
+// separate task phase, so tasks count as done once the title is being chosen.
+export const liveStages = (phase: LivePhase): LiveStage[] => {
+  const titling = phase === 'title' || phase === 'tags'
+  return [
+    { key: 'transcript', state: 'done' },
+    { key: 'summary', state: titling ? 'done' : 'active' },
+    { key: 'tasks', state: titling ? 'done' : 'waiting' },
+    { key: 'title', state: titling ? 'active' : 'waiting' },
+  ]
+}
+
+const pointsLabel = (count: number, t: (pl: string, en: string) => string): string => {
+  const lastTwo = count % 100
+  const last = count % 10
+  const pl = count === 1 ? 'punkt' : last >= 2 && last <= 4 && (lastTwo < 12 || lastTwo > 14) ? 'punkty' : 'punktów'
+  return t(`${count} ${pl}`, `${count} ${count === 1 ? 'point' : 'points'}`)
 }
 
 const formatElapsed = (seconds: number): string =>
   `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`
 
-function MarkerTrail({ fraction, reducedMotion }: { fraction: number; reducedMotion: boolean }) {
+function ProgressBar({ fraction, reducedMotion }: { fraction: number; reducedMotion: boolean }) {
   const { colors } = useTheme()
-  const [width, setWidth] = useState(0)
   const progress = useRef(new Animated.Value(fraction)).current
   useEffect(() => {
     if (reducedMotion) { progress.setValue(fraction); return }
-    Animated.timing(progress, { toValue: fraction, duration: 600, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start()
+    Animated.timing(progress, { toValue: fraction, duration: ENTER_MS, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start()
   }, [fraction, progress, reducedMotion])
   return (
-    <View
-      onLayout={(event: LayoutChangeEvent) => setWidth(event.nativeEvent.layout.width)}
-      style={[styles.trail, { backgroundColor: colors.surface }]}
-    >
+    <View style={[styles.track, { backgroundColor: colors.track }]}>
       <Animated.View
-        style={[
-          styles.trailInk,
-          { backgroundColor: colors.marker },
-          { transform: [{ translateX: progress.interpolate({ inputRange: [0, 1], outputRange: [-width, 0] }) }] },
-        ]}
+        style={[styles.fill, { backgroundColor: colors.accent, transform: [{ scaleX: progress }] }]}
       />
     </View>
   )
 }
 
-function WaitingDot({ reducedMotion, label }: { reducedMotion: boolean; label: string }) {
+function StageRow({ stage, label, detail }: { stage: StageState; label: string; detail?: string }) {
   const { colors } = useTheme()
-  const pulse = useRef(new Animated.Value(0)).current
-  useEffect(() => {
-    if (reducedMotion) return
-    const loop = Animated.loop(Animated.timing(pulse, { toValue: 1, duration: 1400, easing: Easing.out(Easing.quad), useNativeDriver: true }))
-    loop.start()
-    return () => loop.stop()
-  }, [pulse, reducedMotion])
   return (
-    <View style={styles.row}>
-      <View style={styles.bulletSlot}>
-        <Animated.View
-          style={[
-            styles.ring,
-            { backgroundColor: colors.marker },
-            { opacity: pulse.interpolate({ inputRange: [0, 1], outputRange: [0.5, 0] }), transform: [{ scale: pulse.interpolate({ inputRange: [0, 1], outputRange: [1, 2.4] }) }] },
-          ]}
-        />
-        <View style={[styles.dot, { backgroundColor: colors.marker, borderColor: colors.markerLine }]} />
+    <View style={styles.stage}>
+      <View style={styles.marker}>
+        {stage === 'done' ? (
+          <Icon name="check" size={16} color={colors.accent} />
+        ) : stage === 'active' ? (
+          <View style={[styles.dot, { backgroundColor: colors.accent }]} />
+        ) : (
+          <View style={[styles.dot, { borderWidth: 1.5, borderColor: colors.faint }]} />
+        )}
       </View>
-      <Text style={[type.body, { color: colors.faint }]}>{label}</Text>
+      <Text
+        style={[
+          type.meta,
+          { color: stage === 'waiting' ? colors.secondary : colors.ink },
+          stage === 'active' && { fontWeight: '600' },
+        ]}
+      >
+        {label}
+      </Text>
+      {detail ? <Text style={[type.meta, { color: colors.secondary }]}>{detail}</Text> : null}
     </View>
   )
 }
 
-// A new point fades in and settles a few pixels up; the haptic marks the arrival.
-function DraftRow({ text, animate }: { text: string; animate: boolean }) {
+// A new point fades in and settles 4 px; with Reduce Motion only the opacity changes.
+function DraftRow({ text, animate, reducedMotion }: { text: string; animate: boolean; reducedMotion: boolean }) {
   const { colors } = useTheme()
   const enter = useRef(new Animated.Value(animate ? 0 : 1)).current
   useEffect(() => {
     if (!animate) return
-    void Haptics.selectionAsync().catch(() => undefined)
-    Animated.timing(enter, { toValue: 1, duration: 260, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start()
-  }, [animate, enter])
+    if (!reducedMotion) void Haptics.selectionAsync().catch(() => undefined)
+    Animated.timing(enter, { toValue: 1, duration: ENTER_MS, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start()
+  }, [animate, enter, reducedMotion])
   return (
-    <Animated.View style={[styles.row, { opacity: enter, transform: [{ translateY: enter.interpolate({ inputRange: [0, 1], outputRange: [6, 0] }) }] }]}>
-      <View style={styles.bulletSlot}>
-        <View style={[styles.dot, { backgroundColor: colors.marker, borderColor: colors.markerLine }]} />
-      </View>
+    <Animated.View
+      style={[
+        styles.point,
+        { opacity: enter },
+        reducedMotion ? null : { transform: [{ translateY: enter.interpolate({ inputRange: [0, 1], outputRange: [4, 0] }) }] },
+      ]}
+    >
+      <Text style={[type.body, { color: colors.ink }]}>{'•'}</Text>
       <Text style={[type.body, { color: colors.ink, flex: 1 }]}>{text}</Text>
     </Animated.View>
   )
 }
-
-type LivePhase = ProcessingPhase | undefined
-
-// The single source of phase text for the processing card.
-export const liveStatusLabel = (phase: LivePhase, t: (pl: string, en: string) => string): string =>
-  phase === 'queued' ? t('Czekam na model', 'Waiting for the model')
-    : phase === 'loading' ? t('Wczytuję model', 'Loading the model')
-      : phase === 'title' || phase === 'tags' ? t('Dobieram tytuł', 'Choosing a title')
-        : t('Zakreślam najważniejsze', 'Highlighting what matters')
 
 export function ProcessingLive({ content, live, phase, reducedMotion }: {
   content: string
@@ -145,54 +135,73 @@ export function ProcessingLive({ content, live, phase, reducedMotion }: {
   const firstAnimated = seen.current
   useEffect(() => { seen.current = Math.max(seen.current, draftCount) }, [draftCount])
   const source = live ?? EMPTY_LIVE
-  const segments = liveTranscriptSegments(content, source)
   const fraction = liveTrailFraction(source)
-  const waiting = phase !== 'queued' && phase !== 'loading' && phase !== 'title' && phase !== 'tags'
+  const summaryDetail = phase === 'queued' ? t('Czekam na model', 'Waiting for the model')
+    : phase === 'loading' ? t('Wczytuję model', 'Loading the model')
+      : draftCount ? pointsLabel(draftCount, t) : undefined
+  const labels: Record<LiveStage['key'], string> = {
+    transcript: t('Tekst nagrania', 'Recording text'),
+    summary: t('Podsumowanie', 'Summary'),
+    tasks: t('Zadania', 'Tasks'),
+    title: t('Tytuł', 'Title'),
+  }
   return (
     <View style={styles.container}>
-      <View style={styles.status}>
-        <Text style={[type.label, { color: colors.ink }]}>{liveStatusLabel(phase, t)}</Text>
-        <Text style={[type.meta, { color: colors.muted }]}>{formatElapsed(elapsed)}</Text>
-      </View>
-      <View accessible accessibilityLabel={t(`Przeczytane ${Math.round(fraction * 100)}% notatki`, `${Math.round(fraction * 100)}% of the note read`)}>
-        <MarkerTrail fraction={fraction} reducedMotion={reducedMotion} />
-      </View>
-      <View style={[styles.card, { backgroundColor: colors.paper, borderColor: colors.line }]}>
-        <Text style={[type.body, { color: colors.faint }]}>
-          {segments.map((segment, index) => (
-            <Text
-              key={index}
-              style={segment.kind === 'cited'
-                ? { color: colors.onMarker, backgroundColor: colors.marker }
-                : segment.kind === 'next' ? { color: colors.ink, backgroundColor: colors.markerSoft } : undefined}
-            >
-              {segment.text}
-            </Text>
+      <View style={[styles.card, { backgroundColor: colors.field }]}>
+        <View style={styles.cardHeader}>
+          <Text style={[type.label, { color: colors.ink }]}>{t('Opracowuję notatkę', 'Processing the note')}</Text>
+          <Text style={[type.meta, { color: colors.secondary, fontVariant: ['tabular-nums'] }]}>{formatElapsed(elapsed)}</Text>
+        </View>
+        <View
+          accessible
+          accessibilityRole="progressbar"
+          accessibilityLabel={t(`Przeczytane ${Math.round(fraction * 100)}% notatki`, `${Math.round(fraction * 100)}% of the note read`)}
+        >
+          <ProgressBar fraction={fraction} reducedMotion={reducedMotion} />
+        </View>
+        <View style={styles.stages}>
+          {liveStages(phase).map((stage) => (
+            <StageRow
+              key={stage.key}
+              stage={stage.state}
+              label={labels[stage.key]}
+              detail={stage.key === 'summary' && stage.state === 'active' ? summaryDetail : undefined}
+            />
           ))}
-        </Text>
+        </View>
       </View>
-      <View accessibilityLiveRegion="polite">
-        {source.drafts.map((draft, index) => (
-          <DraftRow key={index} text={draft.text} animate={!reducedMotion && index >= firstAnimated} />
-        ))}
-        {waiting && <WaitingDot reducedMotion={reducedMotion} label={draftCount ? t('Następny punkt…', 'Next point…') : t('Pierwszy punkt…', 'First point…')} />}
+      {draftCount > 0 && (
+        <View accessibilityLiveRegion="polite">
+          <Text style={[type.caption, styles.heading, { color: colors.secondary }]}>{t('Podsumowanie', 'Summary')}</Text>
+          <View style={styles.points}>
+            {source.drafts.map((draft, index) => (
+              <DraftRow key={index} text={draft.text} animate={index >= firstAnimated} reducedMotion={reducedMotion} />
+            ))}
+          </View>
+        </View>
+      )}
+      <View>
+        <Text style={[type.caption, styles.heading, { color: colors.secondary }]}>{t('Tekst nagrania', 'Recording text')}</Text>
+        <Text style={[type.meta, { color: colors.ink, lineHeight: 22 }]}>{content}</Text>
       </View>
-      <Text style={[type.meta, { color: colors.muted, opacity: elapsed >= SLOW_AFTER_SECONDS ? 1 : 0 }]}>
-        {t('Dłuższe nagranie — to potrwa chwilę. Możesz wrócić do listy, dokończę w tle.',
-          'A longer recording takes a moment. You can go back to the list; it finishes in the background.')}
+      <Text style={[type.caption, { color: colors.secondary, textAlign: 'center' }]}>
+        {t('Możesz wyjść z ekranu — opracowanie trwa w tle', 'You can leave this screen; processing continues in the background')}
       </Text>
     </View>
   )
 }
 
 const styles = StyleSheet.create({
-  container: { gap: spacing.md, minHeight: 280 },
-  status: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' },
-  trail: { height: 10, borderRadius: 3, overflow: 'hidden' },
-  trailInk: { ...StyleSheet.absoluteFill, borderTopRightRadius: 6, borderBottomRightRadius: 2 },
-  card: { borderRadius: radius.lg, borderWidth: StyleSheet.hairlineWidth, padding: spacing.lg },
-  row: { flexDirection: 'row', alignItems: 'center', minHeight: 44, gap: spacing.md },
-  bulletSlot: { width: 8, height: 8, alignItems: 'center', justifyContent: 'center' },
-  dot: { width: 8, height: 8, borderRadius: 4, borderWidth: 1 },
-  ring: { position: 'absolute', width: 8, height: 8, borderRadius: 4 },
+  container: { gap: 20 },
+  card: { borderRadius: 12, paddingVertical: 14, paddingHorizontal: 16, gap: 12 },
+  cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' },
+  track: { height: 4, borderRadius: 2, overflow: 'hidden' },
+  fill: { height: 4, borderRadius: 2, width: '100%', transformOrigin: 'left center' },
+  stages: { gap: 8 },
+  stage: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  marker: { width: 18, height: 18, alignItems: 'center', justifyContent: 'center' },
+  dot: { width: 8, height: 8, borderRadius: 4 },
+  heading: { textTransform: 'uppercase', letterSpacing: 0.3, marginBottom: 8 },
+  points: { gap: 8 },
+  point: { flexDirection: 'row', gap: 8 },
 })

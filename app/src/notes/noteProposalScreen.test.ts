@@ -1,6 +1,6 @@
 import { createElement, Profiler } from 'react'
 import { act, create, type ReactTestInstance, type ReactTestRenderer } from 'react-test-renderer'
-import { AppState, Text } from 'react-native'
+import { ActionSheetIOS, AppState, Text, type ActionSheetIOSOptions } from 'react-native'
 import { Stack } from 'expo-router'
 import type { Note } from '../domain/note'
 import type { SummaryDocument } from '../domain/summary'
@@ -78,13 +78,25 @@ const chooser = (): ReactTestInstance => tree.root.findByProps({ accessibilityVi
 const textNodes = (value: string) => chooser().findAllByType(Text).filter((item) => item.props.children === value)
 const radios = () => chooser().findAll((item) => item.props.accessibilityRole === 'radio' &&
   typeof item.props.onPress === 'function')
-const open = async () => {
-  const action = tree.root.findAll((item) => item.props.accessibilityRole === 'button' &&
-    typeof item.props.onPress === 'function').find((item) =>
-      item.props.accessibilityLabel === 'Opracuj na nowo')
-  expect(action).toBeDefined()
-  await act(async () => { action!.props.onPress() })
+let mockMenu: { options: ActionSheetIOSOptions; pick: (index: number) => void } | undefined
+jest.spyOn(ActionSheetIOS, 'showActionSheetWithOptions').mockImplementation((options, pick) => { mockMenu = { options, pick } })
+// The header lives in the navigator: render its buttons and pick from the native action sheet.
+const chooseFromMenu = async (label: string) => {
+  let header: ReactTestRenderer | undefined
+  await act(async () => { header = create(tree.root.findByType(Stack.Screen).props.options.headerRight({})) })
+  const more = header!.root.findAll((item) => item.props.label === 'Więcej' && typeof item.props.onPress === 'function')
+  expect(more).toHaveLength(1)
+  mockMenu = undefined
+  await act(async () => { more[0].props.onPress() })
+  const index = mockMenu!.options.options.indexOf(label)
+  expect(index).toBeGreaterThanOrEqual(0)
+  expect(mockMenu!.options.disabledButtonIndices ?? []).not.toContain(index)
+  await act(async () => { mockMenu!.pick(index) })
+  // The header defers the selection by one tick so the next modal can present after the native sheet closes.
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)) })
+  await act(async () => { header!.unmount() })
 }
+const open = () => chooseFromMenu('Opracuj na nowo')
 
 beforeEach(async () => {
   jest.clearAllMocks()
@@ -196,25 +208,24 @@ test('shows the proposal as static text with the added words highlighted', async
   expect(textNodes('Nowe podsumowanie.').length).toBeGreaterThan(0)
 })
 
-test('shows one processing card with one phase label from the first phase on, without skeletons or a header indicator', async () => {
+test('shows one processing card with the phase detail from the first phase on, without skeletons or a header indicator', async () => {
   const label = () => tree.root.findByType(ProcessingLive)
   const texts = () => tree.root.findAllByType(Text).map(node => node.props.children).filter((child): child is string => typeof child === 'string')
-  const phases: [ProcessingProgress['phase'], string][] = [
-    ['queued', 'Czekam na model'], ['loading', 'Wczytuję model'], ['processing', 'Zakreślam najważniejsze'],
-    ['summary', 'Zakreślam najważniejsze'], ['title', 'Dobieram tytuł'],
+  const phases: [ProcessingProgress['phase'], string | null][] = [
+    ['queued', 'Czekam na model'], ['loading', 'Wczytuję model'], ['processing', null],
+    ['summary', null], ['title', null],
   ]
   for (const [phase, expected] of phases) {
     mockNotesState.processing = { [mockNote.id]: { phase } }
     await update()
     expect(label().props.phase).toBe(phase)
-    expect(texts()).toContain(expected)
-    expect(tree.root.findByType(Stack.Screen).props.options.headerTitle).toBe('Notatka')
+    expect(texts().filter(text => text === 'Opracowuję notatkę')).toHaveLength(1)
+    if (expected) expect(texts()).toContain(expected)
+    expect(tree.root.findByType(Stack.Screen).props.options.headerTitle).toBe('')
   }
+  expect(texts()).toContain('Możesz wyjść z ekranu — opracowanie trwa w tle')
   expect(texts()).not.toContain('Pierwszy punkt…')
   expect(texts()).not.toContain('Następny punkt…')
-  mockNotesState.processing = { [mockNote.id]: { phase: 'summary' } }
-  await update()
-  expect(texts()).toContain('Pierwszy punkt…')
 })
 
 test('keeps the previous content while processing and publishes the result in one step', async () => {
@@ -277,8 +288,20 @@ test('the banner is hidden while the note is processing and when no proposal exi
   expect(tree.root.findAllByType(Button).map(node => node.props.label)).not.toContain('Zobacz')
 })
 
-test('deleting asks in a bottom sheet instead of a system alert', async () => {
-  await act(async () => { button('Usuń notatkę').props.onPress() })
+test('the note menu lists its actions natively with delete marked destructive', async () => {
+  mockNotesState.notes = [{ ...mockNote, audioUri: 'file:///recording.wav' }]
+  await update()
+  await chooseFromMenu('Przepisz nagranie jeszcze raz')
+  expect(mockMenu!.options.options).toEqual(['Edytuj', 'Opracuj na nowo', 'Przepisz nagranie jeszcze raz', 'Eksportuj', 'Usuń', 'Anuluj'])
+  expect(mockMenu!.options.destructiveButtonIndex).toBe(4)
+  expect(mockMenu!.options.cancelButtonIndex).toBe(5)
+  expect(mockRouter.push).toHaveBeenCalledWith({ pathname: '/import', params: { noteId: mockNote.id } })
+  await chooseFromMenu('Edytuj')
+  expect(mockRouter.push).toHaveBeenCalledWith(`/note/edit/${mockNote.id}`)
+})
+
+test('deleting from the menu asks in a bottom sheet instead of a system alert', async () => {
+  await chooseFromMenu('Usuń')
   const sheet = tree.root.findAllByType(BottomSheet).find(item => item.props.title === 'Usunąć notatkę?')
   expect(sheet?.props.visible).toBe(true)
   await act(async () => { await button('Usuń').props.onPress() })

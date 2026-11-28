@@ -18,8 +18,9 @@ import { useI18n } from '../i18n/useI18n'
 import type { AppearancePreference } from '../ui/appearance'
 import { Button } from '../ui/Button'
 import { BottomSheet } from '../ui/BottomSheet'
+import { Group, Row, SectionTitle } from '../ui/Grouped'
 import { Icon } from '../ui/Icon'
-import { radius, spacing, type, useTheme, fonts } from '../ui/theme'
+import { radius, spacing, type, useTheme, font } from '../ui/theme'
 import { ProcessingSettingsSection } from '../processing/ProcessingSettingsSection'
 import { MEASUREMENT_TOOLS } from '../measurementBuild'
 
@@ -125,20 +126,12 @@ function LanguageSection() {
 
   return (
     <View style={styles.section}>
-      <Text
-        style={[styles.sectionTitle, { color: colors.muted }]}
-        accessibilityRole="header"
-      >
+      <SectionTitle>
         {t('Język', 'Language')}
-      </Text>
-      <View
-        style={[
-          styles.preferenceCard,
-          { backgroundColor: colors.paper, borderColor: colors.line },
-        ]}
-      >
-        <Pressable
-          accessibilityRole="button"
+      </SectionTitle>
+      <Group>
+        <Row
+          title={t('Język aplikacji', 'App language')}
           accessibilityLabel={t(
             `Język aplikacji: ${appLanguageLabel}`,
             `App language: ${appLanguageLabel}`,
@@ -148,18 +141,17 @@ function LanguageSection() {
             'Opens app language options',
           )}
           onPress={() => open('app')}
-          style={styles.preferenceRow}
-        >
-          <Text style={[styles.preferenceLabel, { color: colors.ink }]}>
-            {t('Język aplikacji', 'App language')}
-          </Text>
-          <Text style={[styles.preferenceValue, { color: colors.muted }]}>
-            {appLanguageLabel}
-          </Text>
-          <Icon name="chevron-right" color={colors.muted} size={20} />
-        </Pressable>
-        <Pressable
-          accessibilityRole="button"
+          trailing={
+            <>
+              <Text style={[styles.preferenceValue, { color: colors.muted }]}>
+                {appLanguageLabel}
+              </Text>
+              <Icon name="chevron-right" color={colors.muted} size={20} />
+            </>
+          }
+        />
+        <Row
+          title={t('Język nowych notatek', 'Language for new notes')}
           accessibilityLabel={t(
             `Język nowych notatek: ${languageNames[noteLanguage]}`,
             `Language for new notes: ${languageNames[noteLanguage]}`,
@@ -169,21 +161,16 @@ function LanguageSection() {
             'Opens default transcription and AI language options',
           )}
           onPress={() => open('note')}
-          style={[
-            styles.preferenceRow,
-            styles.preferenceAction,
-            { borderTopColor: colors.line },
-          ]}
-        >
-          <Text style={[styles.preferenceLabel, { color: colors.ink }]}>
-            {t('Język nowych notatek', 'Language for new notes')}
-          </Text>
-          <Text style={[styles.preferenceValue, { color: colors.muted }]}>
-            {languageNames[noteLanguage]}
-          </Text>
-          <Icon name="chevron-right" color={colors.muted} size={20} />
-        </Pressable>
-      </View>
+          trailing={
+            <>
+              <Text style={[styles.preferenceValue, { color: colors.muted }]}>
+                {languageNames[noteLanguage]}
+              </Text>
+              <Icon name="chevron-right" color={colors.muted} size={20} />
+            </>
+          }
+        />
+      </Group>
       <Text style={[styles.hint, { color: colors.muted }]}>
         {t(
           'Język nowych notatek określa język transkrypcji i AI. Zmiana języka aplikacji nie tłumaczy istniejących notatek.',
@@ -294,18 +281,11 @@ function ModelSection() {
 
   return (
     <View style={styles.section}>
-      <Text
-        style={[styles.sectionTitle, { color: colors.muted }]}
-        accessibilityRole="header"
-      >
+      <SectionTitle>
         {t('Model lokalny', 'Local model')}
-      </Text>
-      <View
-        style={[
-          styles.modelCard,
-          { backgroundColor: colors.paper, borderColor: colors.line },
-        ]}
-      >
+      </SectionTitle>
+      <Group>
+      <View style={styles.modelCard}>
         <View style={styles.modelHeader}>
           <View style={styles.modelIdentity}>
             <Text style={[styles.modelName, { color: colors.ink }]}>
@@ -316,10 +296,10 @@ function ModelSection() {
             </Text>
           </View>
           <View
-            style={[styles.statusBadge, { backgroundColor: status === 'ready' ? colors.marker : colors.surface }]}
+            style={[styles.statusBadge, { backgroundColor: status === 'ready' ? colors.accent : colors.surface }]}
           >
-            {status === 'ready' && <Icon name={statusIcon} color={colors.onMarker} size={14} />}
-            <Text style={[styles.statusLabel, { color: status === 'ready' ? colors.onMarker : colors.ink }]}>
+            {status === 'ready' && <Icon name={statusIcon} color={colors.onAccent} size={14} />}
+            <Text style={[styles.statusLabel, { color: status === 'ready' ? colors.onAccent : colors.ink }]}>
               {statusLabel}
             </Text>
           </View>
@@ -345,7 +325,7 @@ function ModelSection() {
         {status === 'downloading' && (
           <View style={styles.progressSection}>
             <View
-              style={[styles.progressTrack, { backgroundColor: colors.surface }]}
+              style={[styles.progressTrack, { backgroundColor: colors.track }]}
               accessibilityRole="progressbar"
               accessibilityLabel={t(
                 'Pobieranie modelu AI',
@@ -361,7 +341,7 @@ function ModelSection() {
                 style={[
                   styles.progressFill,
                   {
-                    backgroundColor: colors.marker,
+                    backgroundColor: colors.accent,
                     width: `${Math.min(100, Math.max(0, progress))}%`,
                   },
                 ]}
@@ -423,6 +403,7 @@ function ModelSection() {
           </Text>
         )}
       </View>
+      </Group>
       {status === 'ready' && (
         <Pressable onPress={confirmRemove} accessibilityRole="button" style={styles.removeLink}>
           <Text style={[styles.removeLabel, { color: colors.danger }]}>
@@ -433,16 +414,16 @@ function ModelSection() {
       <BottomSheet
         visible={confirming}
         onClose={() => setConfirming(false)}
-        title={t('Usun�� model?', 'Remove model?')}
+        title={t('Usunąć model?', 'Remove model?')}
       >
         <Text style={{ ...type.body, color: colors.body }}>
           {t(
-            'Zwolni to miejsce na urz�dzeniu. Tytu�y i podsumowania AI b�d� niedost�pne, dop�ki nie pobierzesz modelu ponownie. Notatki i nagrania zostan� nienaruszone.',
+            'Zwolni to miejsce na urządzeniu. Tytuły i podsumowania AI będą niedostępne, dopóki nie pobierzesz modelu ponownie. Notatki i nagrania zostaną nienaruszone.',
             'This frees up space on your device. AI titles and summaries will be unavailable until you download the model again. Your notes and recordings will be kept.',
           )}
         </Text>
         <Button
-          label={t('Usu� model', 'Remove model')}
+          label={t('Usuń model', 'Remove model')}
           variant="danger"
           onPress={() => {
             setConfirming(false)
@@ -482,40 +463,23 @@ function PrivacySection() {
   const { colors } = useTheme()
   return (
     <View style={styles.section}>
-      <Text
-        style={[styles.sectionTitle, { color: colors.muted }]}
-        accessibilityRole="header"
-      >
+      <SectionTitle>
         {t('Prywatność', 'Privacy')}
-      </Text>
-      <View
-        style={[
-          styles.privacyCard,
-          { backgroundColor: colors.paper, borderColor: colors.line },
-        ]}
-      >
-        {PRIVACY_POINTS.map((point, index) => (
-          <View
+      </SectionTitle>
+      <Group>
+        {PRIVACY_POINTS.map((point) => (
+          <Row
             key={point.title}
-            style={[
-              styles.privacyRow,
-              index < PRIVACY_POINTS.length - 1 && {
-                borderBottomColor: colors.line,
-                borderBottomWidth: StyleSheet.hairlineWidth,
-              },
-            ]}
-          >
-            <View style={[styles.privacyIcon, { backgroundColor: colors.marker }]}>
-              <Icon name={point.icon} color={colors.onMarker} size={16} />
-            </View>
-            <View style={styles.privacyCopy}>
-              <Text style={[styles.privacyTitle, { color: colors.ink }]}>
-                {t(point.title, point.titleEn)}
-              </Text>
-            </View>
-          </View>
+            title={t(point.title, point.titleEn)}
+            numberOfLines={2}
+            leading={
+              <View style={[styles.privacyIcon, { backgroundColor: colors.accent }]}>
+                <Icon name={point.icon} color={colors.onAccent} size={16} />
+              </View>
+            }
+          />
         ))}
-      </View>
+      </Group>
     </View>
   )
 }
@@ -547,41 +511,23 @@ function DataSection() {
 
   return (
     <View style={styles.section}>
-      <Text
-        style={[styles.sectionTitle, { color: colors.muted }]}
-        accessibilityRole="header"
-      >
+      <SectionTitle>
         {t('Twoje dane', 'Your data')}
-      </Text>
-      <View style={[styles.preferenceCard, { backgroundColor: colors.paper, borderColor: colors.line }]}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityState={{ disabled: busy || notes.length === 0 }}
-          onPress={() => void exportAll()}
+      </SectionTitle>
+      <Group>
+        <Row
+          title={busy ? t('Eksportowanie…', 'Exporting…') : t('Eksportuj notatki', 'Export notes')}
+          subtitle={t('Tekst i zadania, bez nagrań', 'Text and tasks, without recordings')}
           disabled={busy || notes.length === 0}
-          style={({ pressed }) => [styles.preferenceRow, { opacity: busy || notes.length === 0 ? 0.48 : pressed ? 0.62 : 1 }]}
-        >
-          <View style={styles.dataCopy}>
-            <Text style={[styles.dataTitle, { color: colors.ink }]}>
-              {busy ? t('Eksportowanie…', 'Exporting…') : t('Eksportuj notatki', 'Export notes')}
-            </Text>
-            <Text style={[styles.dataDescription, { color: colors.muted }]}>
-              {t('Tekst i zadania, bez nagrań', 'Text and tasks, without recordings')}
-            </Text>
-          </View>
-          <Icon name="chevron-right" color={colors.faint} size={20} />
-        </Pressable>
-        <Pressable
-          accessibilityRole="button"
+          onPress={() => void exportAll()}
+          trailing={<Icon name="chevron-right" color={colors.faint} size={20} />}
+        />
+        <Row
+          title={t('Pokaż wprowadzenie', 'Show the introduction')}
           onPress={() => router.push('/welcome')}
-          style={({ pressed }) => [styles.preferenceRow, styles.preferenceAction, { borderTopColor: colors.line, opacity: pressed ? 0.62 : 1 }]}
-        >
-          <Text style={[styles.preferenceLabel, { color: colors.ink }]}>
-            {t('Pokaż wprowadzenie', 'Show the introduction')}
-          </Text>
-          <Icon name="chevron-right" color={colors.faint} size={20} />
-        </Pressable>
-      </View>
+          trailing={<Icon name="chevron-right" color={colors.faint} size={20} />}
+        />
+      </Group>
       {notes.length === 0 && (
         <Text style={[styles.hint, { color: colors.muted }]}>
           {t('Brak notatek do wyeksportowania.', 'No notes to export.')}
@@ -622,9 +568,7 @@ function AppearanceSection() {
   }
   return (
     <View style={styles.section}>
-      <Text style={[styles.sectionTitle, { color: colors.muted }]} accessibilityRole="header">
-        {t('Wygląd', 'Appearance')}
-      </Text>
+      <SectionTitle>{t('Wygląd', 'Appearance')}</SectionTitle>
       <Segmented
         label={t('Wybór wyglądu', 'Choose appearance')}
         options={options}
@@ -666,7 +610,7 @@ function Segmented<T extends string>({ label, options, value, onChange, disabled
             onPress={() => onChange(option.value)}
             style={[styles.segmentOption, selected && { backgroundColor: colors.raised }]}
           >
-            <Text style={{ fontFamily: fonts.semibold, fontSize: 14, color: selected ? colors.ink : colors.muted }}>{option.title}</Text>
+            <Text style={{ ...font.semibold, fontSize: 14, color: selected ? colors.ink : colors.muted }}>{option.title}</Text>
           </Pressable>
         )
       })}
@@ -698,42 +642,26 @@ function DeveloperSection() {
   const { colors } = useTheme()
   return (
     <View style={styles.section}>
-      <Text
-        style={[styles.sectionTitle, { color: colors.muted }]}
-        accessibilityRole="header"
-      >
+      <SectionTitle>
         {t('Dla dewelopera', 'For developers')}
-      </Text>
-      <View
-        style={[
-          styles.preferenceCard,
-          { backgroundColor: colors.paper, borderColor: colors.line },
-        ]}
-      >
-        <Pressable
-          accessibilityRole="button"
+      </SectionTitle>
+      <Group>
+        <Row
+          title={t('Pomiary i porównanie modeli', 'Measurements and model comparison')}
+          numberOfLines={2}
           onPress={() => router.push('/dev/benchmark')}
-          style={styles.devRow}
-        >
-          <Text style={[styles.preferenceLabel, { color: colors.ink }]}>
-            {t('Pomiary i porównanie modeli', 'Measurements and model comparison')}
-          </Text>
-          <Icon name="chevron-right" color={colors.faint} size={20} />
-        </Pressable>
+          trailing={<Icon name="chevron-right" color={colors.faint} size={20} />}
+        />
         {(__DEV__ ? DEV_ROUTES : []).map((route) => (
-          <Pressable
+          <Row
             key={route.href}
-            accessibilityRole="button"
+            title={t(route.title, route.titleEn)}
+            numberOfLines={2}
             onPress={() => router.push(route.href)}
-            style={[styles.devRow, { borderTopColor: colors.line, borderTopWidth: StyleSheet.hairlineWidth }]}
-          >
-            <Text style={[styles.preferenceLabel, { color: colors.ink }]}>
-              {t(route.title, route.titleEn)}
-            </Text>
-            <Icon name="chevron-right" color={colors.muted} size={20} />
-          </Pressable>
+            trailing={<Icon name="chevron-right" color={colors.muted} size={20} />}
+          />
         ))}
-      </View>
+      </Group>
     </View>
   )
 }
@@ -764,24 +692,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.lg,
     paddingBottom: spacing.xxl,
-    gap: spacing.xl,
   },
-  section: { gap: spacing.sm },
-  sectionTitle: { ...type.label, fontSize: 13, lineHeight: 18, marginLeft: 4 },
+  section: { gap: 0 },
   modelCard: {
     padding: spacing.lg,
-    borderRadius: radius.lg,
-    borderWidth: 1,
     gap: spacing.md,
   },
   modelHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
-  modelIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: radius.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   modelIdentity: { flex: 1, gap: 2, minWidth: 0 },
   modelName: { ...type.title, fontSize: 17 },
   modelPurpose: { ...type.meta },
@@ -793,57 +710,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     minHeight: 26,
   },
-  statusLabel: { ...type.meta, fontFamily: fonts.semibold },
+  statusLabel: { ...type.meta, ...font.semibold },
   modelSize: { ...type.body, fontSize: 14 },
   progressSection: { gap: spacing.sm },
   progressTrack: { height: 10, borderRadius: 3, overflow: 'hidden' },
   progressFill: { height: '100%', borderTopRightRadius: 6, borderBottomRightRadius: 2 },
   progressHint: { ...type.meta },
   modelHelper: { textAlign: 'center' },
-  removeLink: { alignSelf: 'flex-start', minHeight: 40, justifyContent: 'center', marginLeft: 4 },
+  removeLink: { marginTop: spacing.sm, alignSelf: 'flex-start', minHeight: 40, justifyContent: 'center', marginLeft: 4 },
   removeLabel: { ...type.label, fontSize: 14 },
   error: { ...type.body, fontSize: 14 },
-  privacyCard: {
-    paddingHorizontal: spacing.lg,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-  },
-  privacyRow: {
-    minHeight: 61,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-  },
-  privacyCopy: { flex: 1, gap: 2 },
   privacyIcon: { width: 28, height: 28, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
-  privacyTitle: { ...type.body, fontFamily: fonts.medium },
-  dataCard: {
-    minHeight: 76,
-    paddingHorizontal: spacing.lg,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    overflow: 'hidden',
-  },
-  dataRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
-  dataCopy: { flex: 1, gap: 2 },
-  dataTitle: { ...type.body, fontFamily: fonts.medium },
-  dataDescription: { ...type.body, fontSize: 14 },
-  hint: { ...type.meta, marginHorizontal: spacing.md },
-  preferenceCard: {
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    overflow: 'hidden',
-  },
-  preferenceRow: {
-    minHeight: 58,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    paddingHorizontal: spacing.lg,
-  },
-  preferenceLabel: { ...type.body, flex: 1, fontSize: 15 },
+  hint: { ...type.meta, marginHorizontal: spacing.md, marginTop: spacing.sm },
   preferenceValue: { ...type.meta },
-  preferenceAction: { borderTopWidth: StyleSheet.hairlineWidth },
   appearanceOption: {
     minHeight: 68,
     flexDirection: 'row',
@@ -852,11 +731,10 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.md,
   },
   appearanceOptionCopy: { flex: 1, gap: 3 },
-  appearanceOptionTitle: { ...type.body, fontFamily: fonts.semibold },
+  appearanceOptionTitle: { ...type.body, ...font.semibold },
   appearanceOptionDescription: { ...type.meta },
   appearanceCheckSpace: { width: 22, height: 22 },
   appearanceError: { ...type.meta },
-  devRow: { minHeight: 54, flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing.lg },
   segment: { flexDirection: 'row', padding: 3, borderRadius: 14, gap: 3 },
   segmentOption: { flex: 1, minHeight: 40, borderRadius: 11, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6 },
 })

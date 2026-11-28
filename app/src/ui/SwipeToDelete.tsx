@@ -1,6 +1,6 @@
 import { useRef, type ReactNode } from 'react'
-import { Animated, PanResponder, Pressable, Text, View } from 'react-native'
-import { fonts, useTheme } from './theme'
+import { Animated, Easing, PanResponder, Pressable, Text, View } from 'react-native'
+import { font, useTheme } from './theme'
 
 const REVEAL = 88
 
@@ -17,7 +17,7 @@ export function SwipeToDelete({ children, label, actionText, onDelete, disabled 
   const open = useRef(false)
   const settle = (to: number) => {
     open.current = to !== 0
-    Animated.spring(offset, { toValue: to, damping: 22, stiffness: 260, useNativeDriver: true }).start()
+    Animated.timing(offset, { toValue: to, duration: 200, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start()
   }
   const responder = useRef(PanResponder.create({
     onMoveShouldSetPanResponder: (_, gesture) =>
@@ -41,7 +41,7 @@ export function SwipeToDelete({ children, label, actionText, onDelete, disabled 
           onPress={() => { settle(0); onDelete() }}
           style={{ flex: 1, alignSelf: 'stretch', alignItems: 'center', justifyContent: 'center' }}
         >
-          <Text style={{ fontFamily: fonts.semibold, fontSize: 14, color: colors.paper }}>{actionText}</Text>
+          <Text style={{ ...font.semibold, fontSize: 14, color: colors.onAccent }}>{actionText}</Text>
         </Pressable>
       </View>
       <Animated.View

@@ -43,14 +43,33 @@ test('shows a marker chip only when a new version is pending', async () => {
 test('keeps the progress track mounted while processing, with or without live progress', async () => {
   mockState.processing = { [note.id]: { phase: 'loading' } }
   await render()
-  expect(texts()).toContain('Wczytuję model')
+  expect(texts()).toContain('Opracowuję · wczytuję model')
   const live: LiveSummaryProgress = { units: [{ id: 1, start: 0, end: 6 }], drafts: [{ text: 'punkt', sourceIds: [1] }] }
   mockState.processing = { [note.id]: { phase: 'summary', live } }
   await act(async () => { tree.update(createElement(NoteRow, { note, timestamp: 0, onPress: () => undefined })) })
-  expect(texts()).toContain('Zakreślam')
+  expect(texts()).toContain('Opracowuję · podsumowanie')
 })
 
 test('shows the summary preview once processing ends', async () => {
   await render()
-  expect(texts()).toContain('Streszczenie.')
+  expect(texts().some((text) => text.endsWith('Streszczenie.'))).toBe(true)
+})
+
+test('shows no category chip and keeps the title on one line', async () => {
+  const { NOTE_CATEGORIES, categoryLabel } = require('../domain/categories') as typeof import('../domain/categories')
+  const category = NOTE_CATEGORIES[0]
+  const tagged = { ...note, tags: [category] }
+  await act(async () => { tree = create(createElement(NoteRow, { note: tagged, timestamp: 0, onPress: () => undefined })) })
+  expect(texts()).not.toContain(categoryLabel(category, 'pl'))
+  const title = tree.root.findAllByType(Text).find((node) => node.props.children === 'Tytuł')
+  expect(title?.props.numberOfLines).toBe(1)
+})
+
+test('does not start a looping animation while processing', async () => {
+  const { Animated } = require('react-native') as typeof import('react-native')
+  const loop = jest.spyOn(Animated, 'loop')
+  mockState.processing = { [note.id]: { phase: 'loading' } }
+  await render()
+  expect(loop).not.toHaveBeenCalled()
+  loop.mockRestore()
 })

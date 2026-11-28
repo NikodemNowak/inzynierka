@@ -1,17 +1,12 @@
 import { useI18n } from '../../i18n/useI18n'
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  Animated,
-  Easing,
-  Modal,
   Pressable,
   ScrollView,
   Share,
   StyleSheet,
   Text,
   View,
-  type StyleProp,
-  type ViewStyle,
 } from 'react-native'
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router'
 import { useIsFocused } from 'expo-router/react-navigation'
@@ -22,37 +17,36 @@ import { Button } from '../../ui/Button'
 import { Icon } from '../../ui/Icon'
 import { IconButton } from '../../ui/Icon'
 import { useReducedMotion } from '../../ui/Motion'
-import { radius, spacing, type, useTheme, fonts } from '../../ui/theme'
+import { spacing, type, useTheme } from '../../ui/theme'
 import { useNotesStore } from '../../state/notesStore'
 import { useTasksStore } from '../../state/tasksStore'
 import { useModelStore } from '../../state/modelStore'
 import { formatNoteAsText } from '../../export/noteText'
-import { getModelMissingMessage } from '../../ai/noteProcessing'
 import { ModelDownloadBanner } from '../../notes/ModelDownloadBanner'
-import { localeForLanguage, type Language } from '../../i18n/language'
 import { AudioNotePlayer, type AudioMark, type AudioNotePlayerHandle } from '../../audio/AudioNotePlayer'
 import { timeForRanges } from '../../domain/audioTimeline'
 import type { Note } from '../../domain/note'
 import { NoteTasks } from '../../tasks/NoteTasks'
-import { NoteTags } from '../../tags/NoteTags'
 import { parseSummaryDocument, type SummaryPoint } from '../../domain/summary'
 import { SummaryWithSources } from '../../notes/SummaryWithSources'
 import { ProcessingLive } from '../../notes/ProcessingLive'
-import { addedWords } from '../../notes/wordDiff'
-import { MarkedLabel } from '../../ui/MarkedLabel'
 import {
   getEffectiveNoteProposalSelection,
   getNoteProposalChanges,
   isNoteProposalCurrent,
-  isNoteProposalFieldAvailable,
   type NoteProposalSelection,
 } from '../../notes/noteProposals'
-import { supportsBackgroundProcessing } from '../../processing/nativeProcessing'
+import { Crossfade } from '../../notes/detail/Crossfade'
+import { NewVersionBanner } from '../../notes/detail/NewVersionBanner'
+import { NoteDetailHeader } from '../../notes/detail/NoteDetailHeader'
+import { NoteMeta } from '../../notes/detail/NoteMeta'
+import { noteMenuActions, type NoteMenuKey } from '../../notes/detail/noteMenuActions'
+import { ProposalChooser, type ProposalField } from '../../notes/detail/ProposalChooser'
+import { ReprocessConfirmSheet } from '../../notes/detail/ReprocessConfirmSheet'
+import { TranscriptRow } from '../../notes/detail/TranscriptRow'
 
-type ProposalField = keyof NoteProposalSelection
 type SheetMode = 'confirm' | 'choose' | 'delete' | null
 
-const CROSSFADE_MS = 200
 // The choice screen opens after the processing card has crossfaded away.
 const CHOICE_OPEN_DELAY_MS = 420
 const EMPTY_SPANS: readonly never[] = []
@@ -61,178 +55,6 @@ const NO_SELECTION: NoteProposalSelection = {
   title: false,
   summary: false,
   tags: false,
-}
-
-const formatDuration = (durationMs: number | null): string | null => {
-  if (durationMs === null) return null
-  const seconds = Math.max(0, Math.floor(durationMs / 1000))
-  return `${Math.floor(seconds / 60)
-    .toString()
-    .padStart(2, '0')}:${(seconds % 60).toString().padStart(2, '0')}`
-}
-
-const formatRecordedAt = (timestamp: number, language: Language): string => {
-  const date = new Date(timestamp)
-  const now = new Date()
-  const isToday = date.toDateString() === now.toDateString()
-  const locale = localeForLanguage(language)
-  const day = isToday
-    ? language === 'pl'
-      ? 'Dzisiaj'
-      : 'Today'
-    : date.toLocaleDateString(locale, { day: 'numeric', month: 'short' })
-  const time = date.toLocaleTimeString(locale, {
-    hour: '2-digit',
-    minute: '2-digit',
-  })
-  return `${day}, ${time}`
-}
-
-// Fades the new content in over the previous one when `id` changes; the first
-// render and reduced motion swap instantly.
-function Crossfade({ id, active, reducedMotion, style, children }: {
-  id: string
-  active: boolean
-  reducedMotion: boolean
-  style?: StyleProp<ViewStyle>
-  children: ReactNode
-}) {
-  const progress = useRef(new Animated.Value(1)).current
-  const last = useRef({ id, node: children })
-  const [outgoing, setOutgoing] = useState<ReactNode>(null)
-  useLayoutEffect(() => {
-    const previous = last.current
-    last.current = { id, node: children }
-    if (previous.id === id) return
-    progress.stopAnimation()
-    if (!active || reducedMotion) {
-      progress.setValue(1)
-      setOutgoing(null)
-      return
-    }
-    progress.setValue(0)
-    setOutgoing(previous.node)
-    Animated.timing(progress, { toValue: 1, duration: CROSSFADE_MS, easing: Easing.out(Easing.quad), useNativeDriver: true })
-      .start(({ finished }) => { if (finished) setOutgoing(null) })
-  })
-  return (
-    <View style={[style, outgoing ? styles.clipped : undefined]}>
-      <Animated.View style={{ opacity: progress }}>{children}</Animated.View>
-      {outgoing ? (
-        <Animated.View
-          pointerEvents="none"
-          accessibilityElementsHidden
-          importantForAccessibility="no-hide-descendants"
-          style={[StyleSheet.absoluteFill, { opacity: progress.interpolate({ inputRange: [0, 1], outputRange: [1, 0] }) }]}
-        >
-          {outgoing}
-        </Animated.View>
-      ) : null}
-    </View>
-  )
-}
-
-function NewVersionBanner({ onOpen, onDiscard, busy, reducedMotion }: {
-  onOpen: () => void
-  onDiscard: () => void
-  busy: boolean
-  reducedMotion: boolean
-}) {
-  const { colors } = useTheme()
-  const { t } = useI18n()
-  const appear = useRef(new Animated.Value(reducedMotion ? 1 : 0)).current
-  useEffect(() => {
-    if (reducedMotion) return
-    Animated.timing(appear, { toValue: 1, duration: CROSSFADE_MS, useNativeDriver: true }).start()
-  }, [appear, reducedMotion])
-  return (
-    <Animated.View
-      accessibilityLiveRegion="polite"
-      style={[styles.banner, { backgroundColor: colors.markerSoft, opacity: appear }]}
-    >
-      <Text style={[styles.bannerText, { color: colors.ink }]}>{t('Nowa wersja jest gotowa', 'A new version is ready')}</Text>
-      <Button compact variant="quiet" label={t('Odrzuć', 'Discard')} onPress={onDiscard} disabled={busy} />
-      <Button compact variant="primary" label={t('Zobacz', 'View')} onPress={onOpen} disabled={busy} />
-    </Animated.View>
-  )
-}
-
-function ProposalChoice({
-  label,
-  value,
-  selected,
-  disabled = false,
-  onPress,
-  children,
-  compareTo,
-}: {
-  label: string
-  value?: string
-  selected: boolean
-  disabled?: boolean
-  onPress: () => void
-  children?: ReactNode
-  compareTo?: string
-}) {
-  const { colors } = useTheme()
-  return (
-    <Pressable
-      onPress={onPress}
-      disabled={disabled}
-      accessibilityRole="radio"
-      accessibilityState={{ checked: selected, disabled }}
-      style={({ pressed }) => [
-        styles.choice,
-        {
-          backgroundColor: selected ? colors.markerSoft : colors.paper,
-          borderLeftColor: selected ? colors.markerLine : 'transparent',
-          opacity: disabled ? 0.55 : pressed ? 0.78 : 1,
-        },
-      ]}
-    >
-      <View
-        style={[
-          styles.radio,
-          { borderColor: selected ? colors.brand : colors.faint },
-          selected && { backgroundColor: colors.brand },
-        ]}
-      >
-        {selected && <Icon name="check" size={14} color={colors.onBrand} />}
-      </View>
-      <View style={styles.choiceValueContent}>
-        <Text style={[styles.choiceLabel, { color: colors.muted }]}>{label}</Text>
-        {children ?? (compareTo !== undefined ? (
-          <Text style={[styles.choiceValue, { color: colors.body }]}>
-            {addedWords(compareTo, value ?? '').map((segment, index) => (
-              <Text key={index} style={segment.added ? { color: colors.onMarker, backgroundColor: colors.marker } : undefined}>{segment.text}</Text>
-            ))}
-          </Text>
-        ) : (
-          <Text style={[styles.choiceValue, { color: colors.body }]}>
-            {value}
-          </Text>
-        ))}
-      </View>
-    </Pressable>
-  )
-}
-
-function ProposalValue({ label, value, hint, children }: {
-  label: string
-  value?: string
-  hint?: string
-  children?: ReactNode
-}) {
-  const { colors } = useTheme()
-  return (
-    <View style={styles.choice}>
-      <View style={styles.choiceValueContent}>
-        <Text style={[styles.choiceLabel, { color: colors.muted }]}>{label}</Text>
-        {children ?? <Text style={[styles.choiceValue, { color: colors.body }]}>{value}</Text>}
-        {hint && <Text style={[styles.hint, { color: colors.muted }]}>{hint}</Text>}
-      </View>
-    </View>
-  )
 }
 
 export default function NoteDetailScreen() {
@@ -244,7 +66,6 @@ export default function NoteDetailScreen() {
   const { t, language } = useI18n()
   const insets = useSafeAreaInsets()
   const reducedMotion = useReducedMotion()
-  const reprocessSweep = useRef(new Animated.Value(1)).current
   const note = useNotesStore((state) =>
     state.notes.find((item) => item.id === id),
   )
@@ -288,20 +109,6 @@ export default function NoteDetailScreen() {
   const effectiveSelection = proposal && proposalCurrent
     ? getEffectiveNoteProposalSelection(proposal, selection)
     : NO_SELECTION
-  const changedFieldCount = Object.values(proposalChanges).filter(Boolean).length
-  const titleAvailable = Boolean(
-    proposal && isNoteProposalFieldAvailable(proposal, 'title'),
-  )
-  const summaryAvailable = Boolean(
-    proposal && isNoteProposalFieldAvailable(proposal, 'summary'),
-  )
-  const tagsAvailable = Boolean(
-    proposal && isNoteProposalFieldAvailable(proposal, 'tags'),
-  )
-  const unavailableValue = t(
-    'Nie udało się przygotować tego pola. Obecna wartość pozostanie.',
-    'This field could not be prepared. The current value will be kept.',
-  )
   // One staged flag drives every visual swap, so a single layout transition
   // and one crossfade replace the processing card with the result.
   const shownProcessing = useLayoutTransition(processing, String(processing), id ?? '', isFocused, reducedMotion)
@@ -467,22 +274,12 @@ export default function NoteDetailScreen() {
       return
     setSelection((current) => ({ ...current, [field]: useNewValue }))
   }
-  const pluralChanges = (count: number): string =>
-    language === 'en'
-      ? count === 1
-        ? 'change'
-        : 'changes'
-      : count === 1
-        ? 'zmianę'
-        : count >= 2 && count <= 4
-          ? 'zmiany'
-          : 'zmian'
 
   if (!note || !display) {
     return (
       <View style={[styles.empty, { backgroundColor: colors.canvas }]}>
         <Stack.Screen options={{ title: t('Notatka', 'Note') }} />
-        <Text style={[styles.body, { color: colors.muted }]}>
+        <Text style={[styles.body, { color: colors.secondary }]}>
           {loaded
             ? t('Ta notatka już nie istnieje.', 'This note no longer exists.')
             : t('Wczytuję notatkę…', 'Loading note…')}
@@ -497,10 +294,40 @@ export default function NoteDetailScreen() {
     )
   }
 
-  const currentDuration = formatDuration(note.durationMs)
   const reprocessDisabled = !modelReady || taskAnalysisBusy ||
     (note.transcriptionIncomplete ? !note.audioUri : !note.content.trim())
   const proposalChangeCount = Object.values(effectiveSelection).filter(Boolean).length
+  const openImport = () => router.push({ pathname: '/import', params: { noteId: note.id } })
+
+  // An incomplete transcript is completed first; otherwise the existing
+  // proposal opens, or the confirmation before a new one.
+  const requestReprocess = () => {
+    if (reprocessDisabled || shownProcessing) return
+    if (note.transcriptionIncomplete) {
+      if (note.audioUri) openImport()
+      return
+    }
+    setSheetMode(proposal ? 'choose' : 'confirm')
+  }
+
+  const menuActions = noteMenuActions({
+    language,
+    hasAudio: Boolean(note.audioUri),
+    transcriptionIncomplete: Boolean(note.transcriptionIncomplete),
+    resumable: Boolean(resumableProcessing),
+    processing,
+    modelReady,
+    reprocessDisabled: reprocessDisabled || shownProcessing,
+    taskAnalysisBusy: processing || taskAnalysisBusy,
+  })
+  const onMenuSelect = (key: NoteMenuKey) => {
+    if (key === 'edit') openEdit()
+    else if (key === 'resume') void useNotesStore.getState().resumeProcessing(note.id)
+    else if (key === 'reprocess') requestReprocess()
+    else if (key === 'retranscribe') openImport()
+    else if (key === 'export') void shareNote()
+    else setSheetMode('delete')
+  }
 
   const finalSummary = display.summary?.trim() ? (
     <SummaryWithSources
@@ -514,62 +341,33 @@ export default function NoteDetailScreen() {
       onPlayFrom={display.audioUri && audioSpans.length > 0 ? (ms) => playerRef.current?.playFrom(ms) : undefined}
     />
   ) : (
-    <Text style={[styles.body, { color: colors.muted }]}>{t('Brak podsumowania', 'No summary')}</Text>
+    <Text style={[styles.body, { color: colors.secondary }]}>{t('Brak podsumowania', 'No summary')}</Text>
   )
 
   return (
     <>
-      <Stack.Screen
-        options={{
-          headerTitle: t('Notatka', 'Note'),
-          headerRight: () => (
-            <View style={styles.headerActions}>
-              <Pressable
-                onPress={openEdit}
-                disabled={processing}
-                accessibilityRole="button"
-                accessibilityLabel={t('Edytuj notatkę', 'Edit note')}
-                accessibilityState={{ disabled: processing }}
-                style={({ pressed }) => [
-                  styles.editAction,
-                  { borderColor: colors.line, backgroundColor: colors.paper, opacity: processing ? 0.4 : pressed ? 0.7 : 1 },
-                ]}
-              >
-                <Text style={[styles.editText, { color: colors.ink }]}>
-                  {t('Edytuj', 'Edit')}
-                </Text>
-              </Pressable>
-              <IconButton
-                name="share"
-                label={t('Udostępnij notatkę', 'Share note')}
-                onPress={() => void shareNote()}
-                disabled={processing}
-              />
-            </View>
-          ),
-        }}
+      <NoteDetailHeader
+        actions={menuActions}
+        disabled={processing}
+        onShare={() => void shareNote()}
+        onSelect={onMenuSelect}
       />
       <ScrollView
         automaticallyAdjustKeyboardInsets
+        style={{ backgroundColor: colors.canvas }}
         contentContainerStyle={[
           styles.container,
-          {
-            backgroundColor: colors.canvas,
-            paddingBottom: Math.max(spacing.xxl, insets.bottom + spacing.lg),
-          },
+          { paddingBottom: Math.max(spacing.xxl, insets.bottom + spacing.lg) },
         ]}
         keyboardShouldPersistTaps="handled"
       >
         {recordingNotice && (
           <View
-            style={[
-              styles.notePanel,
-              { backgroundColor: colors.paper, borderColor: colors.line },
-            ]}
+            style={[styles.notePanel, styles.notePanelTop, { backgroundColor: colors.group }]}
             accessibilityRole="alert"
           >
-            <Icon name="alert" size={20} color={colors.muted} />
-            <Text style={[styles.notePanelText, { color: colors.body }]}>
+            <Icon name="alert" size={20} color={colors.secondary} />
+            <Text style={[styles.notePanelText, { color: colors.ink }]}>
               {recordingNotice}
             </Text>
             <IconButton
@@ -590,45 +388,35 @@ export default function NoteDetailScreen() {
             {display.title.trim() || t('Bez tytułu', 'Untitled')}
           </Text>
         </Crossfade>
+        <NoteMeta createdAt={note.createdAt} tags={display.tags} />
 
-        <View style={styles.metadata}>
-          <Text style={[styles.meta, { color: colors.muted }]}>
-            {formatRecordedAt(note.createdAt, language)}
-          </Text>
-          {currentDuration && (
-            <Text style={[styles.meta, { color: colors.muted }]}>
-              • {currentDuration}
+        {note.transcriptionIncomplete && (
+          <View style={styles.incomplete}>
+            <Text accessibilityRole="alert" style={[type.meta, { color: colors.secondary }]}>
+              {t(
+                'Audio zostało zapisane. Transkrypcja może być niepełna.',
+                'Audio has been saved. The transcript may be incomplete.',
+              )}
             </Text>
-          )}
-        </View>
-
-        {(display.tags.length > 0 || shownProcessing) && (
-          <Crossfade
-            id={`tags:${display.tags.join('|')}`}
-            active={isFocused}
-            reducedMotion={reducedMotion}
-            style={shownProcessing ? styles.tagsSlot : undefined}
-          >
-            {display.tags.length > 0 ? (
-              <NoteTags
-                tags={display.tags}
-                onChange={() => undefined}
-                editable={false}
-                showLabel={false}
-                compact
-              />
-            ) : null}
-          </Crossfade>
+            <Button
+              label={t('Uzupełnij i przetwórz', 'Complete and process')}
+              variant="secondary"
+              onPress={openImport}
+              disabled={!note.audioUri || processing || shownProcessing || taskAnalysisBusy}
+            />
+          </View>
         )}
 
         {note.audioUri && (
-          <AudioNotePlayer
-            ref={playerRef}
-            uri={note.audioUri}
-            durationMs={note.durationMs}
-            timeline={note.audioTimeline}
-            marks={audioMarks}
-          />
+          <View style={styles.player}>
+            <AudioNotePlayer
+              ref={playerRef}
+              uri={note.audioUri}
+              durationMs={note.durationMs}
+              timeline={note.audioTimeline}
+              marks={audioMarks}
+            />
+          </View>
         )}
 
         {proposal && !shownProcessing && sheetMode !== 'choose' && (
@@ -640,51 +428,10 @@ export default function NoteDetailScreen() {
           />
         )}
 
-        <View style={[styles.divider, { backgroundColor: colors.line }]} />
+        <Text accessibilityRole="header" style={[styles.caption, { color: colors.secondary }]}>
+          {t('Podsumowanie', 'Summary')}
+        </Text>
         <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Text style={[styles.sectionTitle, { color: colors.muted }]}>
-              {t('Podsumowanie', 'Summary')}
-            </Text>
-            <Pressable
-              onPress={() => {
-                if (note.transcriptionIncomplete) {
-                  if (note.audioUri) router.push({ pathname: '/import', params: { noteId: note.id } })
-                  return
-                }
-                if (!reducedMotion) {
-                  reprocessSweep.setValue(0)
-                  Animated.timing(reprocessSweep, { toValue: 1, duration: 360, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start()
-                }
-                setSheetMode(proposal ? 'choose' : 'confirm')
-              }}
-              disabled={reprocessDisabled || shownProcessing}
-              accessibilityElementsHidden={shownProcessing}
-              importantForAccessibility={shownProcessing ? 'no-hide-descendants' : 'auto'}
-              accessibilityLabel={note.transcriptionIncomplete ? t('Uzupełnij i przetwórz', 'Complete and process') : t('Opracuj na nowo', 'Process again')}
-              accessibilityRole="button"
-              accessibilityState={{
-                disabled: reprocessDisabled,
-              }}
-              style={({ pressed }) => [
-                styles.reprocessAction,
-                {
-                  borderColor: colors.line,
-                  backgroundColor: colors.paper,
-                  opacity: shownProcessing ? 0 : reprocessDisabled ? 0.45 : 1,
-                  transform: [{ scale: pressed ? 0.97 : 1 }],
-                },
-              ]}
-            >
-              {note.transcriptionIncomplete ? (
-                <Text style={[styles.reprocessText, { color: colors.ink }]}>
-                  {t('Uzupełnij i przetwórz', 'Complete and process')}
-                </Text>
-              ) : (
-                <MarkedLabel lead={t('Opracuj', 'Process')} marked={t('na nowo', 'again')} sweep={reprocessSweep} />
-              )}
-            </Pressable>
-          </View>
           <Crossfade
             id={shownProcessing ? 'live' : `final:${display.summary ?? ''}`}
             active={isFocused}
@@ -704,16 +451,9 @@ export default function NoteDetailScreen() {
             ) : finalSummary}
           </Crossfade>
           {processError && !processing && (
-            <View
-              style={[
-                styles.notePanel,
-                { backgroundColor: colors.paper, borderColor: colors.line },
-              ]}
-            >
+            <View style={[styles.notePanel, { backgroundColor: colors.group }]}>
               <Icon name="alert" size={16} color={colors.danger} />
-              <Text
-                style={[styles.notePanelText, { color: colors.body }]}
-              >
+              <Text style={[styles.notePanelText, { color: colors.ink }]}>
                 {processError}
               </Text>
             </View>
@@ -744,76 +484,15 @@ export default function NoteDetailScreen() {
           {!processing && !modelReady && <ModelDownloadBanner inset={0} />}
         </View>
 
-        <View style={{ height: spacing.sm }} />
-        <NoteTasks
-          noteId={note.id}
-          content={note.content}
-          onBusyChange={setTaskAnalysisBusy}
-        />
-
-        <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: colors.muted }]}>
-            {note.content.trim()
-              ? t(`Transkrypt · ${note.content.trim() ? note.content.trim().split(/\s+/u).length : 0} sł.`, `Transcript · ${note.content.trim() ? note.content.trim().split(/\s+/u).length : 0} words`)
-              : t('Transkrypt', 'Transcript')}
-          </Text>
-          {note.transcriptionIncomplete && (
-            <View style={{ gap: spacing.sm }}>
-              <Text accessibilityRole="alert" style={[styles.hint, { color: colors.danger }]}>
-                {t(
-                  'Audio zostało zapisane. Transkrypcja może być niepełna.',
-                  'Audio has been saved. The transcript may be incomplete.',
-                )}
-              </Text>
-              {note.audioUri && (
-                <Button
-                  label={t('Uzupełnij transkrypcję', 'Complete transcript')}
-                  variant="secondary"
-                  disabled={processing || taskAnalysisBusy}
-                  onPress={() => router.push({ pathname: '/import', params: { noteId: note.id } })}
-                />
-              )}
-            </View>
-          )}
-          <View style={[styles.transcriptCard, { backgroundColor: colors.paper, borderColor: colors.line }]}>
-            <Text
-              selectable
-              style={[
-                styles.transcript,
-                { color: note.content.trim() ? colors.body : colors.muted },
-              ]}
-            >
-              {note.content.trim() ||
-                (note.audioUri
-                  ? t(
-                      'To nagranie nie ma jeszcze transkrypcji.',
-                      'This recording has no transcript yet.',
-                    )
-                  : t('Brak transkrypcji', 'No transcript'))}
-            </Text>
-          </View>
-          {note.audioUri && !note.transcriptionIncomplete && (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityHint={t('Ponowna transkrypcja zastąpi obecny tekst.', 'Transcribing again replaces the current text.')}
-              disabled={processing || taskAnalysisBusy}
-              onPress={() => router.push({ pathname: '/import', params: { noteId: note.id } })}
-              style={({ pressed }) => ({ alignSelf: 'flex-start', minHeight: 44, justifyContent: 'center', opacity: processing || taskAnalysisBusy ? 0.45 : pressed ? 0.6 : 1 })}
-            >
-              <Text style={[styles.retranscribe, { color: colors.ink, textDecorationColor: colors.markerLine }]}>
-                {t('Brakuje fragmentów? Przepisz nagranie jeszcze raz', 'Parts missing? Transcribe the recording again')}
-              </Text>
-            </Pressable>
-          )}
+        <View style={styles.tasks}>
+          <NoteTasks
+            noteId={note.id}
+            content={note.content}
+            onBusyChange={setTaskAnalysisBusy}
+          />
         </View>
 
-        <View style={[styles.divider, { backgroundColor: colors.line, marginTop: spacing.lg }]} />
-        <Button
-          label={t('Usuń notatkę', 'Delete note')}
-          variant="danger"
-          onPress={() => setSheetMode('delete')}
-          disabled={processing}
-        />
+        <TranscriptRow content={note.content} hasAudio={Boolean(note.audioUri)} />
       </ScrollView>
 
       <BottomSheet
@@ -821,393 +500,38 @@ export default function NoteDetailScreen() {
         onClose={() => setSheetMode(null)}
         title={t('Usunąć notatkę?', 'Delete note?')}
       >
-        <Text style={[styles.sheetMessage, { color: colors.muted }]}>
+        <Text style={[styles.body, { color: colors.secondary }]}>
           {t('Tej operacji nie można cofnąć.', 'This action cannot be undone.')}
         </Text>
         <Button label={t('Usuń', 'Delete')} variant="danger" onPress={() => void confirmDelete()} />
         <Button label={t('Anuluj', 'Cancel')} variant="quiet" onPress={() => setSheetMode(null)} />
       </BottomSheet>
 
-      <BottomSheet
+      <ReprocessConfirmSheet
         visible={sheetMode === 'confirm' && isFocused}
+        note={note}
+        modelReady={modelReady}
+        disabled={!modelReady || processing || taskAnalysisBusy}
+        onStart={(background) => void startReprocessing(background)}
         onClose={() => setSheetMode(null)}
-        title={t('Opracować na nowo?', 'Process again?')}
-      >
-        {sheetMode === 'confirm' && (
-          <>
-            <Text style={[styles.sheetMessage, { color: colors.muted }]}>
-              {t(
-                'Model przeczyta transkrypt jeszcze raz i przygotuje propozycję. Potem porównasz ją z obecną wersją i wybierzesz, co zmienić.',
-                'The model reads the transcript again and prepares a suggestion. Then you compare it with the current version and choose what to change.',
-              )}
-            </Text>
-            <View>
-              <Text style={[styles.choiceSectionTitle, { color: colors.muted }]}>
-                {t('Co przygotuję', 'What I will prepare')}
-              </Text>
-              {[
-                { label: t('Streszczenie', 'Summary'), detail: note.summary?.trim() ? t('zastąpi obecne, jeśli wybierzesz', 'replaces the current one if you choose') : t('notatka nie ma jeszcze streszczenia', 'the note has no summary yet') },
-                { label: t('Tytuł', 'Title'), detail: `„${note.title.trim() || t('Bez tytułu', 'Untitled')}”` },
-                { label: t('Kategorie', 'Categories'), detail: note.tags.length ? t(`teraz: ${note.tags.length}`, `now: ${note.tags.length}`) : t('teraz brak', 'none yet') },
-              ].map((row, index) => (
-                <View key={row.label} style={[styles.prepareRow, index < 2 && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line }]}>
-                  <View style={[styles.prepareDot, { backgroundColor: colors.marker, borderColor: colors.markerLine }]} />
-                  <View style={{ flex: 1 }}>
-                    <Text style={[type.body, { color: colors.ink, fontFamily: fonts.medium }]}>{row.label}</Text>
-                    <Text style={[type.meta, { color: colors.muted }]} numberOfLines={1}>{row.detail}</Text>
-                  </View>
-                </View>
-              ))}
-            </View>
-            <View style={[styles.offlineNote, { backgroundColor: colors.canvas }]}>
-              <Icon name="lock" size={18} color={colors.ink} />
-              <Text style={[type.meta, { color: colors.body, flex: 1, fontSize: 13, lineHeight: 19 }]}>
-                {t('Działa na telefonie, bez internetu. Możesz w tym czasie wrócić do listy.', 'Runs on this phone, without internet. You can go back to the list meanwhile.')}
-              </Text>
-            </View>
-            <Button
-              label={t('Przygotuj propozycję', 'Prepare suggestion')}
-              variant="primary"
-              onPress={() => void startReprocessing()}
-              disabled={!modelReady || processing || taskAnalysisBusy}
-            />
-            {supportsBackgroundProcessing() && (
-              <Button
-                label={t('Przygotuj w tle', 'Prepare in the background')}
-                variant="secondary"
-                onPress={() => void startReprocessing(true)}
-                disabled={!modelReady || processing || taskAnalysisBusy}
-              />
-            )}
-            {supportsBackgroundProcessing() && (
-              <Text style={[styles.hint, { color: colors.muted }]}>
-                {t(
-                  'Tryb w tle używa CPU i może być wolniejszy. iOS pokazuje postęp.',
-                  'Background mode uses the CPU and may be slower. iOS shows progress.',
-                )}
-              </Text>
-            )}
-            <Button
-              label={t('Anuluj', 'Cancel')}
-              variant="quiet"
-              onPress={() => setSheetMode(null)}
-            />
-            {!modelReady && (
-              <Text style={[styles.hint, { color: colors.muted }]}>
-                {getModelMissingMessage()}
-              </Text>
-            )}
-          </>
-        )}
-      </BottomSheet>
+      />
 
-      <Modal
+      <ProposalChooser
         visible={sheetMode === 'choose' && isFocused}
-        animationType={reducedMotion ? 'fade' : 'slide'}
-        presentationStyle="fullScreen"
-        statusBarTranslucent
-        onRequestClose={closeChoices}
-      >
-        <View
-          accessibilityViewIsModal
-          style={[styles.choiceScreen, { backgroundColor: colors.canvas }]}
-        >
-          <View
-            style={[
-              styles.choiceHeader,
-              {
-                paddingTop: insets.top + spacing.xs,
-                borderBottomColor: colors.line,
-              },
-            ]}
-          >
-            <View style={styles.choiceCancel}>
-              <Button
-                compact
-                variant="quiet"
-                label={t('Anuluj', 'Cancel')}
-                onPress={closeChoices}
-                disabled={discarding}
-              />
-            </View>
-            <Text
-              accessibilityRole="header"
-              numberOfLines={1}
-              style={[styles.choiceScreenTitle, { color: colors.ink }]}
-            >
-              {t('Nowa wersja', 'New version')}
-            </Text>
-            <View style={styles.choiceCancel} />
-          </View>
-
-          <ScrollView
-            style={styles.choiceScroll}
-            contentContainerStyle={styles.choiceScrollContent}
-            keyboardShouldPersistTaps="handled"
-          >
-            <View style={{ gap: spacing.xs }}>
-              <Text style={[type.display, { fontSize: 28, lineHeight: 34, color: colors.ink }]}>
-                {t('Co zmienić?', 'What should change?')}
-              </Text>
-              <Text style={[styles.choiceIntro, { color: colors.muted }]}>
-                {t(
-                  'Nowe fragmenty są zakreślone. Dopóki nic nie wybierzesz, zostaje obecna wersja.',
-                  'New parts are highlighted. Until you pick something, the current version stays.',
-                )}
-              </Text>
-            </View>
-            {proposal && proposalCurrent ? (
-              <>
-                {changedFieldCount === 0 && (
-                  <Text accessibilityLiveRegion="polite" style={[styles.choiceValue, { color: colors.muted }]}>
-                    {titleAvailable && summaryAvailable && tagsAvailable
-                      ? t('Brak zmian. Propozycje są takie same jak obecne wartości.', 'No changes. The suggestions match the current values.')
-                      : t('Brak zmian do zastosowania.', 'No changes to apply.')}
-                  </Text>
-                )}
-                {proposal.generated.warnings?.map((warning, index) => (
-                  <Text
-                    key={index}
-                    accessibilityRole="alert"
-                    style={[styles.choiceValue, { color: colors.muted }]}
-                  >
-                    {warning}
-                  </Text>
-                ))}
-                {error && (
-                  <Text
-                    accessibilityRole="alert"
-                    style={[styles.error, { color: colors.danger }]}
-                  >
-                    {error}
-                  </Text>
-                )}
-                <View style={styles.proposalSection}>
-                  <Text
-                    style={[styles.choiceSectionTitle, { color: colors.muted }]}
-                  >
-                    {t('Tytuł', 'Title')}
-                  </Text>
-                  <View
-                    style={[styles.choiceGroup, { borderColor: colors.line, backgroundColor: colors.paper }]}
-                  >
-                    {proposalChanges.title ? (
-                      <>
-                        <ProposalChoice
-                          label={t('Obecny', 'Current')}
-                          value={note.title.trim() || t('Bez tytułu', 'Untitled')}
-                          selected={!selection.title}
-                          onPress={() => choose('title', false)}
-                        />
-                        <View
-                          style={[
-                            styles.choiceDivider,
-                            { backgroundColor: colors.line },
-                          ]}
-                        />
-                        <ProposalChoice
-                          label={t('Nowy', 'New')}
-                          value={proposal.generated.title}
-                          compareTo={note.title}
-                          selected={selection.title}
-                          disabled={discarding}
-                          onPress={() => choose('title', true)}
-                        />
-                      </>
-                    ) : (
-                        <ProposalValue
-                          label={titleAvailable ? t('Bez zmian', 'No change') : t('Niedostępne', 'Unavailable')}
-                          value={note.title.trim() || t('Bez tytułu', 'Untitled')}
-                          hint={titleAvailable ? undefined : unavailableValue}
-                        />
-                    )}
-                  </View>
-                </View>
-                <View style={styles.proposalSection}>
-                  <Text
-                    style={[styles.choiceSectionTitle, { color: colors.muted }]}
-                  >
-                    {t('Podsumowanie', 'Summary')}
-                  </Text>
-                  <View
-                    style={[styles.choiceGroup, { borderColor: colors.line, backgroundColor: colors.paper }]}
-                  >
-                    {proposalChanges.summary ? (
-                      <>
-                        <ProposalChoice
-                          label={t('Obecne', 'Current')}
-                          value={
-                            note.summary?.trim() ||
-                            t('Brak podsumowania', 'No summary')
-                          }
-                          selected={!selection.summary}
-                          onPress={() => choose('summary', false)}
-                        />
-                        <View
-                          style={[
-                            styles.choiceDivider,
-                            { backgroundColor: colors.line },
-                          ]}
-                        />
-                        <ProposalChoice
-                          label={t('Nowe', 'New')}
-                          value={
-                            proposal.generated.summary.trim() || t('Brak podsumowania', 'No summary')
-                          }
-                          compareTo={note.summary ?? ''}
-                          selected={selection.summary}
-                          disabled={discarding}
-                          onPress={() => choose('summary', true)}
-                        />
-                      </>
-                    ) : (
-                        <ProposalValue
-                          label={summaryAvailable ? t('Bez zmian', 'No change') : t('Niedostępne', 'Unavailable')}
-                          value={note.summary?.trim() || t('Brak podsumowania', 'No summary')}
-                          hint={summaryAvailable ? undefined : unavailableValue}
-                        />
-                    )}
-                  </View>
-                </View>
-                <View style={styles.proposalSection}>
-                  <Text
-                    style={[styles.choiceSectionTitle, { color: colors.muted }]}
-                  >
-                    {t('Kategorie', 'Categories')}
-                  </Text>
-                  <View
-                    style={[styles.choiceGroup, { borderColor: colors.line, backgroundColor: colors.paper }]}
-                  >
-                    {proposalChanges.tags ? (
-                      <>
-                        <ProposalChoice
-                          label={t('Obecne', 'Current')}
-                          selected={!selection.tags}
-                          onPress={() => choose('tags', false)}
-                        >
-                          {note.tags.length > 0 ? (
-                            <NoteTags
-                              tags={note.tags}
-                              onChange={() => undefined}
-                              editable={false}
-                              showLabel={false}
-                              compact
-                            />
-                          ) : (
-                            <Text
-                              style={[styles.choiceValue, { color: colors.muted }]}
-                            >
-                              {t('Bez kategorii', 'No categories')}
-                            </Text>
-                          )}
-                        </ProposalChoice>
-                        <View
-                          style={[
-                            styles.choiceDivider,
-                            { backgroundColor: colors.line },
-                          ]}
-                        />
-                        <ProposalChoice
-                          label={t('Nowe', 'New')}
-                          selected={selection.tags}
-                          disabled={discarding}
-                          onPress={() => choose('tags', true)}
-                        >
-                          {proposal.generated.tags.length > 0 ? (
-                            <NoteTags
-                              tags={proposal.generated.tags}
-                              onChange={() => undefined}
-                              editable={false}
-                              showLabel={false}
-                              compact
-                            />
-                          ) : (
-                            <Text
-                              style={[styles.choiceValue, { color: colors.muted }]}
-                            >
-                              {t('Bez kategorii', 'No categories')}
-                            </Text>
-                          )}
-                        </ProposalChoice>
-                      </>
-                    ) : (
-                      <ProposalValue
-                        label={tagsAvailable ? t('Bez zmian', 'No change') : t('Niedostępne', 'Unavailable')}
-                        hint={tagsAvailable ? undefined : unavailableValue}
-                      >
-                        {note.tags.length > 0 ? (
-                          <NoteTags
-                            tags={note.tags}
-                            onChange={() => undefined}
-                            editable={false}
-                            showLabel={false}
-                            compact
-                          />
-                        ) : (
-                          <Text
-                            style={[styles.choiceValue, { color: colors.muted }]}
-                          >
-                            {t('Bez kategorii', 'No categories')}
-                          </Text>
-                      )}
-                    </ProposalValue>
-                    )}
-                  </View>
-                </View>
-              </>
-            ) : (
-              <Text style={[styles.choiceValue, { color: colors.muted }]}>
-                {t(
-                  'Propozycja nie jest już aktualna. Zamknij ekran i wygeneruj ją ponownie.',
-                  'The suggestion is no longer current. Close this screen and generate it again.',
-                )}
-              </Text>
-            )}
-          </ScrollView>
-
-          <View
-            style={[
-              styles.choiceFooter,
-              {
-                backgroundColor: colors.canvas,
-                borderTopColor: colors.line,
-                paddingBottom: Math.max(insets.bottom, spacing.md),
-              },
-            ]}
-          >
-            {proposal && (
-              <Button
-                label={t(
-                  `Zastosuj ${proposalChangeCount} ${pluralChanges(proposalChangeCount)}`,
-                  `Apply ${proposalChangeCount} ${pluralChanges(proposalChangeCount)}`,
-                )}
-                variant="primary"
-                onPress={() => void applySelected()}
-                disabled={proposalChangeCount === 0 || discarding || processing}
-              />
-            )}
-            {proposal && (
-              <Button
-                label={discarding
-                  ? t('Odrzucanie propozycji…', 'Discarding suggestions…')
-                  : t('Odrzuć propozycje', 'Discard suggestions')}
-                variant="quiet"
-                onPress={() => void discardSuggestions()}
-                disabled={discarding || processing}
-              />
-            )}
-            {/* The header already has Cancel; repeat it only when nothing else is offered. */}
-            {!proposal && (
-              <Button
-                label={t('Anuluj', 'Cancel')}
-                variant="secondary"
-                onPress={closeChoices}
-                disabled={discarding}
-              />
-            )}
-          </View>
-        </View>
-      </Modal>
+        reducedMotion={reducedMotion}
+        note={note}
+        proposal={proposal}
+        proposalCurrent={proposalCurrent}
+        selection={selection}
+        changeCount={proposalChangeCount}
+        error={error}
+        discarding={discarding}
+        processing={processing}
+        onChoose={choose}
+        onApply={() => void applySelected()}
+        onDiscard={() => void discardSuggestions()}
+        onClose={closeChoices}
+      />
 
       {appliedNotice && (
         <View pointerEvents="box-none" style={styles.noticeHost}>
@@ -1219,13 +543,13 @@ export default function NoteDetailScreen() {
             )}
             accessibilityLiveRegion="polite"
             onPress={() => setAppliedNotice(false)}
-            style={[styles.notice, { backgroundColor: colors.action }]}
+            style={[styles.notice, { backgroundColor: colors.accent }]}
           >
-            <Icon name="check" size={20} color={colors.onAction} />
-            <Text style={[styles.noticeText, { color: colors.onAction }]}>
+            <Icon name="check" size={20} color={colors.onAccent} />
+            <Text style={[styles.noticeText, { color: colors.onAccent }]}>
               {t('Zapisano zmiany', 'Changes saved')}
             </Text>
-            <Icon name="close" size={18} color={colors.onAction} />
+            <Icon name="close" size={18} color={colors.onAccent} />
           </Pressable>
         </View>
       )}
@@ -1235,10 +559,8 @@ export default function NoteDetailScreen() {
 
 const styles = StyleSheet.create({
   container: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.lg,
-    paddingBottom: spacing.xxl,
-    gap: spacing.md,
+    paddingHorizontal: 20,
+    paddingTop: 8,
   },
   empty: {
     flex: 1,
@@ -1246,149 +568,30 @@ const styles = StyleSheet.create({
     padding: spacing.xl,
     gap: spacing.lg,
   },
-  headerActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
+  noteTitle: { ...type.noteTitle, letterSpacing: -0.2 },
+  incomplete: { marginTop: 16, gap: spacing.sm },
+  player: { marginTop: 16 },
+  caption: {
+    ...type.caption,
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+    marginTop: 24,
+    marginBottom: 8,
   },
-  editAction: {
-    minHeight: 40,
-    justifyContent: 'center',
-    paddingHorizontal: 16,
-    borderRadius: radius.pill,
-    borderWidth: 1,
-  },
-  editText: { ...type.label, fontSize: 15 },
-  noteTitle: { ...type.display },
-  metadata: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flexWrap: 'wrap',
-    gap: spacing.sm,
-  },
-  meta: { ...type.body, fontSize: 14, lineHeight: 20 },
-  divider: { height: 1, marginVertical: spacing.xs },
   section: { gap: spacing.md },
-  sectionHeader: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    columnGap: spacing.md,
-    rowGap: spacing.xs,
-  },
-  sectionTitle: { ...type.label, fontSize: 13, lineHeight: 18 },
-  reprocessAction: {
-    minHeight: 36,
-    maxWidth: '62%',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 14,
-    borderRadius: radius.pill,
-    borderWidth: 1,
-    flexShrink: 1,
-  },
-  reprocessText: {
-    ...type.label,
-    fontSize: 14,
-    lineHeight: 20,
-    flexShrink: 1,
-  },
-  body: { ...type.body, fontSize: 15, lineHeight: 23 },
-  transcriptCard: { borderRadius: radius.lg, borderWidth: 1, paddingHorizontal: spacing.lg, paddingVertical: 14 },
-  transcript: { ...type.body, fontSize: 16, lineHeight: 26 },
-  retranscribe: { ...type.label, textDecorationLine: 'underline', textDecorationStyle: 'solid' },
-  hint: { ...type.meta },
-  error: { ...type.body },
+  tasks: { marginTop: 24 },
+  body: { ...type.body },
+  error: { ...type.body, marginBottom: spacing.sm },
   notePanel: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: spacing.sm,
-    borderRadius: radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 12,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
   },
-  notePanelText: { fontSize: 14, lineHeight: 20, flex: 1 },
-  banner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-    borderRadius: radius.md,
-    paddingLeft: spacing.md,
-    paddingRight: spacing.sm,
-    paddingVertical: spacing.sm,
-  },
-  bannerText: { ...type.label, flex: 1 },
-  clipped: { overflow: 'hidden' },
-  tagsSlot: { minHeight: 28 },
-  sheetIntro: {
-    alignItems: 'center',
-    gap: spacing.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-  },
-  sheetMessage: { ...type.body, fontSize: 15, lineHeight: 22 },
-  prepareRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, minHeight: 56, paddingVertical: spacing.sm },
-  prepareDot: { width: 8, height: 8, borderRadius: 4, borderWidth: 1 },
-  offlineNote: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 12 },
-  proposalSection: { gap: spacing.sm },
-  choiceSectionTitle: { ...type.label },
-  choice: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: spacing.md,
-    minHeight: 66,
-    padding: spacing.md,
-    borderLeftWidth: 3,
-  },
-  radio: {
-    width: 22,
-    height: 22,
-    marginTop: 2,
-    borderRadius: radius.pill,
-    borderWidth: 1.5,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  choiceValueContent: { flex: 1, gap: spacing.xs },
-  choiceLabel: { ...type.meta, fontFamily: fonts.semibold },
-  choiceValue: { ...type.body, fontSize: 15, lineHeight: 22 },
-  choiceScreen: { flex: 1 },
-  choiceHeader: {
-    minHeight: 56,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.md,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-  },
-  choiceCancel: { width: 96, minHeight: 44, justifyContent: 'center', alignItems: 'flex-start' },
-  choiceScreenTitle: { ...type.label, fontSize: 15, textAlign: 'center', flex: 1 },
-  choiceScroll: { flex: 1 },
-  choiceScrollContent: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
-    paddingBottom: spacing.xl,
-    gap: spacing.lg,
-  },
-  choiceIntro: { ...type.body, fontSize: 15, lineHeight: 22 },
-  choiceGroup: {
-    borderWidth: 1,
-    borderRadius: radius.lg,
-    overflow: 'hidden',
-  },
-  choiceDivider: {
-    height: StyleSheet.hairlineWidth,
-    marginHorizontal: spacing.md,
-  },
-  choiceFooter: {
-    borderTopWidth: StyleSheet.hairlineWidth,
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
-    gap: spacing.sm,
-  },
+  notePanelTop: { marginBottom: spacing.md },
+  notePanelText: { ...type.meta, flex: 1 },
   noticeHost: {
     position: 'absolute',
     left: spacing.lg,
@@ -1400,7 +603,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
-    borderRadius: radius.md,
+    borderRadius: 12,
     paddingHorizontal: spacing.md,
   },
   noticeText: { ...type.label, flex: 1 },

@@ -4,6 +4,7 @@ import { Modal, ScrollView, StyleSheet, Text, View } from 'react-native'
 import type { SummaryDocument } from '../domain/summary'
 import { BottomSheet } from '../ui/BottomSheet'
 import { IconButton } from '../ui/Icon'
+import { Button } from '../ui/Button'
 import { SummaryWithSources, type SummaryWithSourcesProps } from './SummaryWithSources'
 
 let mockLanguage = 'pl'
@@ -29,6 +30,8 @@ const actions = () => root().findAll(node => node.props.accessibilityRole === 'b
   && typeof node.props.accessibilityLabel === 'string'
   && /^(Pokaż źródło|Show source): /.test(node.props.accessibilityLabel)
   && typeof node.props.onPress === 'function')
+const hint = () => root().findAllByType(Text).filter(node => node.props.children === 'Dotknij punktu, aby zobaczyć, skąd pochodzi')
+const texts = () => root().findAllByType(Text).map(node => node.props.children).filter((child): child is string => typeof child === 'string')
 const quotes = () => root().findAllByType(Text).filter(node => node.props.testID === 'summary-source-quote')
 const press = async (action: ReactTestInstance = actions()[0]) => {
   expect(action).toBeDefined()
@@ -49,7 +52,7 @@ test('opens the real sheet and displays exact repeated UTF-16 quotes in source o
   expect(root().findByType(Modal).props.visible).toBe(true)
   expect(root().findAllByType(ScrollView)).toHaveLength(1)
   expect(quotes().map(node => node.props.children)).toEqual(['🙂 Brak zajęć.', 'Brak zajęć.'])
-  expect(root().findByType(BottomSheet).props.title).toBe('Fragment transkrypcji')
+  expect(root().findByType(BottomSheet).props.title).toBe('Skąd ten punkt')
 })
 
 test.each(['back', 'backdrop', 'close'] as const)('dismisses through the real %s control', async method => {
@@ -96,6 +99,7 @@ test.each([
   expect(actions()).toHaveLength(0)
   expect(root().findAllByType(Text).some(node => node.props.children === props.summary)).toBe(true)
   expect(root().findByType(BottomSheet).props.visible).toBe(false)
+  expect(hint()).toHaveLength(0)
 })
 
 test('uses full minimum44 bullet rows with scalable incumbent text metrics and one visible point', async () => {
@@ -107,7 +111,7 @@ test('uses full minimum44 bullet rows with scalable incumbent text metrics and o
   expect(StyleSheet.flatten(style).height).toBeUndefined()
   const text = action.findAllByType(Text)
   expect(text.map(node => node.props.children).flat().join('')).toBe('• Brak zajęć.')
-  expect(StyleSheet.flatten(text[0].props.style)).toMatchObject({ fontSize: 15, lineHeight: 23 })
+  expect(StyleSheet.flatten(text[0].props.style)).toMatchObject({ fontSize: 17, lineHeight: 24 })
   expect(text.every(node => node.props.allowFontScaling !== false && node.props.numberOfLines === undefined)).toBe(true)
 })
 
@@ -122,7 +126,7 @@ test('keeps grouped headings accessible and attaches each full row to its own lo
   expect(root().findAllByType(Text).filter(node => node.props.accessibilityRole === 'header')
     .every(node => {
       const style = StyleSheet.flatten(node.props.style)
-      return style.fontSize === 15 && style.lineHeight === 23 && style.fontFamily === 'Onest_400Regular'
+      return style.fontSize === 17 && style.lineHeight === 24 && style.fontWeight === '600'
     })).toBe(true)
   expect(actions().map(node => node.props.accessibilityLabel)).toEqual([
     'Pokaż źródło: Pierwsza informacja.', 'Pokaż źródło: Trzecia informacja.', 'Pokaż źródło: Druga informacja.',
@@ -161,15 +165,51 @@ test('uses native dark tokens in the real sheet and English accessible copy', as
   await render(); await press()
   expect(actions()[0].props.accessibilityLabel).toBe('Show source: Brak zajęć.')
   expect(actions()[0].props.accessibilityHint).toContain('transcript')
-  expect(root().findByType(BottomSheet).props.title).toBe('Transcript excerpt')
-  expect(StyleSheet.flatten(quotes()[0].props.style).color).toBe('#EDEBE6')
+  expect(root().findByType(BottomSheet).props.title).toBe('Where this point comes from')
+  expect(StyleSheet.flatten(quotes()[0].props.style).color).toBe('#FFFFFF')
   const panel = root().findByProps({ accessibilityViewIsModal: true })
-  expect(StyleSheet.flatten(panel.props.style).backgroundColor).toBe('#1E1E21')
-  expect(StyleSheet.flatten(root().findAll(node => node.props.accessibilityLabel === 'Close panel' && typeof node.props.onPress === 'function')[0].props.style).backgroundColor).toBe('rgba(0,0,0,0.6)')
+  expect(StyleSheet.flatten(panel.props.style).backgroundColor).toBe('#000000')
+  expect(StyleSheet.flatten(root().findAll(node => node.props.accessibilityLabel === 'Close panel' && typeof node.props.onPress === 'function')[0].props.style).backgroundColor).toBe('rgba(0,0,0,0.55)')
 })
 
 test('has no source actions while inactive and preserves exact plain content', async () => {
   await render({ ...props, active: false })
   expect(actions()).toHaveLength(0)
   expect(root().findAllByType(Text).some(node => node.props.children === props.summary)).toBe(true)
+})
+
+test('shows the one-time hint under the points until a source sheet has been opened', async () => {
+  await render()
+  expect(hint()).toHaveLength(1)
+  expect(StyleSheet.flatten(hint()[0].props.style)).toMatchObject({ fontSize: 13, lineHeight: 18 })
+  await press()
+  await act(async () => { root().findByType(BottomSheet).props.onClose() })
+  expect(hint()).toHaveLength(0)
+})
+
+test('the sheet shows the point, the quote marked on tint inside its context and where it was recorded', async () => {
+  const onPlayFrom = jest.fn()
+  const long = `${'Wstęp do spotkania. '.repeat(8)}Przegląd przesuwamy na środę. ${'Dalsza rozmowa o budżecie. '.repeat(8)}`
+  const start = long.indexOf('Przegląd')
+  const end = start + 'Przegląd przesuwamy na środę.'.length
+  const doc: SummaryDocument = { version: 1, source: long, format: 'bullets', points: [
+    { text: 'Przegląd w środę.', sources: [{ start, end }] },
+  ] }
+  await render({ ...props, content: long, summary: '• Przegląd w środę.', document: doc,
+    pointTime: () => ({ startMs: 62_000 }), onPlayFrom })
+  await press()
+  expect(quotes().map(node => node.props.children)).toEqual(['Przegląd przesuwamy na środę.'])
+  expect(StyleSheet.flatten(quotes()[0].props.style).backgroundColor).toBe('#E3EEFB')
+  const paragraph = quotes()[0].parent!
+  const all = (node: ReactTestInstance): string => node.children.map(child => typeof child === 'string' ? child : all(child)).join('')
+  expect(all(paragraph).startsWith('…')).toBe(true)
+  expect(all(paragraph).endsWith('…')).toBe(true)
+  expect(all(paragraph)).toContain('Wstęp do spotkania. Przegląd')
+  expect(texts()).toContain('Przegląd w środę.')
+  expect(texts()).toContain('Z nagrania · 1:02')
+  const play = root().findAllByType(Button).find(node => node.props.label === 'Odtwórz od 1:02')
+  expect(play).toBeDefined()
+  await act(async () => { play!.props.onPress() })
+  expect(onPlayFrom).toHaveBeenCalledWith(62_000)
+  expect(root().findByType(BottomSheet).props.visible).toBe(false)
 })

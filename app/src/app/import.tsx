@@ -18,6 +18,8 @@ import {
   noteLanguageOrDefault,
   type Language,
 } from '../i18n/language'
+import { Dot } from '../ui/Dot'
+import { Group, Row } from '../ui/Grouped'
 import { LanguagePicker } from '../ui/LanguagePicker'
 import {
   useSpeechRecorder,
@@ -40,9 +42,7 @@ import type { Note } from '../domain/note'
 import { BottomSheet } from '../ui/BottomSheet'
 import { Button } from '../ui/Button'
 import { ErrorCard } from '../ui/ErrorCard'
-import { NoteMark } from '../ui/NoteMark'
-import { PulseDot } from '../ui/PulseDot'
-import { radius, spacing, type, useTheme, fonts } from '../ui/theme'
+import { radius, spacing, type, useTheme } from '../ui/theme'
 
 interface SelectedAudio {
   name: string
@@ -281,7 +281,7 @@ export default function ImportAudioScreen() {
   )
 
   const recorder = useSpeechRecorder(handleComplete, noteLanguage, 'import')
-  const { status, finalTranscript } = recorder
+  const { status } = recorder
   const statusRef = useRef(status)
   statusRef.current = status
   const transcript = recorder.transcript
@@ -561,31 +561,17 @@ export default function ImportAudioScreen() {
       </View>
 
       {selectedAudio ? (
-        <View
-          style={[
-            styles.fileRow,
-            { backgroundColor: colors.paper, borderColor: colors.line },
-          ]}
-        >
-          <View
-            style={[styles.fileIcon, { backgroundColor: colors.marker }]}
-          >
-            <AudioFileMark size={34} color={colors.onMarker} />
-          </View>
-          <View style={styles.fileDetails}>
-            <Text
-              style={[styles.fileName, { color: colors.ink }]}
-              numberOfLines={1}
-            >
-              {selectedAudio.name}
-            </Text>
-            {formatFileSize(selectedAudio.size).length > 0 && (
-              <Text style={[styles.fileSize, { color: colors.muted }]}>
-                {formatFileSize(selectedAudio.size)}
-              </Text>
-            )}
-          </View>
-        </View>
+        <Group style={styles.fileGroup}>
+          <Row
+            title={selectedAudio.name}
+            subtitle={formatFileSize(selectedAudio.size) || undefined}
+            leading={
+              <View style={[styles.fileIcon, { backgroundColor: colors.accent }]}>
+                <AudioFileMark size={34} color={colors.onAccent} />
+              </View>
+            }
+          />
+        </Group>
       ) : null}
 
       <ScrollView
@@ -596,9 +582,6 @@ export default function ImportAudioScreen() {
       >
         {!selectedAudio && (
           <View style={styles.intro}>
-            <View style={styles.introIcon}>
-              <NoteMark width={72} />
-            </View>
             <Text style={[styles.title, { color: colors.ink }]}>
               {t('Zamień nagranie w notatkę', 'Turn a recording into a note')}
             </Text>
@@ -618,7 +601,7 @@ export default function ImportAudioScreen() {
             accessibilityLabel={statusText}
           >
             {canceling ? null : isFocused ? (
-              <PulseDot color={colors.marker} size={10} />
+              <Dot color={colors.accent} />
             ) : null}
             <Text style={[styles.statusText, { color: colors.muted }]}>
               {statusText}
@@ -648,9 +631,7 @@ export default function ImportAudioScreen() {
             {transcript.length > 0 ? (
               <LiveTranscript
                 text={transcript}
-                finalizedText={finalTranscript}
                 style={[styles.transcript, { color: colors.ink }]}
-                interimStyle={{ color: colors.body }}
               />
             ) : (
               <Text style={[styles.placeholder, { color: colors.muted }]}>
@@ -809,17 +790,7 @@ export default function ImportAudioScreen() {
 const styles = StyleSheet.create({
   screen: { flex: 1 },
   languagePicker: { marginHorizontal: spacing.lg, marginTop: spacing.lg },
-  fileRow: {
-    minHeight: 88,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    marginHorizontal: spacing.lg,
-    marginTop: spacing.lg,
-    padding: spacing.md,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-  },
+  fileGroup: { marginHorizontal: spacing.lg, marginTop: spacing.lg },
   fileIcon: {
     width: 54,
     height: 54,
@@ -827,9 +798,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  fileDetails: { flex: 1, gap: 3 },
-  fileName: { ...type.body, fontFamily: fonts.semibold },
-  fileSize: { ...type.meta },
   content: { flex: 1 },
   contentInner: {
     flexGrow: 1,
@@ -845,7 +813,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: spacing.sm,
   },
-  introIcon: { marginBottom: spacing.md },
   title: { ...type.display, textAlign: 'center' },
   subtitle: { ...type.body, textAlign: 'center' },
   statusRow: {

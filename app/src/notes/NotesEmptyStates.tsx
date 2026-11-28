@@ -1,21 +1,15 @@
+import { useRouter } from 'expo-router'
 import { useI18n } from '../i18n/useI18n'
 import { StyleSheet, Text, View } from 'react-native'
 import { Button } from '../ui/Button'
-import { EmptyIllustration } from '../ui/EmptyIllustration'
 import { spacing, type, useTheme } from '../ui/theme'
 
 export function NotesEmptyState() {
   const { colors } = useTheme()
   const { t } = useI18n()
+  const router = useRouter()
   return (
     <View style={styles.container}>
-      <EmptyIllustration
-        kind="note"
-        label={t(
-          'Ilustracja notatki z falą dźwiękową',
-          'Illustration of a note with a sound wave',
-        )}
-      />
       <Text
         accessibilityRole="header"
         style={[styles.title, { color: colors.ink }]}
@@ -28,6 +22,13 @@ export function NotesEmptyState() {
           'Record, import, or write your first note.',
         )}
       </Text>
+      <Button
+        compact
+        variant="primary"
+        label={t('Nagraj pierwszą notatkę', 'Record your first note')}
+        onPress={() => router.push('/record')}
+        style={styles.action}
+      />
     </View>
   )
 }
@@ -43,7 +44,6 @@ export function NotesNoResultsState({
   const { t } = useI18n()
   return (
     <View style={styles.container}>
-      <EmptyIllustration kind="search" label={t('Ilustracja wyszukiwania', 'Search illustration')} />
       <Text
         accessibilityRole="header"
         style={[styles.title, { color: colors.ink }]}

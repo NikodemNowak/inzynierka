@@ -1,7 +1,7 @@
 import { useI18n } from '../../i18n/useI18n'
 import { useCallback, useDeferredValue, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'expo-router'
-import { SectionList, Text, View, type SectionListRenderItem } from 'react-native'
+import { SectionList, View, type SectionListRenderItem } from 'react-native'
 import type { Note } from '../../domain/note'
 import { useNotesStore } from '../../state/notesStore'
 import { useSettingsStore } from '../../state/settingsStore'
@@ -14,9 +14,13 @@ import {
   NotesNoResultsState,
 } from '../../notes/NotesEmptyStates'
 import { DraftBanner } from '../../notes/DraftBanner'
-import { NextTaskBanner } from '../../notes/NextTaskBanner'
+import { AskCard } from '../../notes/AskCard'
+import { NextTaskBanner, useNextTask } from '../../notes/NextTaskBanner'
+import { listExtras } from '../../notes/listExtras'
 import { groupNotesByDate, selectVisibleNotes } from '../../notes/noteListView'
-import { type, useTheme } from '../../ui/theme'
+import { ScreenTitle, SettingsButton } from '../../ui/ScreenTitle'
+import { SectionTitle } from '../../ui/Grouped'
+import { useTheme } from '../../ui/theme'
 
 type Section = { title: string; data: Note[] }
 
@@ -24,11 +28,12 @@ const keyOfNote = (item: Note): string => item.id
 
 export default function NotesListScreen() {
   const { colors } = useTheme()
-  const { language } = useI18n()
+  const { language, t } = useI18n()
   const notes = useNotesStore((state) => state.notes)
   const sortMode = useSettingsStore((state) => state.sortMode)
   const setSortMode = useSettingsStore((state) => state.setSortMode)
   const router = useRouter()
+  const nextTask = useNextTask()
   const [query, setQuery] = useState('')
   const [category, setCategory] = useState<string | null>(null)
   const usedCategories = useMemo(
@@ -60,24 +65,15 @@ export default function NotesListScreen() {
   )
   const renderSectionHeader = useCallback(
     ({ section }: { section: Section }) => (
-      <Text
-        style={{
-          ...type.label,
-          color: colors.muted,
-          fontSize: 13,
-          lineHeight: 18,
-          marginTop: 14,
-          marginBottom: 8,
-          marginLeft: 4,
-        }}
-      >
-        {section.title}
-      </Text>
+      <View style={{ paddingHorizontal: 16 }}>
+        <SectionTitle>{section.title}</SectionTitle>
+      </View>
     ),
-    [colors.muted],
+    [],
   )
   const renderItem: SectionListRenderItem<Note, Section> = useCallback(
     ({ item, index, section }) => (
+      <View style={{ paddingHorizontal: 16 }}>
       <NoteRow
         note={item}
         timestamp={sortMode === 'created' ? item.createdAt : item.updatedAt}
@@ -92,11 +88,21 @@ export default function NotesListScreen() {
         }
         onPress={handlerFor(item.id)}
       />
+      </View>
     ),
     [sortMode, handlerFor],
   )
+  const extras = listExtras({ noteCount: notes.length, nextTask, query })
+  const header = (
+    <View>
+      <ModelDownloadBanner />
+      {extras.ask && <AskCard onPress={() => router.push('/ask')} />}
+      {extras.nextTask && nextTask && <NextTaskBanner next={nextTask} />}
+    </View>
+  )
   return (
     <View style={{ flex: 1, backgroundColor: colors.canvas }}>
+      <ScreenTitle title={t('Notatki', 'Notes')} right={<SettingsButton />} />
       <DraftBanner />
       {notes.length > 0 && (
         <NotesToolbar
@@ -107,11 +113,9 @@ export default function NotesListScreen() {
           categories={usedCategories}
           selectedCategory={category}
           onSelectCategory={setCategory}
-          afterSearch={<ModelDownloadBanner />}
         />
       )}
-      {!notes.length && <ModelDownloadBanner />}
-      {notes.length > 0 && !query.trim() && <NextTaskBanner />}
+      {(!notes.length || !visibleNotes.length) && <ModelDownloadBanner />}
       {!notes.length ? (
         <NotesEmptyState />
       ) : !visibleNotes.length ? (
@@ -132,7 +136,8 @@ export default function NotesListScreen() {
           stickySectionHeadersEnabled={false}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
-          contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: 20 }}
+          ListHeaderComponent={header}
+          contentContainerStyle={{ paddingBottom: 20 }}
           renderSectionHeader={renderSectionHeader}
           renderItem={renderItem}
         />

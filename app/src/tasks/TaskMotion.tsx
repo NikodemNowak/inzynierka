@@ -3,7 +3,6 @@ import { Animated, AppState, Easing, type StyleProp, type TextStyle, type ViewSt
 import { Icon } from '../ui/Icon'
 import { useTheme } from '../ui/theme'
 import { FadeText } from './FadeText'
-import { useLayoutTransition } from '../ui/LayoutMotion'
 
 const boundedTaskIds = (ids: readonly string[]): readonly string[] => {
   const unique = new Set<string>()
@@ -55,7 +54,7 @@ export function useTaskTextReveal(active: boolean, reducedMotion: boolean, scope
   return { ids, prepare, consume }
 }
 
-export function TaskText({ text, reveal, active, reducedMotion, onRevealConsumed, onRevealComplete, style, numberOfLines, index = 0 }: {
+export function TaskText({ text, reveal, active, reducedMotion, onRevealConsumed, onRevealComplete, style, numberOfLines }: {
   text: string
   reveal: boolean
   active: boolean
@@ -64,6 +63,7 @@ export function TaskText({ text, reveal, active, reducedMotion, onRevealConsumed
   onRevealComplete?: (text: string) => void
   style?: StyleProp<TextStyle>
   numberOfLines?: number
+  // Accepted for existing callers; rows no longer cascade.
   index?: number
 }) {
   const [animate, setAnimate] = useState(false)
@@ -83,77 +83,40 @@ export function TaskText({ text, reveal, active, reducedMotion, onRevealConsumed
       consumed.current()
     } else if (changed) setAnimate(false)
   }, [text, reveal, active, reducedMotion])
-  return <FadeText text={text} animate={animate && active && !reducedMotion} active={active} style={style} numberOfLines={numberOfLines} delayMs={Math.max(0, Math.min(3, index)) * 140} onRevealComplete={onRevealComplete} />
+  return <FadeText text={text} animate={animate && active && !reducedMotion} active={active} style={style} numberOfLines={numberOfLines} onRevealComplete={onRevealComplete} />
 }
 
 // Presentation only: complete candidates remain available to selection/storage.
-// Activate the next text from its predecessor's finite reveal completion, so
-// independent raster callbacks cannot scramble the visual reading order.
+// There is no cascade: every row is ready at once and a fresh visible batch
+// fades in together. The completion callbacks are kept for existing callers.
 export function useTaskRevealSequence(items: readonly string[], eventKey: string | null, scope: string, active: boolean, reducedMotion: boolean) {
-  const keys = boundedTaskIds(items)
-  const signature = JSON.stringify([scope, eventKey, keys])
-  const [state, setState] = useState({ signature, completed: 0 })
-  const owner = useRef({ signature, active, reducedMotion, keys, textDone: new Set<string>(), arrived: new Set<string>() })
-  if (owner.current.signature !== signature || owner.current.active !== active || owner.current.reducedMotion !== reducedMotion)
-    owner.current = { signature, active, reducedMotion, keys, textDone: new Set<string>(), arrived: new Set<string>() }
-  const current = owner.current
-  const fresh = eventKey !== null && active && !reducedMotion
-  const completed = state.signature === signature ? state.completed : 0
-  const shownCompleted = useLayoutTransition(completed, String(completed), signature, active, reducedMotion)
-  useLayoutEffect(() => {
-    setState(value => {
-      const next = !fresh ? keys.length : value.signature === signature ? value.completed : 0
-      return value.signature === signature && value.completed === next ? value : { signature, completed: next }
-    })
-  }, [signature, fresh, keys.length])
-  const complete = useCallback((key: string) => {
-    if (owner.current !== current || !current.active || current.reducedMotion) return
-    setState(value => {
-      const count = value.signature === signature ? value.completed : 0
-      return current.keys[count] === key ? { signature, completed: count + 1 } : value
-    })
-  }, [current, signature])
-  const textComplete = useCallback((key: string) => {
-    if (owner.current !== current) return
-    current.textDone.add(key)
-    if (current.arrived.has(key)) complete(key)
-  }, [current, complete])
-  const arrivalComplete = useCallback((key: string) => {
-    if (owner.current !== current) return
-    current.arrived.add(key)
-    if (current.textDone.has(key)) complete(key)
-  }, [current, complete])
-  useEffect(() => {
-    if (!fresh || completed >= keys.length) return
-    const timer = setTimeout(() => complete(keys[completed]), 6500)
-    return () => clearTimeout(timer)
-  }, [fresh, completed, signature, complete])
-  useEffect(() => () => { owner.current = { ...owner.current, active: false } }, [])
-  // A long list does not chain letter reveals: every row is ready and enters on its own stagger.
+  // A batch that was hidden or reduced once never fades in again on return.
+  const signature = `${scope}|${eventKey}`
+  const [settled, setSettled] = useState<string | null>(null)
+  useEffect(() => { if (!active || reducedMotion) setSettled(signature) }, [active, reducedMotion, signature])
+  const fresh = eventKey !== null && active && !reducedMotion && settled !== signature
   const fast = isFastReveal(items.length)
+  const noop = useCallback((_key: string) => undefined, [])
   return {
     fast,
-    ready: (index: number) => fast || !fresh || index >= keys.length || index <= shownCompleted,
-    enter: (index: number) => fresh && (fast ? index < items.length : index < keys.length && index === shownCompleted),
-    complete, textComplete, arrivalComplete,
+    ready: (_index: number) => true,
+    enter: (index: number) => fresh && index < items.length,
+    complete: noop, textComplete: noop, arrivalComplete: noop,
   }
 }
 
-// Up to this many rows get the full letter reveal one after another; a longer
-// list fades in row by row instead, finishing within about a second.
+// A list longer than this fades its rows in without the per-text fade.
 export const CALM_REVEAL_COUNT = 4
 export const isFastReveal = (count: number): boolean => count > CALM_REVEAL_COUNT
-const FAST_SPAN_MS = 900
 
 export const taskEntranceTiming = (
   index: number,
   active: boolean,
   reducedMotion: boolean,
-  count = 0,
+  _count = 0,
 ): { duration: number; delay: number } | null => {
   if (!active || reducedMotion || !Number.isInteger(index) || index < 0) return null
-  if (isFastReveal(count)) return index < count ? { duration: 200, delay: index * Math.min(60, Math.floor(FAST_SPAN_MS / count)) } : null
-  return index < CALM_REVEAL_COUNT ? { duration: 260, delay: index * 140 } : null
+  return { duration: 200, delay: 0 }
 }
 
 export function useTaskMotionActive(focused: boolean): boolean {
@@ -165,8 +128,8 @@ export function useTaskMotionActive(focused: boolean): boolean {
   return focused && foreground
 }
 
-// Reveal complete, already available content. No character clocks or layout changes.
-export function TaskArrival({ children, index, count = 0, active, reducedMotion, style, enter = true, eventKey, onArrivalComplete }: {
+// Reveal complete, already available content with one plain 200 ms fade.
+export function TaskArrival({ children, index, active, reducedMotion, style, enter = true, eventKey, onArrivalComplete }: {
   children: ReactNode
   index: number
   count?: number
@@ -180,9 +143,12 @@ export function TaskArrival({ children, index, count = 0, active, reducedMotion,
   const progress = useRef(new Animated.Value(1)).current
   const completion = useRef(onArrivalComplete)
   completion.current = onArrivalComplete
+  // A row that only shifts (a task above it was deleted) must not fade in again.
+  const indexRef = useRef(index)
+  indexRef.current = index
   useLayoutEffect(() => {
     progress.stopAnimation()
-    const timing = taskEntranceTiming(index, active && enter, reducedMotion, count)
+    const timing = taskEntranceTiming(indexRef.current, active && enter, reducedMotion)
     if (!timing) {
       progress.setValue(1)
       return
@@ -206,15 +172,8 @@ export function TaskArrival({ children, index, count = 0, active, reducedMotion,
       animation.stop()
       progress.setValue(1)
     }
-  }, [progress, index, count, active, reducedMotion, enter, eventKey])
-  return (
-    <Animated.View style={[style, {
-      opacity: progress,
-      transform: [{ translateY: progress.interpolate({ inputRange: [0, 1], outputRange: [6, 0] }) }],
-    }]}>
-      {children}
-    </Animated.View>
-  )
+  }, [progress, active, reducedMotion, enter, eventKey])
+  return <Animated.View style={[style, { opacity: progress }]}>{children}</Animated.View>
 }
 
 export function TaskCheck({ checked, active, reducedMotion, style, size = 16, feedback = false, onFeedbackComplete }: {
@@ -231,43 +190,38 @@ export function TaskCheck({ checked, active, reducedMotion, style, size = 16, fe
   const previousFeedback = useRef(false)
   const feedbackComplete = useRef(onFeedbackComplete)
   feedbackComplete.current = onFeedbackComplete
-  const scale = useRef(new Animated.Value(1)).current
-  const opacity = useRef(new Animated.Value(checked ? 1 : 0)).current
+  // One 150 ms value drives both the check's opacity and its 0.9 to 1 scale.
+  const progress = useRef(new Animated.Value(checked ? 1 : 0)).current
   useEffect(() => {
     const changed = previous.current !== checked
     const freshFeedback = feedback && !previousFeedback.current
     previous.current = checked
     previousFeedback.current = feedback
     const consumeFeedback = feedback ? feedbackComplete.current : undefined
-    scale.stopAnimation()
-    opacity.stopAnimation()
+    progress.stopAnimation()
     if (!active || reducedMotion || (!changed && !freshFeedback)) {
-      scale.setValue(1)
-      opacity.setValue(checked ? 1 : 0)
+      progress.setValue(checked ? 1 : 0)
       consumeFeedback?.()
       return
     }
-    const animation = Animated.parallel([
-      Animated.timing(opacity, { toValue: checked ? 1 : 0, duration: 110, useNativeDriver: true }),
-      Animated.sequence([
-        Animated.timing(scale, { toValue: 0.9, duration: 90, useNativeDriver: true }),
-        Animated.timing(scale, { toValue: 1, duration: 130, useNativeDriver: true }),
-      ]),
-    ])
+    const animation = Animated.timing(progress, { toValue: checked ? 1 : 0, duration: 150, easing: Easing.out(Easing.cubic), useNativeDriver: true })
     animation.start(({ finished }) => {
       if (finished) consumeFeedback?.()
     })
     return () => {
       animation.stop()
-      scale.setValue(1)
-      opacity.setValue(checked ? 1 : 0)
+      progress.setValue(checked ? 1 : 0)
       consumeFeedback?.()
     }
-  }, [checked, active, reducedMotion, feedback, scale, opacity])
+  }, [checked, active, reducedMotion, feedback, progress])
   return (
-    <Animated.View style={[style, { transform: [{ scale }] }]}>
-      <Animated.View accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={{ opacity }}>
-        <Icon name="check" size={size} color={colors.onBrand} />
+    <Animated.View style={style}>
+      <Animated.View
+        accessibilityElementsHidden
+        importantForAccessibility="no-hide-descendants"
+        style={{ opacity: progress, transform: [{ scale: progress.interpolate({ inputRange: [0, 1], outputRange: [0.9, 1] }) }] }}
+      >
+        <Icon name="check" size={size} color={colors.onAccent} />
       </Animated.View>
     </Animated.View>
   )

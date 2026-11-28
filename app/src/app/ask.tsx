@@ -1,8 +1,6 @@
 import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
-  Animated,
-  Easing,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -15,6 +13,7 @@ import {
 import { Stack, useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import type { AskSource } from '../ask/askAnswer'
+import { parseAnswerBlocks, sourceChipLabel } from '../ask/answerPresentation'
 import { useAskStore, type AskMessage } from '../ask/askStore'
 import { EMBEDDING_MODEL } from '../ask/embeddingModel'
 import { useSearchModelStore } from '../ask/searchModel'
@@ -26,51 +25,42 @@ import { ModelDownloadBanner } from '../notes/ModelDownloadBanner'
 import { useNotesStore } from '../state/notesStore'
 import { useTasksStore } from '../state/tasksStore'
 import { Icon, IconButton } from '../ui/Icon'
-import { useReducedMotion } from '../ui/Motion'
-import { radius, spacing, type, useTheme, type ThemeColors } from '../ui/theme'
+import { font, spacing, type, useTheme, type ThemeColors } from '../ui/theme'
 
 const EXAMPLES = {
   pl: ['Co mam dzisiaj do zrobienia?', 'Co mam w tym tygodniu?', 'Kiedy mam następną wizytę?'],
   en: ['What do I have to do today?', 'What is on this week?', 'When is my next appointment?'],
 } as const
 
-// Citations stay out of the prose: list rows carry their note underneath, the
-// rest of the answer reads clean and the cited notes follow as a card.
-const LINE_CITE = /^\s*(?:[-•*]\s*)?((?:\[\d+\]\s*)*)(.*?)\s*((?:\[\d+\]\s*)*)$/u
-const LIST_LINE = /^\s*(?:[-•*]\s*|\[\d+\])/u
-// A citation still being typed ("[", "[1") is cut too, so no bracket flashes while streaming.
-const stripCitations = (text: string): string => text.replace(/\s*\[\d+\]/gu, '').replace(/\s*\[\d*$/u, '').trim()
-
-const AnswerText = memo(function AnswerText({ message, colors, onOpen, streaming }: { message: AskMessage; colors: ThemeColors; onOpen: (source: AskSource) => void; streaming: boolean }) {
+// The answer as plain text, numbered and bulleted lines as list rows. Citation
+// marks never show; the notes behind the answer are chips under it.
+function AnswerText({ message, colors, onOpen, streaming }: { message: AskMessage; colors: ThemeColors; onOpen: (source: AskSource) => void; streaming: boolean }) {
   const { t } = useI18n()
-  const lines = useMemo(() => message.answer.trim().split(/\n+/u), [message.answer])
-  const several = useMemo(() => new Set(message.cited.map((source) => source.title)).size > 1, [message.cited])
+  const blocks = useMemo(() => parseAnswerBlocks(message.answer), [message.answer])
   // A list computed from the tasks: every row carries its deadline and opens its note.
   if (message.items) {
     const items = message.items
     return (
-      <View style={{ gap: 8 }}>
+      <View style={styles.answerBlock}>
         {message.intro ? <Text selectable style={[styles.answer, { color: colors.ink }]}>{message.intro}</Text> : null}
         {items.map((item, index) => {
           const source = message.sources.find((candidate) => candidate.noteId === item.noteId)
           const heading = item.group && item.group !== items[index - 1]?.group ? item.group : null
           return (
             <Fragment key={index}>
-              {heading ? <Text style={[type.label, { fontSize: 13, color: item.overdue ? colors.danger : colors.muted, marginTop: index ? 6 : 0 }]}>{heading}</Text> : null}
+              {heading ? <Text style={[type.caption, { color: item.overdue ? colors.danger : colors.secondary, marginTop: index ? 6 : 0 }]}>{heading}</Text> : null}
               <Pressable
                 disabled={!source}
                 accessibilityRole={source ? 'button' : undefined}
                 accessibilityHint={source ? t(`Otwiera notatkę ${source.title}`, `Opens the note ${source.title}`) : undefined}
                 onPress={() => source && onOpen(source)}
-                style={({ pressed }) => [styles.answerRow, { opacity: pressed ? 0.7 : 1 }]}
+                style={({ pressed }) => [styles.listRow, { opacity: pressed ? 0.7 : 1 }]}
               >
-                <View style={[styles.answerDot, { backgroundColor: colors.marker, borderColor: colors.markerLine }]} />
+                <Text style={[styles.answer, styles.marker, { color: colors.ink }]}>{'•'}</Text>
                 <View style={{ flex: 1, gap: 4 }}>
                   <Text selectable style={[styles.answer, { color: colors.ink }]}>{item.text}</Text>
                   {item.due ? (
-                    <View style={[styles.dueChip, { backgroundColor: colors.surface }]}>
-                      <Text style={[type.meta, { color: item.overdue ? colors.danger : colors.ink, fontVariant: ['tabular-nums'] }]}>{item.due}</Text>
-                    </View>
+                    <Text style={[type.meta, { color: item.overdue ? colors.danger : colors.secondary, fontVariant: ['tabular-nums'] }]}>{item.due}</Text>
                   ) : null}
                 </View>
               </Pressable>
@@ -80,128 +70,70 @@ const AnswerText = memo(function AnswerText({ message, colors, onOpen, streaming
       </View>
     )
   }
+  const caret = streaming ? <Text style={{ color: colors.accent }}>{' ▍'}</Text> : null
   return (
-    <View style={{ gap: 8 }}>
-      {lines.map((line, index) => {
-        const last = index === lines.length - 1
-        const caret = streaming && last ? <Text style={{ color: colors.markerLine }}>{' ▍'}</Text> : null
-        if (!LIST_LINE.test(line)) return (
-          <Text key={index} selectable style={[styles.answer, { color: colors.ink }]}>
-            {stripCitations(line)}{caret}
-          </Text>
-        )
-        const match = LINE_CITE.exec(line)
-        const numbers = `${match?.[1] ?? ''}${match?.[3] ?? ''}`.match(/\d+/gu) ?? []
-        const source = message.sources.find((item) => item.number === Number(numbers[0]))
-        const body = stripCitations(match?.[2] ?? line)
+    <View style={styles.answerBlock}>
+      {blocks.map((block, index) => {
+        const last = index === blocks.length - 1
+        if (block.kind === 'paragraph') {
+          return (
+            <Text key={index} selectable style={[styles.answer, { color: colors.ink }]}>
+              {block.text}{last ? caret : null}
+            </Text>
+          )
+        }
         return (
-          <Pressable
-            key={index}
-            disabled={!source}
-            accessibilityRole={source ? 'button' : undefined}
-            accessibilityHint={source ? t(`Otwiera notatkę ${source.title}`, `Opens the note ${source.title}`) : undefined}
-            onPress={() => source && onOpen(source)}
-            style={({ pressed }) => [styles.answerRow, { opacity: pressed ? 0.7 : 1 }]}
-          >
-            <View style={[styles.answerDot, { backgroundColor: colors.marker, borderColor: colors.markerLine }]} />
-            <View style={{ flex: 1, gap: 2 }}>
-              <Text selectable style={[styles.answer, { color: colors.ink }]}>{body}{caret}</Text>
-              {source && several ? (
-                <Text numberOfLines={1} style={[type.meta, { color: colors.muted }]}>
-                  {t(`z notatki „${source.title}”`, `from “${source.title}”`)}
+          <View key={index} style={styles.list}>
+            {block.items.map((item, position) => (
+              <View key={position} style={styles.listRow}>
+                <Text style={[styles.answer, styles.marker, { color: colors.ink, fontVariant: ['tabular-nums'] }]}>
+                  {block.labels?.[position] ?? (block.ordered ? `${position + 1}.` : '•')}
                 </Text>
-              ) : null}
-            </View>
-          </Pressable>
+                <Text selectable style={[styles.answer, { color: colors.ink, flex: 1 }]}>
+                  {item}{last && position === block.items.length - 1 ? caret : null}
+                </Text>
+              </View>
+            ))}
+          </View>
         )
       })}
     </View>
   )
-})
-
-function Pulse() {
-  const { colors } = useTheme()
-  const reduced = useReducedMotion()
-  const value = useRef(new Animated.Value(1)).current
-  useEffect(() => {
-    if (reduced) return
-    const loop = Animated.loop(Animated.sequence([
-      Animated.timing(value, { toValue: 0.3, duration: 600, useNativeDriver: true }),
-      Animated.timing(value, { toValue: 1, duration: 600, useNativeDriver: true }),
-    ]))
-    loop.start()
-    return () => loop.stop()
-  }, [reduced, value])
-  return <Animated.View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: colors.marker, opacity: value }} />
 }
 
-// While retrieval runs, the user's own note titles flick past like cards in a deck.
-function SearchDeck({ titles }: { titles: readonly string[] }) {
-  const { colors } = useTheme()
-  const reduced = useReducedMotion()
-  const [index, setIndex] = useState(0)
-  const leave = useRef(new Animated.Value(0)).current
-  useEffect(() => {
-    if (reduced || titles.length < 2) return
-    let alive = true
-    const step = () => {
-      leave.setValue(0)
-      Animated.timing(leave, { toValue: 1, duration: 420, delay: 380, easing: Easing.in(Easing.cubic), useNativeDriver: true }).start(({ finished }) => {
-        if (!alive || !finished) return
-        setIndex((value) => (value + 1) % titles.length)
-        step()
-      })
-    }
-    step()
-    return () => { alive = false; leave.stopAnimation() }
-  }, [reduced, titles.length, leave])
-  if (!titles.length) return null
-  const card = (offset: number) => titles[(index + offset) % titles.length]
+// Three still dots: the model is working, nothing moves.
+function Waiting({ label, colors }: { label: string; colors: ThemeColors }) {
   return (
-    <View style={styles.deck} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
-      <View style={[styles.deckCard, styles.deckBack2, { backgroundColor: colors.surface }]} />
-      <View style={[styles.deckCard, styles.deckBack1, { backgroundColor: colors.paper, borderColor: colors.line }]}>
-        <Text numberOfLines={1} style={[type.label, { color: colors.faint }]}>{card(1)}</Text>
+    <View style={styles.waiting} accessibilityLiveRegion="polite" accessibilityLabel={label}>
+      <View style={styles.dots} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+        {[0, 1, 2].map((dot) => <View key={dot} style={[styles.dot, { backgroundColor: colors.faint }]} />)}
       </View>
-      <Animated.View
-        style={[styles.deckCard, { backgroundColor: colors.paper, borderColor: colors.line,
-          opacity: leave.interpolate({ inputRange: [0, 1], outputRange: [1, 0] }),
-          transform: [
-            { translateX: leave.interpolate({ inputRange: [0, 1], outputRange: [0, 120] }) },
-            { rotate: leave.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '8deg'] }) },
-          ] }]}
-      >
-        <View style={[styles.deckDot, { backgroundColor: colors.marker, borderColor: colors.markerLine }]} />
-        <Text numberOfLines={1} style={[type.label, { color: colors.ink, flex: 1 }]}>{card(0)}</Text>
-      </Animated.View>
+      <Text style={[type.meta, { color: colors.secondary }]}>{label}</Text>
     </View>
   )
 }
 
-const Message = memo(function Message({ message, onOpen, titles, onFollowUp }: { message: AskMessage; onOpen: (source: AskSource) => void; titles: readonly string[]; onFollowUp?: ((question: string) => void) | undefined }) {
-  const { t } = useI18n()
+const Message = memo(function Message({ message, onOpen, dates, onFollowUp }: { message: AskMessage; onOpen: (source: AskSource) => void; dates: ReadonlyMap<string, number>; onFollowUp?: ((question: string) => void) | undefined }) {
+  const { t, language } = useI18n()
   const { colors } = useTheme()
-  const searching = message.status === 'pending' && message.stage !== 'answering' && message.stage !== 'loading'
   const stageLabel =
     message.stage === 'loading'
       ? t('Ładuję model…', 'Loading the model…')
       : message.stage === 'answering'
         ? t('Piszę odpowiedź…', 'Writing the answer…')
-        : t(`Przeglądam ${titles.length} ${titles.length === 1 ? 'notatkę' : 'notatki'}…`, `Looking through ${titles.length} notes…`)
+        : t('Szukam w notatkach…', 'Searching your notes…')
+  const now = new Date()
   return (
     <View style={styles.turn}>
-      <View style={[styles.question, { backgroundColor: colors.action }]}>
-        <Text style={[type.body, { color: colors.onAction }]}>{message.question}</Text>
+      <View style={[styles.question, { backgroundColor: colors.accent }]}>
+        <Text style={[type.body, { color: '#FFFFFF' }]}>{message.question}</Text>
       </View>
       {message.status === 'pending' && (!message.answer || message.stage !== 'answering') ? (
-        <View style={{ gap: spacing.sm }} accessibilityLiveRegion="polite">
-          <Text style={[type.label, { fontSize: 13, color: colors.muted }]}>{stageLabel}</Text>
-          {searching ? <SearchDeck titles={titles} /> : <Pulse />}
-        </View>
+        <Waiting label={stageLabel} colors={colors} />
       ) : null}
       {message.answer ? <AnswerText message={message} colors={colors} onOpen={onOpen} streaming={message.status === 'pending'} /> : null}
       {message.status === 'cancelled' ? (
-        <Text style={[type.meta, { color: colors.muted }]}>{t('Zatrzymano.', 'Stopped.')}</Text>
+        <Text style={[type.meta, { color: colors.secondary }]}>{t('Zatrzymano.', 'Stopped.')}</Text>
       ) : null}
       {message.status === 'error' ? (
         <Text style={[type.meta, { color: colors.danger }]}>
@@ -209,39 +141,32 @@ const Message = memo(function Message({ message, onOpen, titles, onFollowUp }: {
         </Text>
       ) : null}
       {message.status === 'done' && message.cited.length ? (
-        <Text style={[type.label, { fontSize: 13, color: colors.muted, marginBottom: -4 }]}>
-          {message.cited.length > 1 ? t('Z notatek', 'From notes') : t('Z notatki', 'From the note')}
-        </Text>
-      ) : null}
-      {message.status === 'done' && message.cited.length ? (
-        <View style={[styles.sources, { backgroundColor: colors.paper, borderColor: colors.line }]}>
-          {message.cited.map((source, index) => (
+        <View style={styles.chips}>
+          {message.cited.map((source) => (
             <Pressable
               key={source.noteId}
               accessibilityRole="button"
               accessibilityLabel={t(`Otwórz notatkę: ${source.title}`, `Open note: ${source.title}`)}
               onPress={() => onOpen(source)}
-              style={({ pressed }) => [styles.source, index > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line }, { opacity: pressed ? 0.7 : 1 }]}
+              style={({ pressed }) => [styles.chip, { backgroundColor: colors.canvas, opacity: pressed ? 0.7 : 1 }]}
             >
-              <View style={[styles.answerDot, { marginTop: 0, backgroundColor: colors.marker, borderColor: colors.markerLine }]} />
-              <Text numberOfLines={1} style={[type.label, { color: colors.ink, flex: 1 }]}>
-                {source.title}
+              <Text numberOfLines={1} style={[type.caption, font.regular, { color: colors.ink }]}>
+                {sourceChipLabel(source.title, dates.get(source.noteId), now, language)}
               </Text>
-              <Icon name="chevron-right" size={16} color={colors.faint} />
             </Pressable>
           ))}
         </View>
       ) : null}
       {message.status === 'done' && onFollowUp && message.followUps?.length ? (
-        <View style={styles.followUps}>
+        <View style={styles.chips}>
           {message.followUps.map((question) => (
             <Pressable
               key={question}
               accessibilityRole="button"
               onPress={() => onFollowUp(question)}
-              style={({ pressed }) => [styles.pill, { borderColor: colors.line, backgroundColor: colors.paper, opacity: pressed ? 0.7 : 1 }]}
+              style={({ pressed }) => [styles.chip, { backgroundColor: colors.tint, opacity: pressed ? 0.7 : 1 }]}
             >
-              <Text style={[type.label, { color: colors.ink }]}>{question}</Text>
+              <Text style={[type.caption, { color: colors.onTint }]}>{question}</Text>
             </Pressable>
           ))}
         </View>
@@ -268,8 +193,8 @@ function SearchModelCard({ compact }: { compact: boolean }) {
   if (indexing)
     return (
       <View style={styles.stage}>
-        <ActivityIndicator size="small" color={colors.muted} />
-        <Text style={[type.meta, { color: colors.muted }]}>
+        <ActivityIndicator size="small" color={colors.secondary} />
+        <Text style={[type.meta, { color: colors.secondary }]}>
           {t(`Indeksuję notatki do wyszukiwania… ${done}/${total}`, `Indexing notes for search… ${done}/${total}`)}
         </Text>
       </View>
@@ -278,9 +203,9 @@ function SearchModelCard({ compact }: { compact: boolean }) {
   if (downloaded)
     return (
       <>
-        <Text style={[type.meta, { color: colors.muted, textAlign: 'center' }]}>
+        <Text style={[type.meta, { color: colors.secondary, textAlign: 'center' }]}>
           {t('Wyszukiwanie po znaczeniu włączone. ', 'Search by meaning is on. ')}
-          <Text accessibilityRole="button" onPress={() => setConfirming(true)} style={{ color: colors.ink, textDecorationLine: 'underline' }}>
+          <Text accessibilityRole="button" onPress={() => setConfirming(true)} style={{ color: colors.accent }}>
             {t('Usuń model', 'Remove model')}
           </Text>
         </Text>
@@ -294,9 +219,9 @@ function SearchModelCard({ compact }: { compact: boolean }) {
       </>
     )
   return (
-    <View style={[styles.card, { backgroundColor: colors.paper, borderColor: colors.line }]}>
+    <View style={[styles.card, { backgroundColor: colors.canvas }]}>
       <Text style={[type.label, { color: colors.ink }]}>{t('Lepsze wyszukiwanie', 'Better search')}</Text>
-      <Text style={[type.meta, { color: colors.body }]}>
+      <Text style={[type.meta, { color: colors.secondary }]}>
         {t(
           `Model wyszukiwania (${EMBEDDING_MODEL.approxSizeMb} MB) znajduje notatki opisane innymi słowami albo w drugim języku. Działa na telefonie, bez wysyłania notatek.`, `A search model (${EMBEDDING_MODEL.approxSizeMb} MB) finds notes that say it in other words or in the other language. It runs on this phone; notes are never sent.`,
         )}
@@ -326,7 +251,8 @@ export default function AskScreen() {
   const scroll = useRef<ScrollView>(null)
   const pending = messages.some((message) => message.status === 'pending')
   const last = messages.at(-1)
-  const titles = useMemo(() => notes.map((note) => note.title.trim()).filter(Boolean), [notes])
+  const dates = useMemo(() => new Map(notes.map((note) => [note.id, note.createdAt] as const)), [notes])
+  const canSend = pending || draft.trim().length > 0
 
   useEffect(() => {
     // Streaming text lands many times a second: an animated scroll would lag behind it.
@@ -342,8 +268,9 @@ export default function AskScreen() {
 
   return (
     <KeyboardAvoidingView
-      style={{ flex: 1, backgroundColor: colors.canvas }}
+      style={{ flex: 1, backgroundColor: colors.group }}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      // AppHeader: status bar inset plus its 54 pt bar.
       keyboardVerticalOffset={Platform.OS === 'ios' ? insets.top + 54 : 0}
     >
       <Stack.Screen
@@ -351,7 +278,7 @@ export default function AskScreen() {
           title: t('Zapytaj notatki', 'Ask your notes'),
           headerRight: () =>
             messages.length ? (
-              <IconButton name="refresh" label={t('Nowa rozmowa', 'New conversation')} onPress={clear} />
+              <IconButton name="refresh" label={t('Nowa rozmowa', 'New conversation')} onPress={clear} color={colors.accent} />
             ) : null,
         }}
       />
@@ -364,14 +291,13 @@ export default function AskScreen() {
       >
         {messages.length === 0 ? (
           <View style={styles.empty}>
-            <Text style={[type.display, { fontSize: 28, lineHeight: 36, color: colors.ink, textAlign: 'center' }]}>
-              {notes.length ? t('Zapytaj swoje ', 'Ask your ') : t('Nie masz jeszcze notatek', 'You have no notes yet')}
-              {notes.length ? <Text style={{ backgroundColor: colors.marker, color: colors.onMarker }}>{t('notatki', 'notes')}</Text> : null}
+            <Text style={[type.noteTitle, { color: colors.ink, textAlign: 'center' }]}>
+              {notes.length ? t('Zapytaj swoje notatki', 'Ask your notes') : t('Nie masz jeszcze notatek', 'You have no notes yet')}
             </Text>
-            <Text style={[type.body, { color: colors.muted, textAlign: 'center' }]}>
+            <Text style={[type.body, { color: colors.secondary, textAlign: 'center' }]}>
               {t(
-                'Odpowiedź powstaje na telefonie, tylko z Twoich notatek. Każda informacja ma odnośnik do notatki, z której pochodzi.',
-                'Answers are written on this phone, only from your notes. Every fact links to the note it came from.',
+                'Odpowiedź powstaje na telefonie, tylko z Twoich notatek. Pod każdą widać notatki, z których pochodzi.',
+                'Answers are written on this phone, only from your notes. The notes behind each one are shown under it.',
               )}
             </Text>
             {notes.length ? (
@@ -381,54 +307,55 @@ export default function AskScreen() {
                     key={example}
                     accessibilityRole="button"
                     onPress={() => send(example)}
-                    style={({ pressed }) => [styles.example, { borderColor: colors.line, backgroundColor: colors.paper, transform: [{ scale: pressed ? 0.98 : 1 }] }]}
+                    style={({ pressed }) => [styles.example, { backgroundColor: colors.canvas, opacity: pressed ? 0.7 : 1 }]}
                   >
-                    <Text style={[type.label, { color: colors.ink, flex: 1 }]}>{example}</Text>
-                    <Icon name="arrow-right" size={16} color={colors.faint} />
+                    <Text style={[type.body, { color: colors.ink, flex: 1 }]}>{example}</Text>
+                    <Icon name="chevron-right" size={16} color={colors.faint} />
                   </Pressable>
                 ))}
               </View>
             ) : null}
-            {notes.length ? <ModelDownloadBanner inset={0} /> : null}
+            {notes.length ? <ModelDownloadBanner inset={0} onCanvas /> : null}
             {notes.length ? <SearchModelCard compact={false} /> : null}
           </View>
         ) : (
           <>
-            <ModelDownloadBanner inset={0} />
+            <ModelDownloadBanner inset={0} onCanvas />
             <SearchModelCard compact />
-            {messages.map((message) => <Message key={message.id} message={message} onOpen={open} titles={titles} onFollowUp={message.id === last?.id && !pending ? send : undefined} />)}
+            {messages.map((message) => <Message key={message.id} message={message} onOpen={open} dates={dates} onFollowUp={message.id === last?.id && !pending ? send : undefined} />)}
           </>
         )}
       </ScrollView>
       <View
         style={[
           styles.composer,
-          { borderTopColor: colors.line, backgroundColor: colors.canvas, paddingBottom: Math.max(insets.bottom, spacing.md) },
+          { borderTopColor: colors.line, backgroundColor: colors.canvas, paddingBottom: Math.max(insets.bottom, spacing.sm) },
         ]}
       >
         <TextInput
           value={draft}
           onChangeText={setDraft}
-          placeholder={t('Zadaj pytanie…', 'Ask a question…')}
+          placeholder={t('Zapytaj o swoje notatki', 'Ask about your notes')}
           placeholderTextColor={colors.faint}
+          accessibilityLabel={t('Pytanie', 'Question')}
           multiline
           editable={notes.length > 0}
           returnKeyType="send"
           submitBehavior="submit"
           onSubmitEditing={() => send(draft)}
-          style={[styles.input, type.body, { color: colors.ink, backgroundColor: colors.paper, borderColor: colors.line }]}
+          style={[styles.input, type.body, { color: colors.ink, backgroundColor: colors.group, borderColor: colors.line }]}
         />
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={pending ? t('Zatrzymaj', 'Stop') : t('Wyślij', 'Send')}
-          disabled={!pending && !draft.trim()}
+          disabled={!canSend}
           onPress={() => (pending ? stop() : send(draft))}
           style={({ pressed }) => [
             styles.send,
-            { backgroundColor: pending || draft.trim() ? colors.brand : colors.surface, transform: [{ scale: pressed ? 0.94 : 1 }] },
+            { backgroundColor: canSend ? colors.accent : colors.field, opacity: pressed ? 0.7 : 1 },
           ]}
         >
-          <Icon name={pending ? 'stop' : 'arrow-right'} size={20} color={pending || draft.trim() ? colors.onBrand : colors.faint} />
+          <Icon name={pending ? 'stop' : 'arrow-up'} size={18} color={canSend ? '#FFFFFF' : colors.faint} />
         </Pressable>
       </View>
     </KeyboardAvoidingView>
@@ -436,28 +363,25 @@ export default function AskScreen() {
 }
 
 const styles = StyleSheet.create({
-  content: { padding: spacing.xl, gap: spacing.xl, flexGrow: 1 },
+  content: { padding: spacing.lg, paddingBottom: spacing.sm, gap: spacing.lg, flexGrow: 1 },
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.md, paddingVertical: spacing.xxl },
   examples: { gap: spacing.sm, alignSelf: 'stretch', marginTop: spacing.md },
-  example: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, borderWidth: 1, borderRadius: radius.pill, paddingHorizontal: spacing.lg, minHeight: 48 },
-  turn: { gap: spacing.md },
-  question: { alignSelf: 'flex-end', maxWidth: '85%', borderRadius: 20, borderBottomRightRadius: 6, paddingHorizontal: spacing.lg, paddingVertical: 10 },
-  answer: { ...type.body, fontSize: 17, lineHeight: 26 },
-  answerRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
-  dueChip: { alignSelf: 'flex-start', minHeight: 24, paddingHorizontal: 10, borderRadius: 12, justifyContent: 'center' },
-  followUps: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
-  pill: { borderWidth: 1, borderRadius: radius.pill, paddingHorizontal: 14, minHeight: 40, justifyContent: 'center' },
-  answerDot: { width: 8, height: 8, borderRadius: 4, borderWidth: 1, marginTop: 9 },
+  example: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, borderRadius: 12, paddingHorizontal: spacing.lg, minHeight: 44 },
+  turn: { gap: spacing.lg },
+  question: { alignSelf: 'flex-end', maxWidth: '78%', borderRadius: 18, paddingHorizontal: 14, paddingVertical: 9 },
+  answerBlock: { gap: spacing.sm },
+  answer: { ...type.body, lineHeight: 24 },
+  list: { gap: spacing.xs },
+  listRow: { flexDirection: 'row', alignItems: 'flex-start' },
+  marker: { width: 22 },
+  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  chip: { height: 32, borderRadius: 16, paddingHorizontal: spacing.md, justifyContent: 'center', maxWidth: '100%' },
+  waiting: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  dots: { flexDirection: 'row', gap: spacing.xs },
+  dot: { width: 6, height: 6, borderRadius: 3 },
   stage: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  sources: { borderWidth: 1, borderRadius: radius.lg, paddingHorizontal: 14 },
-  source: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 48 },
-  deck: { height: 58, justifyContent: 'flex-start' },
-  deckCard: { position: 'absolute', left: 0, right: 0, top: 0, height: 44, borderRadius: 14, borderWidth: 1, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14 },
-  deckBack1: { left: 6, right: 6, top: 7, opacity: 0.9 },
-  deckBack2: { left: 12, right: 12, top: 14, borderWidth: 0 },
-  deckDot: { width: 8, height: 8, borderRadius: 4, borderWidth: 1 },
-  card: { alignSelf: 'stretch', gap: spacing.sm, borderWidth: 1, borderRadius: radius.lg, padding: spacing.lg, marginTop: spacing.lg },
-  composer: { flexDirection: 'row', alignItems: 'flex-end', gap: spacing.sm, paddingHorizontal: spacing.lg, paddingTop: spacing.md, borderTopWidth: StyleSheet.hairlineWidth },
-  input: { flex: 1, maxHeight: 120, minHeight: 48, borderWidth: 1, borderRadius: 24, paddingHorizontal: 18, paddingTop: 12, paddingBottom: 12 },
-  send: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
+  card: { alignSelf: 'stretch', gap: spacing.sm, borderRadius: 12, padding: spacing.lg, marginTop: spacing.lg },
+  composer: { flexDirection: 'row', alignItems: 'flex-end', gap: spacing.sm, paddingHorizontal: spacing.md, paddingTop: spacing.sm, borderTopWidth: StyleSheet.hairlineWidth },
+  input: { flex: 1, maxHeight: 120, minHeight: 40, borderWidth: StyleSheet.hairlineWidth, borderRadius: 20, paddingHorizontal: spacing.lg, paddingTop: 9, paddingBottom: 9 },
+  send: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
 })

@@ -1,6 +1,5 @@
-import { useState } from 'react'
 import { Text, TextInput, View, type TextStyle } from 'react-native'
-import { radius, type, useTheme } from './theme'
+import { type, useTheme } from './theme'
 
 interface FieldProps {
   label: string
@@ -23,34 +22,29 @@ export function Field({
   textStyle,
 }: FieldProps) {
   const { colors, isDark } = useTheme()
-  const [focused, setFocused] = useState(false)
   return (
-    <View style={{ gap: 8 }}>
-      <Text style={{ ...type.label, color: colors.ink }}>{label}</Text>
+    <View style={{ gap: 6 }}>
+      <Text style={{ ...type.caption, color: colors.secondary, marginLeft: 4 }}>{label}</Text>
       <TextInput
         value={value}
         onChangeText={onChangeText}
         accessibilityLabel={label}
         placeholder={placeholder}
-        placeholderTextColor={colors.muted}
-        selectionColor={colors.markerLine}
+        placeholderTextColor={colors.faint}
+        selectionColor={colors.accent}
         multiline={multiline}
         editable={editable}
         clearButtonMode="never"
         keyboardAppearance={isDark ? 'dark' : 'light'}
-        onFocus={() => setFocused(true)}
-        onBlur={() => setFocused(false)}
         style={[
           {
             ...type.body,
-            color: editable ? colors.ink : colors.muted,
-            backgroundColor: colors.paper,
-            padding: 13,
-            paddingTop: 13,
-            minHeight: minHeight ?? 50,
-            borderWidth: 1,
-            borderColor: focused ? colors.ink : colors.line,
-            borderRadius: radius.lg,
+            color: editable ? colors.ink : colors.secondary,
+            backgroundColor: colors.field,
+            paddingHorizontal: 16,
+            paddingVertical: 12,
+            minHeight: minHeight ?? 46,
+            borderRadius: 12,
             textAlignVertical: multiline ? 'top' : 'center',
           },
           textStyle,

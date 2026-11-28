@@ -1,8 +1,7 @@
 import { useI18n } from '../i18n/useI18n'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
-  Animated,
-  Easing,
+  ActivityIndicator,
   Pressable,
   StyleSheet,
   Text,
@@ -11,12 +10,13 @@ import {
 import { useIsFocused } from 'expo-router/react-navigation'
 import { BottomSheet } from '../ui/BottomSheet'
 import { Button } from '../ui/Button'
+import { Dot } from '../ui/Dot'
 import { SwipeToDelete } from '../ui/SwipeToDelete'
-import { PulseDot } from '../ui/PulseDot'
 import { useReducedMotion } from '../ui/Motion'
 import { TaskArrival, TaskCheck, TaskText, isFastReveal, publishPersistedTaskText, useTaskMotionActive, useTaskTextReveal, useTaskRevealSequence } from './TaskMotion'
 import { useLayoutTransition } from '../ui/LayoutMotion'
-import { radius, spacing, type, useTheme } from '../ui/theme'
+import { spacing, type, useTheme } from '../ui/theme'
+import { Separator } from '../ui/Grouped'
 import { useTasksStore } from '../state/tasksStore'
 import { useNotesStore } from '../state/notesStore'
 import { useModelStore } from '../state/modelStore'
@@ -32,7 +32,7 @@ import { recordOperationTiming } from '../ai/generationMetrics'
 import { useSettingsStore } from '../state/settingsStore'
 import { useTaskPrefetchStore } from './taskPrefetch'
 import { TaskDueChip } from './TaskDueChip'
-import { splitTaskText } from './taskDue'
+import { isTaskOverdue, splitTaskText } from './taskDue'
 import {
   discardPendingProcessingResult,
   findPendingProcessingResult,
@@ -42,23 +42,13 @@ import {
   parseSavedProcessingResult,
 } from '../processing/savedResults'
 
-// One quiet line while suggestions are prepared; the marker dot breathes.
-function SearchLine({ label, reducedMotion }: { label: string; reducedMotion: boolean }) {
+// One quiet line while suggestions are prepared.
+function SearchLine({ label }: { label: string; reducedMotion: boolean }) {
   const { colors } = useTheme()
-  const pulse = useRef(new Animated.Value(1)).current
-  useEffect(() => {
-    if (reducedMotion) return
-    const loop = Animated.loop(Animated.sequence([
-      Animated.timing(pulse, { toValue: 0.35, duration: 800, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
-      Animated.timing(pulse, { toValue: 1, duration: 800, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
-    ]))
-    loop.start()
-    return () => loop.stop()
-  }, [reducedMotion, pulse])
   return (
     <View style={styles.searchLine} accessibilityLiveRegion="polite">
-      <Animated.View style={[styles.searchDot, { backgroundColor: colors.marker, borderColor: colors.markerLine, opacity: pulse }]} />
-      <Text style={[type.meta, { color: colors.muted }]}>{label}</Text>
+      <ActivityIndicator size="small" color={colors.secondary} />
+      <Text style={[type.meta, { color: colors.secondary }]}>{label}</Text>
     </View>
   )
 }
@@ -489,8 +479,8 @@ export function NoteTasks({
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Text style={[styles.heading, { color: colors.muted }]}>
-          {shown.tasks.length ? t(`Do zrobienia · ${shown.tasks.length}`, `To do · ${shown.tasks.length}`) : t('Do zrobienia', 'To do')}
+        <Text accessibilityRole="header" style={[styles.heading, { color: colors.secondary }]}>
+          {t('Zadania', 'Tasks')}
         </Text>
         {shown.proposals.length === 0 && (
           <Button
@@ -502,7 +492,7 @@ export function NoteTasks({
         )}
       </View>
 
-      {shown.tasks.length > 0 && <View style={[styles.card, { backgroundColor: colors.paper, borderColor: colors.line }]}>
+      {shown.tasks.length > 0 && <View style={[styles.card, { backgroundColor: colors.group }]}>
 
       {shown.tasks.map((task, index) => (
         <TaskArrival key={task.id} index={index} count={shown.tasks.length} active={motionActive} reducedMotion={reducedMotion}>
@@ -511,7 +501,8 @@ export function NoteTasks({
           actionText={t('Usuń', 'Delete')}
           onDelete={() => confirmRemove(task.id, task.text)}
         >
-        <View style={[styles.row, index < shown.tasks.length - 1 && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line }]}>
+        {index > 0 && <Separator inset={50} />}
+        <View style={styles.row}>
           <Pressable
             accessibilityRole="checkbox"
             accessibilityLabel={task.text}
@@ -523,18 +514,19 @@ export function NoteTasks({
                 ),
               )
             }}
+            hitSlop={11}
             style={styles.checkPressable}
           >
             <TaskCheck
               checked={task.done}
               active={motionActive}
               reducedMotion={reducedMotion}
-              size={15}
+              size={16}
               style={[
                 styles.checkbox,
                 {
-                  borderColor: task.done ? colors.brand : colors.ink,
-                  backgroundColor: task.done ? colors.brand : 'transparent',
+                  borderColor: task.done ? colors.accent : colors.faint,
+                  backgroundColor: task.done ? colors.accent : 'transparent',
                 },
               ]}
             />
@@ -550,12 +542,12 @@ export function NoteTasks({
               onRevealConsumed={() => savedReveal.consume(task.id)}
               style={[
                 styles.taskText,
-                { color: task.done ? colors.muted : colors.ink },
+                { color: task.done ? colors.faint : colors.ink },
                 task.done && styles.taskDone,
               ]}
             />
             {note && (
-              <TaskDueChip text={task.text} recordedAt={new Date(note.createdAt)} noteTitle={note.title || t('Bez tytułu', 'Untitled')} done={task.done} />
+              <TaskDueChip text={task.text} recordedAt={new Date(note.createdAt)} noteTitle={note.title || t('Bez tytułu', 'Untitled')} done={task.done} overdue={isTaskOverdue(task.text, note.createdAt)} />
             )}
           </View>
         </View>
@@ -567,7 +559,7 @@ export function NoteTasks({
         shown.proposals.length === 0 &&
         !busy &&
         !noteProcessing && (
-          <Text style={[styles.empty, { color: colors.muted }]}>
+          <Text style={[styles.empty, { color: colors.secondary }]}>
             {!content.trim()
               ? t(
                   'Propozycje zadań wymagają treści lub transkrypcji.',
@@ -585,18 +577,18 @@ export function NoteTasks({
       {error && (
         <Text accessibilityRole="alert" style={[styles.error, { color: colors.danger }]}>{error}</Text>
       )}
-      {shown.addedCount > 0 && <Text accessibilityLiveRegion="polite" style={[styles.status, { color: colors.muted }]}>
+      {shown.addedCount > 0 && <Text accessibilityLiveRegion="polite" style={[styles.status, { color: colors.secondary }]}>
         {t(`Dodano zadania (${shown.addedCount})`, `Tasks added (${shown.addedCount})`)}
       </Text>}
       {shown.proposalWarnings.map((warning) => (
-        <Text key={warning} accessibilityRole="alert" style={[styles.status, { color: colors.body }]}>
+        <Text key={warning} accessibilityRole="alert" style={[styles.status, { color: colors.ink }]}>
           {warning}
         </Text>
       ))}
       {shown.loading && motionActive && <SearchLine label={shownStatus ?? ''} reducedMotion={reducedMotion} />}
       {shown.proposals.length > 0 && (
         <View style={styles.proposalList}>
-          {shown.proposals.length > 0 && <Text accessibilityLiveRegion="polite" style={[styles.description, { color: colors.muted }]}>
+          {shown.proposals.length > 0 && <Text accessibilityLiveRegion="polite" style={[styles.description, { color: colors.secondary }]}>
             {t('Zaznacz zadania, które chcesz dodać.', 'Select the tasks you want to add.')}
           </Text>}
           {shown.proposals.map((text, index) => {
@@ -613,13 +605,13 @@ export function NoteTasks({
                   accessibilityRole="checkbox"
                   accessibilityLabel={text}
                   accessibilityState={{ checked, disabled }}
-                  style={({ pressed }) => [styles.proposalRow, { borderBottomColor: colors.line, opacity: pressed ? 0.72 : 1 }]}
+                  style={({ pressed }) => [styles.proposalRow, { borderBottomColor: colors.line, opacity: pressed ? 0.6 : 1 }]}
                 >
                   <TaskCheck
                     checked={checked}
                     active={motionActive}
                     reducedMotion={reducedMotion}
-                    style={[styles.proposalCheckbox, { borderColor: checked ? colors.brand : colors.faint, backgroundColor: checked ? colors.brand : 'transparent' }]}
+                    style={[styles.proposalCheckbox, { borderColor: checked ? colors.accent : colors.faint, backgroundColor: checked ? colors.accent : 'transparent' }]}
                   />
                   <View style={styles.placeholderText}>
                   {ready ? <TaskText
@@ -641,8 +633,8 @@ export function NoteTasks({
           {shown.proposals.length > 0 && <View style={styles.proposalActions}>
             {(saving || discarding) && motionActive && (
               <View style={styles.searchLine} accessibilityLiveRegion="polite">
-                <PulseDot color={colors.marker} />
-                <Text style={[type.meta, { color: colors.muted }]}>
+                <Dot color={colors.accent} />
+                <Text style={[type.meta, { color: colors.secondary }]}>
                   {saving ? t('Zapisuję zadania…', 'Saving tasks…') : t('Odrzucam propozycje…', 'Discarding suggestions…')}
                 </Text>
               </View>
@@ -663,17 +655,17 @@ export function NoteTasks({
         </View>
       )}
       {!shown.loading && shown.noteProcessing && (
-        <Text style={[styles.status, { color: colors.muted }]}>
+        <Text style={[styles.status, { color: colors.secondary }]}>
           {t('Poczekaj na zakończenie opracowywania notatki.', 'Wait until the note has finished processing.')}
         </Text>
       )}
       {!noteProcessing && note?.transcriptionIncomplete && (
-        <Text style={[styles.status, { color: colors.muted }]}>
+        <Text style={[styles.status, { color: colors.secondary }]}>
           {t('Najpierw uzupełnij transkrypcję z zachowanego audio.', 'Complete the transcript from the saved audio first.')}
         </Text>
       )}
       <BottomSheet visible={pendingDelete !== null} onClose={() => setPendingDelete(null)} title={t('Usunąć zadanie?', 'Delete task?')}>
-        <Text style={[type.body, { color: colors.muted }]}>{pendingDelete?.text}</Text>
+        <Text style={[type.body, { color: colors.secondary }]}>{pendingDelete?.text}</Text>
         <Button label={t('Usuń', 'Delete')} variant="danger" onPress={deletePending} />
         <Button label={t('Anuluj', 'Cancel')} variant="quiet" onPress={() => setPendingDelete(null)} />
       </BottomSheet>
@@ -682,23 +674,18 @@ export function NoteTasks({
 }
 
 const styles = StyleSheet.create({
-  container: { gap: spacing.md },
+  container: { gap: spacing.sm },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.md },
-  heading: { ...type.label, fontSize: 13, lineHeight: 18 },
-  card: { borderRadius: radius.lg, borderWidth: 1, paddingHorizontal: 14, overflow: 'hidden' },
+  heading: { ...type.caption, textTransform: 'uppercase', letterSpacing: 0.3 },
+  card: { borderRadius: 12, overflow: 'hidden' },
   row: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    minHeight: 56,
-    paddingVertical: 6,
+    alignItems: 'flex-start',
+    gap: 12,
+    paddingVertical: 11,
+    paddingHorizontal: 16,
   },
-  checkPressable: {
-    minWidth: 36,
-    minHeight: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+  checkPressable: { marginTop: 1 },
   checkbox: {
     width: 22,
     height: 22,
@@ -710,32 +697,31 @@ const styles = StyleSheet.create({
   taskCopy: { flex: 1 },
   taskText: { ...type.body },
   taskDone: { textDecorationLine: 'line-through' },
-  empty: { ...type.body },
+  empty: { ...type.meta },
   error: { ...type.body },
   status: { ...type.meta },
-  description: { ...type.body, fontSize: 14, lineHeight: 20 },
+  description: { ...type.meta },
   proposalList: { gap: spacing.sm },
   placeholderText: { flex: 1, minWidth: 0 },
   proposalRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    gap: spacing.md,
-    minHeight: 72,
+    gap: 12,
+    minHeight: 44,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    paddingVertical: spacing.lg,
+    paddingVertical: 11,
   },
   proposalCheckbox: {
-    width: 23,
-    height: 23,
-    borderRadius: 6,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
     borderWidth: 1.5,
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 1,
   },
-  proposalText: { ...type.body, flex: 1, lineHeight: 23 },
-  proposalSpacer: { minHeight: 23 },
+  proposalText: { ...type.body, flex: 1 },
+  proposalSpacer: { minHeight: 22 },
   searchLine: { minHeight: 24, flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  searchDot: { width: 8, height: 8, borderRadius: 4, borderWidth: 1 },
   proposalActions: { gap: spacing.sm, paddingTop: spacing.md },
 })

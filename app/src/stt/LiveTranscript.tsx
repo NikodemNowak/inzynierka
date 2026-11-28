@@ -1,31 +1,26 @@
-import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { memo, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { StyleSheet, Text, type StyleProp, type TextStyle } from 'react-native'
-import { fadedTextColor, useReducedMotion } from '../ui/Motion'
+import { useReducedMotion } from '../ui/Motion'
 import { useTheme } from '../ui/theme'
 import {
   buildTranscriptFrame,
-  getTranscriptLetterAlpha,
   getTranscriptColorProgress,
   interpolateTranscriptColor,
-  LETTER_COLOR_SETTLE_MS,
+  transcriptSettleTime,
   type TranscriptFrame,
   type TranscriptLetter,
 } from './liveTranscriptAnimation'
 
 interface LiveTranscriptProps {
   text: string
-  finalizedText?: string
   animate?: boolean
   style?: StyleProp<TextStyle>
-  interimStyle?: StyleProp<TextStyle>
 }
 
 export const LiveTranscript = memo(function LiveTranscript({
   text,
-  finalizedText = '',
   animate = true,
   style,
-  interimStyle,
 }: LiveTranscriptProps) {
   const { colors } = useTheme()
   const reducedMotion = useReducedMotion()
@@ -60,75 +55,32 @@ export const LiveTranscript = memo(function LiveTranscript({
     setClockNow(now)
   }, [animate, reducedMotion, text])
 
+  // One timer per new frame: the newest words turn from secondary to text color
+  // once, with no per-frame JS animation.
   useEffect(() => {
-    if (
-      !animate ||
-      reducedMotion ||
-      !frame.tail.some((letter) => letter.startedAt !== null)
+    if (!animate || reducedMotion) return
+    const settleAt = transcriptSettleTime(frame.tail)
+    if (settleAt === null) return
+    const timer = setTimeout(
+      () => setClockNow(Date.now()),
+      Math.max(0, settleAt - Date.now()),
     )
-      return
-
-    let active = true
-    let animationFrame: number
-    const tick = () => {
-      if (!active) return
-      const now = Date.now()
-      setClockNow(now)
-      const stillRevealing = frame.tail.some(
-        (letter) =>
-          letter.startedAt !== null &&
-          now < letter.startedAt + LETTER_COLOR_SETTLE_MS,
-      )
-      if (stillRevealing) animationFrame = requestAnimationFrame(tick)
-    }
-
-    animationFrame = requestAnimationFrame(tick)
-    return () => {
-      active = false
-      cancelAnimationFrame(animationFrame)
-    }
+    return () => clearTimeout(timer)
   }, [animate, frame, reducedMotion])
 
   const styleColor = StyleSheet.flatten(style)?.color
-  const textColor = typeof styleColor === 'string' ? styleColor : colors.body
-  const interimStyleColor = StyleSheet.flatten(interimStyle)?.color
-  const interimColor =
-    typeof interimStyleColor === 'string' ? interimStyleColor : textColor
-  const finalizedLength = useMemo(() =>
-    finalizedText.length > 0 && text.startsWith(finalizedText)
-      ? Array.from(finalizedText).length
-      : 0,
-  [finalizedText, text])
-  const [stablePrefix, interimPrefix] = useMemo(() => {
-    const characters = Array.from(frame.prefix)
-    return [
-      characters.slice(0, Math.min(finalizedLength, characters.length)).join(''),
-      characters.slice(finalizedLength).join(''),
-    ]
-  }, [finalizedLength, frame.prefix])
-
+  const textColor = typeof styleColor === 'string' ? styleColor : colors.ink
   return (
     <Text style={style} accessible accessibilityLabel={text}>
-      {stablePrefix}
-      {interimPrefix.length > 0 && (
-        <Text style={interimStyle}>{interimPrefix}</Text>
-      )}
+      {frame.prefix}
       {frame.tail.map((letter) => {
-        const isInterim = letter.index >= finalizedLength
-        const color = isInterim ? interimColor : textColor
         const progress = getTranscriptColorProgress(letter, clockNow)
         return (
           <Text
             key={`${letter.index}:${letter.character}`}
-            style={[
-              isInterim ? interimStyle : undefined,
-              {
-                color: fadedTextColor(
-                  interpolateTranscriptColor(colors.ink, color, progress),
-                  getTranscriptLetterAlpha(letter, clockNow),
-                ),
-              },
-            ]}
+            style={{
+              color: interpolateTranscriptColor(colors.secondary, textColor, progress),
+            }}
           >
             {letter.character}
           </Text>

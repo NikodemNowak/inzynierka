@@ -2,7 +2,8 @@ import { useState } from 'react'
 import { Pressable, StyleSheet, Switch, Text, View } from 'react-native'
 import { useI18n } from '../i18n/useI18n'
 import { useSettingsStore } from '../state/settingsStore'
-import { radius, spacing, type, useTheme, fonts } from '../ui/theme'
+import { Group, SectionTitle } from '../ui/Grouped'
+import { spacing, useTheme, font } from '../ui/theme'
 import {
   nativeProcessing,
   requestCompletionNotifications,
@@ -65,18 +66,8 @@ export function ProcessingSettingsSection() {
   }
   return (
     <View style={styles.section}>
-      <Text
-        accessibilityRole="header"
-        style={[styles.heading, { color: colors.muted }]}
-      >
-        {t('Opracowanie notatek', 'Note processing')}
-      </Text>
-      <View
-        style={[
-          styles.card,
-          { backgroundColor: colors.paper, borderColor: colors.line },
-        ]}
-      >
+      <SectionTitle>{t('Opracowanie notatek', 'Note processing')}</SectionTitle>
+      <Group>
         {[
           {
             value: false,
@@ -104,14 +95,7 @@ export function ProcessingSettingsSection() {
             }}
             disabled={busy || (option.value && !available)}
             onPress={() => void choose(option.value)}
-            style={[
-              styles.row,
-              option.value && {
-                borderTopWidth: StyleSheet.hairlineWidth,
-                borderTopColor: colors.line,
-              },
-              option.value && !available && { opacity: 0.5 },
-            ]}
+            style={[styles.row, option.value && !available && { opacity: 0.5 }]}
           >
             <View style={[styles.radio, { borderColor: enabled === option.value ? colors.ink : colors.faint }]}>
               {enabled === option.value && <View style={[styles.radioDot, { backgroundColor: colors.ink }]} />}
@@ -126,8 +110,7 @@ export function ProcessingSettingsSection() {
             </View>
           </Pressable>
         ))}
-      </View>
-      <View style={[styles.card, styles.row, { backgroundColor: colors.paper, borderColor: colors.line }]}>
+        <View style={styles.row}>
         <View style={styles.copy}>
           <Text style={[styles.label, { color: colors.ink }]}>
             {t('Proponuj zadania od razu', 'Suggest tasks right away')}
@@ -147,7 +130,8 @@ export function ProcessingSettingsSection() {
           thumbColor={autoTasks ? colors.onBrand : colors.paper}
           ios_backgroundColor={colors.line}
         />
-      </View>
+        </View>
+      </Group>
       {!available && (
         <Text style={[styles.detail, { color: colors.muted }]}>
           {t(
@@ -181,12 +165,6 @@ export function ProcessingSettingsSection() {
 
 const styles = StyleSheet.create({
   section: { gap: spacing.sm },
-  heading: { ...type.label, fontSize: 13, lineHeight: 18, marginLeft: 4 },
-  card: {
-    borderWidth: 1,
-    borderRadius: radius.lg,
-    overflow: 'hidden',
-  },
   row: {
     paddingHorizontal: spacing.lg,
     paddingVertical: 14,
@@ -198,7 +176,7 @@ const styles = StyleSheet.create({
   copy: { flex: 1, gap: 4 },
   radio: { width: 22, height: 22, borderRadius: 11, borderWidth: 1.6, alignItems: 'center', justifyContent: 'center' },
   radioDot: { width: 12, height: 12, borderRadius: 6 },
-  label: { fontSize: 16, lineHeight: 21, fontFamily: fonts.medium },
+  label: { fontSize: 16, lineHeight: 21, ...font.semibold },
   detail: { fontSize: 13, lineHeight: 19 },
   notify: { minHeight: 44, justifyContent: 'center' },
 })

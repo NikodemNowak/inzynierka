@@ -1,9 +1,9 @@
 import { useState, type ReactNode } from 'react'
-import { Text, View, type ColorValue } from 'react-native'
+import { Pressable, StyleSheet, Text, View, type ColorValue } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useI18n } from '../i18n/useI18n'
-import { IconButton } from './Icon'
-import { useTheme, fonts } from './theme'
+import { Icon } from './Icon'
+import { type, useTheme } from './theme'
 import { RecordingBanner } from '../stt/RecordingBanner'
 
 interface HeaderButtonProps {
@@ -35,7 +35,7 @@ export function AppHeader({ back, navigation, options, route }: HeaderProps) {
   const [rightWidth, setRightWidth] = useState(44)
   const sideWidth = Math.max(44, leftWidth, rightWidth)
   const props = {
-    tintColor: colors.ink,
+    tintColor: colors.accent,
     canGoBack: showBack,
     backgroundColor: colors.canvas,
   }
@@ -44,6 +44,8 @@ export function AppHeader({ back, navigation, options, route }: HeaderProps) {
       style={{
         backgroundColor: colors.canvas,
         paddingTop: insets.top,
+        borderBottomWidth: StyleSheet.hairlineWidth,
+        borderBottomColor: colors.line,
       }}
     >
       <View
@@ -65,12 +67,32 @@ export function AppHeader({ back, navigation, options, route }: HeaderProps) {
           {options.headerLeft ? (
             options.headerLeft(props)
           ) : showBack ? (
-            <IconButton
-              name="chevron-left"
-              label={t('Wróć', 'Back')}
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={
+                back?.title
+                  ? t(`Wróć do ${back.title}`, `Back to ${back.title}`)
+                  : t('Wróć', 'Back')
+              }
               onPress={navigation.goBack}
-              size={25}
-            />
+              hitSlop={8}
+              style={({ pressed }) => ({
+                flexDirection: 'row',
+                alignItems: 'center',
+                minHeight: 44,
+                opacity: pressed ? 0.55 : 1,
+              })}
+            >
+              <Icon name="chevron-left" size={22} color={colors.accent} />
+              {back?.title ? (
+                <Text
+                  numberOfLines={1}
+                  style={{ ...type.body, color: colors.accent, maxWidth: 120 }}
+                >
+                  {back.title}
+                </Text>
+              ) : null}
+            </Pressable>
           ) : null}
         </View>
         <View
@@ -86,12 +108,7 @@ export function AppHeader({ back, navigation, options, route }: HeaderProps) {
             <Text
               numberOfLines={1}
               accessibilityRole="header"
-              style={{
-                fontSize: 17,
-                lineHeight: 24,
-                fontFamily: fonts.semibold,
-                color: colors.ink,
-              }}
+              style={{ ...type.title, color: colors.ink }}
             >
               {typeof options.headerTitle === 'string'
                 ? options.headerTitle
@@ -111,7 +128,7 @@ export function AppHeader({ back, navigation, options, route }: HeaderProps) {
           {options.headerRight?.(props)}
         </View>
       </View>
-      <RecordingBanner />
+      <RecordingBanner inset={false} />
     </View>
   )
 }

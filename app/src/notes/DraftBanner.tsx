@@ -6,7 +6,7 @@ import { useNotesStore } from '../state/notesStore'
 import { Button } from '../ui/Button'
 import { BottomSheet } from '../ui/BottomSheet'
 import { Icon } from '../ui/Icon'
-import { radius, type, useTheme } from '../ui/theme'
+import { type, useTheme } from '../ui/theme'
 
 export function DraftBanner() {
   const { colors } = useTheme()
@@ -62,13 +62,11 @@ export function DraftBanner() {
   return (
     <View
       style={{
-        marginHorizontal: 24,
-        marginBottom: 14,
+        marginHorizontal: 16,
+        marginTop: 12,
         padding: 16,
-        borderRadius: radius.lg,
-        backgroundColor: colors.paper,
-        borderWidth: 1,
-        borderColor: colors.line,
+        borderRadius: 12,
+        backgroundColor: colors.group,
         gap: 8,
       }}
     >
@@ -86,7 +84,7 @@ export function DraftBanner() {
       </Text>
       <Text style={{ ...type.meta, color: colors.muted }}>
         {t(
-          'Zachowano tekst. Audio jest niedostÄ™pne.',
+          'Zachowano tekst. Audio jest niedostępne.',
           'Text recovered. Audio is unavailable.',
         )}
       </Text>
@@ -107,13 +105,13 @@ export function DraftBanner() {
       )}
       <View style={{ flexDirection: 'row', gap: 8 }}>
         <Button
-          label={t('Zapisz notatkÄ™', 'Save note')}
+          label={t('Zapisz notatkę', 'Save note')}
           onPress={() => void keep()}
           disabled={busy}
           style={{ flex: 1 }}
         />
         <Button
-          label={t('OdrzuÄ‡', 'Discard')}
+          label={t('Odrzuć', 'Discard')}
           variant="danger"
           onPress={() => setConfirming(true)}
           disabled={busy}

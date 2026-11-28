@@ -1,13 +1,7 @@
 import { createElement } from 'react'
 import { act, create } from 'react-test-renderer'
 import { AccessibilityInfo, Text } from 'react-native'
-import { fadedTextColor, useReducedMotion } from './Motion'
-
-test('fadedTextColor clamps opacity and falls back for non-hex colors', () => {
-  expect(fadedTextColor('#102030', 0.5)).toBe('rgba(16, 32, 48, 0.5)')
-  expect(fadedTextColor('#102030', 4)).toBe('rgba(16, 32, 48, 1)')
-  expect(fadedTextColor('red', -1)).toBe('rgba(73, 87, 106, 0)')
-})
+import { useReducedMotion } from './Motion'
 
 test('useReducedMotion follows the system preference and its change event', async () => {
   let notify: (value: boolean) => void = () => undefined

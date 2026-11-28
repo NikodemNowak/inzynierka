@@ -33,7 +33,6 @@ jest.mock('./TaskMotion', () => {
 })
 
 jest.mock('../ui/Motion', () => ({ useReducedMotion: () => mockReducedMotion }))
-jest.mock('../ui/PulseDot', () => ({ PulseDot: () => null }))
 jest.mock('./FadeText', () => {
   const React = jest.requireActual<typeof import('react')>('react')
   const { Text } = jest.requireActual<typeof import('react-native')>('react-native')
@@ -136,20 +135,14 @@ test('v34 shows one quiet status line, no placeholder rows, and only the real re
   expect(mockTasksState.addForNote).not.toHaveBeenCalled()
 })
 
-test('v35 releases task text strictly from top to bottom after the preceding reveal completes', async () => {
+test('v35 shows every proposal at once with a plain fade, no top-to-bottom cascade', async () => {
   mockRevealCompletes = false
   const proposals = ['Pierwsze zadanie', 'Drugie zadanie', 'Trzecie zadanie']
   jest.mocked(createTaskProposal).mockResolvedValueOnce({ tasks: proposals, warnings: [] })
   await press('Zaproponuj zadania')
-  expect(tree.root.findAllByType(FadeText).map(node => node.props.text)).toEqual(proposals.slice(0, 1))
-  expect(tree.root.findAll(item => item.props.accessibilityRole === 'checkbox' && typeof item.props.onPress === 'function')).toHaveLength(3)
-  const first = tree.root.findByType(FadeText).props.onRevealComplete
-  await act(async () => { first(proposals[0]) })
-  expect(tree.root.findAllByType(FadeText).map(node => node.props.text)).toEqual(proposals.slice(0, 2))
-  await act(async () => { first(proposals[0]) })
-  expect(tree.root.findAllByType(FadeText)).toHaveLength(2)
-  await act(async () => { tree.root.findAllByType(FadeText)[1].props.onRevealComplete(proposals[1]) })
   expect(tree.root.findAllByType(FadeText).map(node => node.props.text)).toEqual(proposals)
+  expect(tree.root.findAllByType(FadeText).every(node => node.props.animate === true)).toBe(true)
+  expect(tree.root.findAll(item => item.props.accessibilityRole === 'checkbox' && typeof item.props.onPress === 'function')).toHaveLength(3)
   expect(mockTasksState.addForNote).not.toHaveBeenCalled()
 })
 
@@ -184,16 +177,12 @@ test.each([6, 100])('keeps a %s-task result immediately selectable and lets ever
   expect(mockTasksState.addForNote).not.toHaveBeenCalled()
 })
 
-test('even immediate plain text waits for the row entrance, then does not replay on focus return', async () => {
+test('proposal text does not wait for the row entrance and does not replay on focus return', async () => {
   mockRevealCompletes = false; mockArrivalCompletes = false
   const tasks = ['Pierwsze zadanie', 'Drugie zadanie', 'Trzecie zadanie']
   jest.mocked(createTaskProposal).mockResolvedValueOnce({ tasks, warnings: [] })
   await press('Zaproponuj zadania')
-  const first = tree.root.findByType(FadeText)
-  await act(async () => { first.props.onRevealComplete(tasks[0]) })
-  expect(tree.root.findAllByType(FadeText)).toHaveLength(1)
-  await act(async () => { tree.root.findAllByType(TaskArrival).find(row => row.props.enter)!.props.onArrivalComplete() })
-  expect(tree.root.findAllByType(FadeText)).toHaveLength(2)
+  expect(tree.root.findAllByType(FadeText).map(row => row.props.text)).toEqual(tasks)
   mockFocused = false
   await act(async () => { tree.update(createElement(NoteTasks, { noteId: mockNote.id, content: mockNote.content })) })
   mockFocused = true

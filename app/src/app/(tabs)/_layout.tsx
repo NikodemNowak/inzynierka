@@ -3,7 +3,7 @@ import type { ComponentProps } from 'react'
 import { Redirect, Tabs } from 'expo-router'
 import { View } from 'react-native'
 import { useSettingsStore } from '../../state/settingsStore'
-import { HomeHeader, HomeNavigation } from '../../ui/HomeNavigation'
+import { HomeNavigation } from '../../ui/HomeNavigation'
 import { useTheme } from '../../ui/theme'
 import { RecordingBanner } from '../../stt/RecordingBanner'
 
@@ -34,18 +34,10 @@ function HomeTabBar({ state, navigation }: TabBarProps) {
   )
 }
 
-function HomeFrame({ state, children }: TabLayoutProps) {
+function HomeFrame({ children }: TabLayoutProps) {
   const { colors } = useTheme()
-  const { t } = useI18n()
   return (
     <View style={{ flex: 1, backgroundColor: colors.canvas }}>
-      <HomeHeader
-        title={
-          state.routes[state.index]?.name === 'tasks'
-            ? t('Zadania', 'Tasks')
-            : t('Notatki', 'Notes')
-        }
-      />
       <RecordingBanner />
       {children}
     </View>

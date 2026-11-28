@@ -5,6 +5,7 @@ import { TaskArrival, TaskCheck, TaskText, publishPersistedTaskText, taskEntranc
 import { FadeText } from './FadeText'
 import TasksScreen from '../app/(tabs)/tasks'
 import type { Task } from '../domain/task'
+import { lightColors } from '../ui/theme'
 
 const mockTaskState: { tasks: Task[]; toggle: jest.Mock<Promise<void>, [string]> } = {
   tasks: [],
@@ -30,7 +31,8 @@ jest.mock('react-native', () => {
   })
 })
 jest.mock('../state/tasksStore', () => ({ useTasksStore: (select: (state: typeof mockTaskState) => unknown) => select(mockTaskState) }))
-jest.mock('../state/notesStore', () => ({ useNotesStore: (select: (state: { notes: [] }) => unknown) => select({ notes: [] }) }))
+let mockNotes: Array<{ id: string; title: string; createdAt: number }> = []
+jest.mock('../state/notesStore', () => ({ useNotesStore: (select: (state: { notes: typeof mockNotes }) => unknown) => select({ notes: mockNotes }) }))
 jest.mock('../i18n/useI18n', () => ({ useI18n: () => ({ t: (pl: string) => pl }) }))
 jest.mock('../ui/Motion', () => ({ useReducedMotion: () => mockReducedMotion }))
 jest.mock('./FadeText', () => {
@@ -38,74 +40,65 @@ jest.mock('./FadeText', () => {
   const { Text } = jest.requireActual<typeof import('react-native')>('react-native')
   return { FadeText: ({ text }: { text: string }) => React.createElement(Text, { accessibilityLabel: text }, text) }
 })
+jest.mock('../stt/RecordingBanner', () => ({ useRecordingBannerVisible: () => false }))
 jest.mock('../notes/ModelDownloadBanner', () => ({ ModelDownloadBanner: () => null }))
 jest.mock('./TasksEmptyState', () => ({ TasksEmptyState: () => null }))
 jest.mock('expo-router', () => ({ useRouter: () => ({ navigate: jest.fn(), push: jest.fn() }) }))
 jest.mock('expo-router/react-navigation', () => ({ useIsFocused: () => mockScreenFocused }))
+jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }) }))
 
 jest.mock('../ui/Icon', () => ({ Icon: () => null }))
-jest.mock('../ui/theme', () => ({ ...jest.requireActual('../ui/theme'), useTheme: () => ({ colors: { onAction: '#ffffff' } }) }))
+jest.mock('../ui/theme', () => ({ ...jest.requireActual('../ui/theme'), useTheme: () => ({ colors: jest.requireActual('../ui/theme').lightColors }) }))
 
 beforeEach(() => {
   mockRowsVisible = true
   mockScreenFocused = true
   mockReducedMotion = false
+  mockNotes = []
   AppState.currentState = 'active'
   mockTaskState.tasks = [{ id: 'literal-task', noteId: 'source-note', text: 'Send the complete literal report', done: false, createdAt: 1 }]
   mockTaskState.toggle.mockClear()
 })
 
-test('task sequencing rejects stale completions, skips motion while hidden and never replays on return', async () => {
-  let oldComplete: (key: string) => void = () => undefined
-  function Harness({ scope, active = true, reduced = false }: { scope: string; active?: boolean; reduced?: boolean }) {
-    const sequence = useTaskRevealSequence(['First', 'Second', 'Third'], 'new-batch', scope, active, reduced)
-    oldComplete = sequence.complete
-    return createElement(Text, {}, [0, 1, 2].filter(sequence.ready).join(','))
+test('task sequence has no cascade: every row is ready at once and only a fresh visible batch enters', async () => {
+  function Harness({ eventKey, active = true, reduced = false }: { eventKey: string | null; active?: boolean; reduced?: boolean }) {
+    const sequence = useTaskRevealSequence(['First', 'Second', 'Third'], eventKey, 'scope', active, reduced)
+    return createElement(Text, {}, `${[0, 1, 2].filter(sequence.ready).join(',')}|${[0, 1, 2].filter(sequence.enter).join(',')}`)
   }
+  const shown = () => tree!.root.findByType(Text).props.children
   let tree: ReactTestRenderer
   try {
-    await act(async () => { tree = create(createElement(Harness, { scope: 'old' })) })
-    expect(tree!.root.findByType(Text).props.children).toBe('0')
-    const stale = oldComplete
-    await act(async () => { tree!.update(createElement(Harness, { scope: 'new' })); stale('First') })
-    expect(tree!.root.findByType(Text).props.children).toBe('0')
-    await act(async () => { oldComplete('Second') })
-    expect(tree!.root.findByType(Text).props.children).toBe('0')
-    await act(async () => { tree!.update(createElement(Harness, { scope: 'new', active: false })) })
-    expect(tree!.root.findByType(Text).props.children).toBe('0,1,2')
-    await act(async () => { tree!.update(createElement(Harness, { scope: 'new' })) })
-    expect(tree!.root.findByType(Text).props.children).toBe('0,1,2')
-    await act(async () => { tree!.update(createElement(Harness, { scope: 'reduced', reduced: true })) })
-    expect(tree!.root.findByType(Text).props.children).toBe('0,1,2')
+    await act(async () => { tree = create(createElement(Harness, { eventKey: 'batch' })) })
+    expect(shown()).toBe('0,1,2|0,1,2')
+    await act(async () => { tree!.update(createElement(Harness, { eventKey: null })) })
+    expect(shown()).toBe('0,1,2|')
+    await act(async () => { tree!.update(createElement(Harness, { eventKey: 'batch', active: false })) })
+    expect(shown()).toBe('0,1,2|')
+    await act(async () => { tree!.update(createElement(Harness, { eventKey: 'batch', reduced: true })) })
+    expect(shown()).toBe('0,1,2|')
   } finally { await act(async () => { tree!.unmount() }) }
 })
 
-test('a missing text completion has a finite sequence watchdog and is cancelled on source change', async () => {
+test('a missing completion callback never holds a row back and needs no watchdog', async () => {
   jest.useFakeTimers()
-  function Harness({ scope }: { scope: string }) {
-    const sequence = useTaskRevealSequence(['First', 'Second'], 'batch', scope, true, false)
+  function Harness() {
+    const sequence = useTaskRevealSequence(['First', 'Second'], 'batch', 'scope', true, false)
     return createElement(Text, {}, [0, 1].filter(sequence.ready).join(','))
   }
   let tree: ReactTestRenderer
   try {
-    await act(async () => { tree = create(createElement(Harness, { scope: 'old' })) })
-    await act(async () => { jest.advanceTimersByTime(6499) })
-    expect(tree!.root.findByType(Text).props.children).toBe('0')
-    await act(async () => { tree!.update(createElement(Harness, { scope: 'new' })) })
-    await act(async () => { jest.advanceTimersByTime(1) })
-    expect(tree!.root.findByType(Text).props.children).toBe('0')
-    await act(async () => { jest.advanceTimersByTime(6500) })
+    await act(async () => { tree = create(createElement(Harness)) })
+    expect(tree!.root.findByType(Text).props.children).toBe('0,1')
+    await act(async () => { jest.advanceTimersByTime(10000) })
     expect(tree!.root.findByType(Text).props.children).toBe('0,1')
   } finally { await act(async () => { tree!.unmount() }); jest.useRealTimers() }
 })
 
-test('v34 gives the next task a perceptible stagger without making the list wait for text', () => {
-  const first = taskEntranceTiming(0, true, false)!
-  const second = taskEntranceTiming(1, true, false)!
-  const third = taskEntranceTiming(2, true, false)!
-  expect(second.delay - first.delay).toBeGreaterThanOrEqual(120)
-  expect(third.delay - second.delay).toBeGreaterThanOrEqual(120)
-  expect(third.delay + third.duration).toBeLessThanOrEqual(720)
+test('every row enters with the same plain 200 ms fade, no stagger and no cap', () => {
+  for (const count of [0, 3, 22, 1000]) {
+    const plan = Array.from({ length: Math.min(count, 30) }, (_, index) => taskEntranceTiming(index, true, false, count))
+    expect(plan.every((value) => value?.duration === 200 && value.delay === 0)).toBe(true)
+  }
 })
 
 test('task list keeps native typography and truncation without nesting a reveal view inside Text', async () => {
@@ -114,24 +107,18 @@ test('task list keeps native typography and truncation without nesting a reveal 
   await act(async () => { tree = create(createElement(TasksScreen)) })
   const task = tree!.root.findByType(TaskText)
   expect(task.props.numberOfLines).toBe(2)
-  expect(StyleSheet.flatten(task.props.style)).toMatchObject({ fontSize: 16, lineHeight: 21, textDecorationLine: 'line-through' })
+  expect(StyleSheet.flatten(task.props.style)).toMatchObject({ fontSize: 17, lineHeight: 22, textDecorationLine: 'line-through' })
   for (let parent = task.parent; parent; parent = parent.parent) expect(parent.type).not.toBe(Text)
   expect(task.findByType(FadeText).props).toMatchObject({ numberOfLines: 2, active: true })
   await act(async () => { tree!.unmount() })
 })
 
-test('limits even a thousand-row list to four entrances and at most 720ms of native motion', () => {
-  const plan = Array.from({ length: 1000 }, (_, index) => taskEntranceTiming(index, true, false)).filter((value) => value !== null)
-  expect(plan).toHaveLength(4)
-  expect(Math.max(...plan.map((value) => value.duration + value.delay))).toBeLessThanOrEqual(720)
-  expect(taskEntranceTiming(-1, true, false)).toBeNull()
-  expect(taskEntranceTiming(0.5, true, false)).toBeNull()
-  expect(taskEntranceTiming(Infinity, true, false)).toBeNull()
-})
-
 test('disables entrances for Reduce Motion or hidden screens without delaying data', () => {
   expect(taskEntranceTiming(0, true, true)).toBeNull()
   expect(taskEntranceTiming(0, false, false)).toBeNull()
+  expect(taskEntranceTiming(-1, true, false)).toBeNull()
+  expect(taskEntranceTiming(0.5, true, false)).toBeNull()
+  expect(taskEntranceTiming(Infinity, true, false)).toBeNull()
 })
 
 test.each(['native', 'watchdog'])('row completion through %s is finite, happens once, and rejects an old callback after cancellation', async mode => {
@@ -169,7 +156,7 @@ test('a stable loading slot starts its entrance only when a real task fills it a
     expect(timing).not.toHaveBeenCalled()
     await act(async () => { tree!.update(row('Complete literal task')) })
     expect(timing).toHaveBeenCalledTimes(1)
-    expect(timing.mock.calls[0][1]).toMatchObject({ delay: 140, useNativeDriver: true })
+    expect(timing.mock.calls[0][1]).toMatchObject({ delay: 0, duration: 200, useNativeDriver: true })
     await act(async () => { tree!.update(row('Complete literal task')) })
     expect(timing).toHaveBeenCalledTimes(1)
   } finally { await act(async () => { tree!.unmount() }); timing.mockRestore() }
@@ -191,7 +178,7 @@ test('uses native drivers and stops an in-flight row animation when the app hide
   }
   let tree: ReactTestRenderer
   await act(async () => { tree = create(createElement(Harness)) })
-  expect(timing).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ useNativeDriver: true, duration: 260 }))
+  expect(timing).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ useNativeDriver: true, duration: 200 }))
   expect(tree!.root.findAll((item) => item.props.children === 'Complete literal task').length).toBeGreaterThan(0)
   const calls = timing.mock.calls.length
   await act(async () => { stateChanged('background') })
@@ -233,12 +220,15 @@ const mountScreen = async () => {
     listener = callback
     return { remove: jest.fn() }
   })
-  const timing = jest.spyOn(Animated, 'timing').mockImplementation(() => ({ start: jest.fn(), stop: jest.fn(), reset: jest.fn() }))
+  const completions: Array<((result: { finished: boolean }) => void) | undefined> = []
+  const timing = jest.spyOn(Animated, 'timing').mockImplementation(() => ({
+    start: jest.fn((callback) => { completions.push(callback) }), stop: jest.fn(), reset: jest.fn(),
+  }))
   let tree: ReactTestRenderer
   await act(async () => { tree = create(createElement(TasksScreen)) })
   const press = () => tree!.root.findAll((item) => item.props.accessibilityRole === 'checkbox' && typeof item.props.onPress === 'function')[0].props.onPress()
-  return { tree: tree!, press, listener: (state: AppStateStatus) => listener(state),
-    feedbackCount: () => timing.mock.calls.filter(([, options]) => options.duration === 110).length,
+  return { tree: tree!, press, completions, listener: (state: AppStateStatus) => listener(state),
+    feedbackCount: () => timing.mock.calls.filter(([, options]) => options.duration === 150).length,
     dispose: async () => { await act(async () => { tree!.unmount() }); timing.mockRestore(); subscription.mockRestore() },
   }
 }
@@ -289,22 +279,18 @@ test.each([false, true])('deferred toggle cannot publish stale feedback across h
 })
 
 test('completed native feedback is consumed before an active virtualized cell remounts', async () => {
-  const completions: Array<((result: { finished: boolean }) => void) | undefined> = []
-  const parallel = jest.spyOn(Animated, 'parallel').mockImplementation(() => ({
-    start: jest.fn((callback) => { completions.push(callback) }), stop: jest.fn(), reset: jest.fn(),
-  }))
   const screen = await mountScreen()
   try {
     await act(async () => { screen.press() })
     expect(mockTaskState.tasks[0].done).toBe(true)
     expect(screen.feedbackCount()).toBe(1)
-    await act(async () => { for (const complete of completions) complete?.({ finished: true }) })
+    await act(async () => { for (const complete of screen.completions) complete?.({ finished: true }) })
     mockRowsVisible = false
     await act(async () => { screen.tree.update(createElement(TasksScreen)) })
     mockRowsVisible = true
     await act(async () => { screen.tree.update(createElement(TasksScreen)) })
     expect(screen.feedbackCount()).toBe(1)
-  } finally { await screen.dispose(); parallel.mockRestore() }
+  } finally { await screen.dispose() }
 })
 
 test('global task text ignores initial hydration and rerenders and reveals only four confirmed new IDs once', async () => {
@@ -363,12 +349,39 @@ test('a captured reveal crossing a source revision is rejected and the complete 
   await act(async () => { tree!.unmount() })
 })
 
-test('a long list enters every row on a stagger that ends within about a second', () => {
-  const count = 22
-  const timings = Array.from({ length: count }, (_, index) => taskEntranceTiming(index, true, false, count)!)
-  expect(timings.every(Boolean)).toBe(true)
-  const last = timings[count - 1]!
-  expect(last.delay + last.duration).toBeLessThanOrEqual(1200)
-  expect(taskEntranceTiming(5, true, false, 4)).toBeNull()
-  expect(taskEntranceTiming(3, true, true, count)).toBeNull()
+const rowTexts = (tree: ReactTestRenderer) => tree.root.findAllByType(Text).map((node) => [node.props.children].flat().join(''))
+
+test('a task row shows its title, then the due date and note title in secondary 15 pt, red when overdue', async () => {
+  const subscription = jest.spyOn(AppState, 'addEventListener').mockImplementation(() => ({ remove: jest.fn() }))
+  const created = new Date(2026, 0, 5, 10, 0).getTime()
+  mockNotes = [{ id: 'source-note', title: 'Plan na jutro', createdAt: created }]
+  mockTaskState.tasks = [
+    { id: 'late', noteId: 'source-note', text: 'Wysłać opis — jutro', done: false, createdAt: 1 },
+    { id: 'none', noteId: 'source-note', text: 'Zadzwonić do Kowalskich', done: false, createdAt: 1 },
+  ]
+  let tree: ReactTestRenderer
+  await act(async () => { tree = create(createElement(TasksScreen)) })
+  try {
+    const titles = tree!.root.findAllByType(TaskText).map((node) => node.props.text)
+    expect(titles).toEqual(['Wysłać opis', 'Zadzwonić do Kowalskich'])
+    const lines = tree!.root.findAll((node) => node.props.accessibilityLabel === 'Otwórz notatkę Plan na jutro')
+    expect(lines.length).toBeGreaterThanOrEqual(2)
+    const secondary = tree!.root.findAll((node) => node.type === Text && StyleSheet.flatten(node.props.style)?.fontSize === 15 && node.props.numberOfLines === 1)
+    expect(secondary).toHaveLength(2)
+    const dueParts = tree!.root.findAll((node) => node.type === Text && StyleSheet.flatten(node.props.style)?.color === lightColors.red && !node.props.numberOfLines)
+    expect(dueParts).toHaveLength(1)
+    expect(dueParts[0].props.children).toMatch(/6/)
+    expect([secondary[1].props.children].flat().join('')).toBe('· Plan na jutro')
+    expect(tree!.root.findAll((node) => node.props.accessibilityRole === 'button' && typeof node.props.accessibilityLabel === 'string' && node.props.accessibilityLabel.startsWith('Termin: '))).not.toHaveLength(0)
+  } finally { await act(async () => { tree!.unmount() }); subscription.mockRestore() }
+})
+
+test('checking a task is one 150 ms fade and the row simply moves to the done list', async () => {
+  const screen = await mountScreen()
+  try {
+    await act(async () => { screen.press() })
+    expect(mockTaskState.tasks[0].done).toBe(true)
+    expect(screen.feedbackCount()).toBe(1)
+    expect(rowTexts(screen.tree).join('|')).toContain('Send the complete literal report')
+  } finally { await screen.dispose() }
 })
