@@ -1,6 +1,7 @@
 import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -249,6 +250,10 @@ export default function AskScreen() {
   const clear = useAskStore((state) => state.clear)
   const [draft, setDraft] = useState('')
   const scroll = useRef<ScrollView>(null)
+  const frame = useRef<View>(null)
+  // Where this screen starts in the window: the keyboard frame is reported in window coordinates.
+  const [windowTop, setWindowTop] = useState(0)
+  const [keyboardShown, setKeyboardShown] = useState(false)
   const pending = messages.some((message) => message.status === 'pending')
   const last = messages.at(-1)
   const dates = useMemo(() => new Map(notes.map((note) => [note.id, note.createdAt] as const)), [notes])
@@ -259,6 +264,15 @@ export default function AskScreen() {
     scroll.current?.scrollToEnd({ animated: last?.status !== 'pending' })
   }, [messages.length, last?.answer, last?.stage, last?.status])
 
+  useEffect(() => {
+    const show = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow', () => setKeyboardShown(true))
+    const hide = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide', () => setKeyboardShown(false))
+    return () => {
+      show.remove()
+      hide.remove()
+    }
+  }, [])
+
   const send = useCallback((question: string): void => {
     if (!question.trim() || pending) return
     setDraft('')
@@ -267,98 +281,103 @@ export default function AskScreen() {
   const open = useCallback((source: AskSource): void => router.push(`/note/${source.noteId}`), [router])
 
   return (
-    <KeyboardAvoidingView
+    <View
+      ref={frame}
       style={{ flex: 1, backgroundColor: colors.group }}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      // AppHeader: status bar inset plus its 54 pt bar.
-      keyboardVerticalOffset={Platform.OS === 'ios' ? insets.top + 54 : 0}
+      onLayout={() => frame.current?.measureInWindow((_x, y) => setWindowTop(y))}
     >
-      <Stack.Screen
-        options={{
-          title: t('Zapytaj notatki', 'Ask your notes'),
-          headerRight: () =>
-            messages.length ? (
-              <IconButton name="refresh" label={t('Nowa rozmowa', 'New conversation')} onPress={clear} color={colors.accent} />
-            ) : null,
-        }}
-      />
-      <ScrollView
-        ref={scroll}
+      <KeyboardAvoidingView
         style={{ flex: 1 }}
-        contentContainerStyle={styles.content}
-        keyboardShouldPersistTaps="handled"
-        keyboardDismissMode="interactive"
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? windowTop : 0}
       >
-        {messages.length === 0 ? (
-          <View style={styles.empty}>
-            <Text style={[type.noteTitle, { color: colors.ink, textAlign: 'center' }]}>
-              {notes.length ? t('Zapytaj swoje notatki', 'Ask your notes') : t('Nie masz jeszcze notatek', 'You have no notes yet')}
-            </Text>
-            <Text style={[type.body, { color: colors.secondary, textAlign: 'center' }]}>
-              {t(
-                'Odpowiedź powstaje na telefonie, tylko z Twoich notatek. Pod każdą widać notatki, z których pochodzi.',
-                'Answers are written on this phone, only from your notes. The notes behind each one are shown under it.',
-              )}
-            </Text>
-            {notes.length ? (
-              <View style={styles.examples}>
-                {EXAMPLES[language].map((example) => (
-                  <Pressable
-                    key={example}
-                    accessibilityRole="button"
-                    onPress={() => send(example)}
-                    style={({ pressed }) => [styles.example, { backgroundColor: colors.canvas, opacity: pressed ? 0.7 : 1 }]}
-                  >
-                    <Text style={[type.body, { color: colors.ink, flex: 1 }]}>{example}</Text>
-                    <Icon name="chevron-right" size={16} color={colors.faint} />
-                  </Pressable>
-                ))}
-              </View>
-            ) : null}
-            {notes.length ? <ModelDownloadBanner inset={0} onCanvas /> : null}
-            {notes.length ? <SearchModelCard compact={false} /> : null}
-          </View>
-        ) : (
-          <>
-            <ModelDownloadBanner inset={0} onCanvas />
-            <SearchModelCard compact />
-            {messages.map((message) => <Message key={message.id} message={message} onOpen={open} dates={dates} onFollowUp={message.id === last?.id && !pending ? send : undefined} />)}
-          </>
-        )}
-      </ScrollView>
-      <View
-        style={[
-          styles.composer,
-          { borderTopColor: colors.line, backgroundColor: colors.canvas, paddingBottom: Math.max(insets.bottom, spacing.sm) },
-        ]}
-      >
-        <TextInput
-          value={draft}
-          onChangeText={setDraft}
-          placeholder={t('Zapytaj o swoje notatki', 'Ask about your notes')}
-          placeholderTextColor={colors.faint}
-          accessibilityLabel={t('Pytanie', 'Question')}
-          multiline
-          editable={notes.length > 0}
-          returnKeyType="send"
-          submitBehavior="submit"
-          onSubmitEditing={() => send(draft)}
-          style={[styles.input, type.body, { color: colors.ink, backgroundColor: colors.group, borderColor: colors.line }]}
+        <Stack.Screen
+          options={{
+            title: t('Zapytaj notatki', 'Ask your notes'),
+            headerRight: () =>
+              messages.length ? (
+                <IconButton name="refresh" label={t('Nowa rozmowa', 'New conversation')} onPress={clear} color={colors.accent} />
+              ) : null,
+          }}
         />
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={pending ? t('Zatrzymaj', 'Stop') : t('Wyślij', 'Send')}
-          disabled={!canSend}
-          onPress={() => (pending ? stop() : send(draft))}
-          style={({ pressed }) => [
-            styles.send,
-            { backgroundColor: canSend ? colors.accent : colors.field, opacity: pressed ? 0.7 : 1 },
+        <ScrollView
+          ref={scroll}
+          style={{ flex: 1 }}
+          contentContainerStyle={styles.content}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="interactive"
+        >
+          {messages.length === 0 ? (
+            <View style={styles.empty}>
+              <Text style={[type.noteTitle, { color: colors.ink, textAlign: 'center' }]}>
+                {notes.length ? t('Zapytaj swoje notatki', 'Ask your notes') : t('Nie masz jeszcze notatek', 'You have no notes yet')}
+              </Text>
+              <Text style={[type.body, { color: colors.secondary, textAlign: 'center' }]}>
+                {t(
+                  'Odpowiedź powstaje na telefonie, tylko z Twoich notatek. Pod każdą widać notatki, z których pochodzi.',
+                  'Answers are written on this phone, only from your notes. The notes behind each one are shown under it.',
+                )}
+              </Text>
+              {notes.length ? (
+                <View style={styles.examples}>
+                  {EXAMPLES[language].map((example) => (
+                    <Pressable
+                      key={example}
+                      accessibilityRole="button"
+                      onPress={() => send(example)}
+                      style={({ pressed }) => [styles.example, { backgroundColor: colors.canvas, opacity: pressed ? 0.7 : 1 }]}
+                    >
+                      <Text style={[type.body, { color: colors.ink, flex: 1 }]}>{example}</Text>
+                      <Icon name="chevron-right" size={16} color={colors.faint} />
+                    </Pressable>
+                  ))}
+                </View>
+              ) : null}
+              {notes.length ? <ModelDownloadBanner inset={0} onCanvas /> : null}
+              {notes.length ? <SearchModelCard compact={false} /> : null}
+            </View>
+          ) : (
+            <>
+              <ModelDownloadBanner inset={0} onCanvas />
+              <SearchModelCard compact />
+              {messages.map((message) => <Message key={message.id} message={message} onOpen={open} dates={dates} onFollowUp={message.id === last?.id && !pending ? send : undefined} />)}
+            </>
+          )}
+        </ScrollView>
+        <View
+          style={[
+            styles.composer,
+            { borderTopColor: colors.line, backgroundColor: colors.canvas, paddingBottom: keyboardShown ? spacing.sm : Math.max(insets.bottom, spacing.sm) },
           ]}
         >
-          <Icon name={pending ? 'stop' : 'arrow-up'} size={18} color={canSend ? '#FFFFFF' : colors.faint} />
-        </Pressable>
-      </View>
-    </KeyboardAvoidingView>
+          <TextInput
+            value={draft}
+            onChangeText={setDraft}
+            placeholder={t('Zapytaj o swoje notatki', 'Ask about your notes')}
+            placeholderTextColor={colors.faint}
+            accessibilityLabel={t('Pytanie', 'Question')}
+            multiline
+            editable={notes.length > 0}
+            returnKeyType="send"
+            submitBehavior="submit"
+            onSubmitEditing={() => send(draft)}
+            style={[styles.input, type.body, { color: colors.ink, backgroundColor: colors.group, borderColor: colors.line }]}
+          />
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={pending ? t('Zatrzymaj', 'Stop') : t('Wyślij', 'Send')}
+            disabled={!canSend}
+            onPress={() => (pending ? stop() : send(draft))}
+            style={({ pressed }) => [
+              styles.send,
+              { backgroundColor: canSend ? colors.accent : colors.field, opacity: pressed ? 0.7 : 1 },
+            ]}
+          >
+            <Icon name={pending ? 'stop' : 'arrow-up'} size={18} color={canSend ? '#FFFFFF' : colors.faint} />
+          </Pressable>
+        </View>
+      </KeyboardAvoidingView>
+    </View>
   )
 }
 
